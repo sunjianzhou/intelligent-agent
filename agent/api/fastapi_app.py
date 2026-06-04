@@ -488,12 +488,17 @@ async def get_models(http_req: Request):
     user_provider = _get_user_provider(user_id)
     current = user_provider.current_model if user_provider else (cloud_model_name if CLOUD_MODE else "")
 
+    # 用户视角的 cloud_mode：若用户主动切换到了 Ollama 本地模型，则为 False
+    user_is_cloud = bool(
+        configured_cloud and current == cloud_model_name
+    )
+
     return {
         "available_models": all_models,
         "current_model": current,
         "ollama_available": len(local_models) > 0,
-        "cloud_mode": CLOUD_MODE,
-        "cloud_model": cloud_model_name,
+        "cloud_mode": user_is_cloud,
+        "cloud_model": cloud_model_name if user_is_cloud else "",
         "cloud_provider": settings.cloud_provider if configured_cloud else "",
         "known_cloud_providers": list(CLOUD_PROVIDER_BASE_URLS.keys()),
     }
