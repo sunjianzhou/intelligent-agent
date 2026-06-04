@@ -42,6 +42,26 @@ logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 _LOCAL_DEV_SECRET = "local-dev-only-change-in-production-must-be-32chars"
 
+# ── 已知云端 Provider 的默认 base_url 映射 ────────────────────────────────
+# cloud_base_url 留空时自动使用此处的默认值；填了则以填写值为准。
+CLOUD_PROVIDER_BASE_URLS: Dict[str, str] = {
+    "openai":    "https://api.openai.com/v1",
+    "dashscope": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "deepseek":  "https://api.deepseek.com/v1",
+    "zhipu":     "https://open.bigmodel.cn/api/paas/v4",
+    "moonshot":  "https://api.moonshot.cn/v1",
+    "baidu":     "https://qianfan.baidubce.com/v2",
+    "siliconflow": "https://api.siliconflow.cn/v1",
+}
+
+
+def _resolve_cloud_base_url(provider_name: str, configured_url: str) -> str:
+    """返回最终使用的 base_url：优先使用配置值，其次查表，都没有则返回空。"""
+    if configured_url:
+        return configured_url
+    return CLOUD_PROVIDER_BASE_URLS.get(provider_name.lower(), "")
+
+
 # ── Per-user model preferences & provider pool ────────────────────────────
 # Maps user_id → provider instance (in-memory; rebuilt from file on restart)
 _user_providers: dict = {}
@@ -114,7 +134,7 @@ def _build_provider_for_model(target_model: str):
         from services.openai_provider import OpenAIProvider
         return OpenAIProvider(
             api_key=settings.cloud_api_key,
-            base_url=settings.cloud_base_url,
+            base_url=_resolve_cloud_base_url(settings.cloud_provider, settings.cloud_base_url),
             model=settings.cloud_model,
         )
     try:
@@ -351,14 +371,14 @@ CLOUD_MODE = bool(settings.cloud_provider and settings.cloud_api_key and setting
 
 if CLOUD_MODE:
     from services.openai_provider import OpenAIProvider
-
+    _effective_cloud_url = _resolve_cloud_base_url(settings.cloud_provider, settings.cloud_base_url)
     provider = OpenAIProvider(
         api_key=settings.cloud_api_key,
-        base_url=settings.cloud_base_url,
+        base_url=_effective_cloud_url,
         model=settings.cloud_model,
     )
     OLLAMA_AVAILABLE = True
-    logger.info(f"使用云端模型: {settings.cloud_model}")
+    logger.info(f"使用云端模型: {settings.cloud_model} ({settings.cloud_provider}, {_effective_cloud_url})")
 else:
     try:
         provider = OllamaProvider()
@@ -474,6 +494,8 @@ async def get_models(http_req: Request):
         "ollama_available": len(local_models) > 0,
         "cloud_mode": CLOUD_MODE,
         "cloud_model": cloud_model_name,
+        "cloud_provider": settings.cloud_provider if configured_cloud else "",
+        "known_cloud_providers": list(CLOUD_PROVIDER_BASE_URLS.keys()),
     }
 
 
@@ -527,9 +549,20 @@ async def switch_model(request: ModelSwitchRequest, http_req: Request):
     }
 
 
+def _require_admin(http_req: Request) -> None:
+    """仅允许 admin 用户调用危险写操作（批量写记忆、手动蒸馏等）。
+    JWT 关闭时跳过检查（兼容本地开发环境）。"""
+    if not settings.jwt_enabled:
+        return
+    user_id = getattr(http_req.state, "user_id", "anonymous")
+    if user_id not in ("admin", "java-service"):
+        raise HTTPException(status_code=403, detail="仅管理员可调用此接口")
+
+
 @app.post("/api/memory/batch-import")
-async def batch_import_memory(body: dict):
+async def batch_import_memory(body: dict, http_req: Request):
     """批量导入记忆条目（WANT-002）。body.items: list of {content, category?, importance?}"""
+    _require_admin(http_req)
     if not agent:
         return {"success": False, "message": "Agent 未初始化"}
     items = body.get("items", [])
@@ -557,8 +590,9 @@ async def batch_import_memory(body: dict):
 
 
 @app.post("/api/memory/distill")
-async def trigger_distill():
-    """手动触发记忆蒸馏（测试用）"""
+async def trigger_distill(http_req: Request):
+    """手动触发记忆蒸馏（仅 admin，防止未授权 LLM 调用）"""
+    _require_admin(http_req)
     if not agent:
         return {"success": False, "message": "Agent 未初始化"}
     try:
@@ -958,14 +992,18 @@ async def list_tasks(status: Optional[str] = None, limit: int = 50):
 
 
 @app.post("/api/tasks/create")
-async def create_task(request: CreateTaskRequest):
+async def create_task(request: CreateTaskRequest, http_req: Request):
     if not agent or not agent.task_manager:
         return {"success": False, "message": "调度器未初始化"}
     try:
         scheduler = agent.task_manager.scheduler
+        user_id = getattr(http_req.state, "user_id", "java-service")
         args = dict(request.args)
         if request.action == "log" and "message" not in args:
             args["message"] = request.name
+        # llm_generate 任务：自动注入创建者 user_id，让任务执行时能还原用户的 model/persona
+        if request.action == "llm_generate" and "user_id" not in args:
+            args["user_id"] = user_id
         kwargs = dict(
             name=request.name,
             action=request.action,
@@ -1032,9 +1070,22 @@ async def cancel_task(task_id: str):
 
 @app.post("/api/tasks/{task_id}/execute")
 async def execute_task_now(task_id: str):
+    """立即触发任务执行（fire-and-forget：立即返回 HTTP 200，任务在后台运行）。
+    之所以不 await，是因为 llm_generate 等任务需要 30-300s，同步等待会卡住 HTTP 连接。
+    前端轮询获取执行结果。
+    """
     if not agent or not agent.task_manager:
         return {"success": False, "message": "调度器未初始化"}
-    return await agent.task_manager.execute_task_now(task_id)
+    scheduler = agent.task_manager.scheduler
+    task = scheduler.get_task(task_id)
+    if not task:
+        return {"success": False, "message": "任务不存在"}
+    from scheduler.simple_models import SimpleTaskStatus
+    if task.status == SimpleTaskStatus.RUNNING:
+        return {"success": False, "message": "任务正在执行中，请等待当前轮次完成"}
+    # 异步触发，立即返回
+    asyncio.create_task(scheduler.execute_task(task_id))
+    return {"success": True, "message": "任务已触发，后台执行中"}
 
 
 @app.get("/api/tasks/stats")

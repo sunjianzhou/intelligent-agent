@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -23,10 +24,12 @@ public class ProjectProxyController {
     @Autowired private ObjectMapper objectMapper;
 
     @PutMapping("/spec")
-    public ResponseEntity<Map<String, Object>> putProjectSpec(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<Map<String, Object>> putProjectSpec(@RequestBody Map<String, Object> body,
+            HttpServletRequest req) {
+        String userId = proxy.extractUserIdFromRequest(req);
         try {
             String json = objectMapper.writeValueAsString(body);
-            ResponseEntity<String> res = proxy.put("/api/project/spec", json);
+            ResponseEntity<String> res = proxy.put("/api/project/spec", json, userId);
             if (res.getStatusCode().is2xxSuccessful())
                 return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
         } catch (Exception e) {
@@ -39,13 +42,15 @@ public class ProjectProxyController {
     }
 
     @GetMapping("/spec")
-    public ResponseEntity<Map<String, Object>> getProjectSpec(@RequestParam String project_id) {
+    public ResponseEntity<Map<String, Object>> getProjectSpec(@RequestParam String project_id,
+            HttpServletRequest req) {
+        String userId = proxy.extractUserIdFromRequest(req);
         try {
             String url = UriComponentsBuilder
                     .fromHttpUrl(proxy.getBaseUrl() + "/api/project/spec")
                     .queryParam("project_id", project_id)
                     .build().toUriString();
-            ResponseEntity<String> res = proxy.get(url, true);
+            ResponseEntity<String> res = proxy.get(url, true, userId);
             if (res.getStatusCode().is2xxSuccessful())
                 return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
         } catch (Exception e) {
@@ -59,10 +64,12 @@ public class ProjectProxyController {
     }
 
     @PostMapping("/context/extract")
-    public ResponseEntity<Map<String, Object>> extractContext(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<Map<String, Object>> extractContext(@RequestBody Map<String, Object> body,
+            HttpServletRequest req) {
+        String userId = proxy.extractUserIdFromRequest(req);
         try {
             String json = objectMapper.writeValueAsString(body);
-            ResponseEntity<String> res = proxy.post("/api/project/context/extract", json);
+            ResponseEntity<String> res = proxy.post("/api/project/context/extract", json, userId);
             if (res.getStatusCode().is2xxSuccessful())
                 return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
         } catch (Exception e) {
@@ -78,7 +85,9 @@ public class ProjectProxyController {
     public ResponseEntity<Map<String, Object>> getContext(
             @RequestParam String project_id,
             @RequestParam(defaultValue = "") String query,
-            @RequestParam(defaultValue = "5") int limit) {
+            @RequestParam(defaultValue = "5") int limit,
+            HttpServletRequest req) {
+        String userId = proxy.extractUserIdFromRequest(req);
         try {
             String url = UriComponentsBuilder
                     .fromHttpUrl(proxy.getBaseUrl() + "/api/project/context")
@@ -86,7 +95,7 @@ public class ProjectProxyController {
                     .queryParam("query", query)
                     .queryParam("limit", limit)
                     .build().toUriString();
-            ResponseEntity<String> res = proxy.get(url, true);
+            ResponseEntity<String> res = proxy.get(url, true, userId);
             if (res.getStatusCode().is2xxSuccessful())
                 return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
         } catch (Exception e) {
@@ -98,10 +107,12 @@ public class ProjectProxyController {
     }
 
     @PostMapping("/tasks/decompose")
-    public ResponseEntity<Map<String, Object>> decomposeTasks(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<Map<String, Object>> decomposeTasks(@RequestBody Map<String, Object> body,
+            HttpServletRequest req) {
+        String userId = proxy.extractUserIdFromRequest(req);
         try {
             String json = objectMapper.writeValueAsString(body);
-            ResponseEntity<String> res = proxy.post("/api/project/tasks/decompose", json);
+            ResponseEntity<String> res = proxy.post("/api/project/tasks/decompose", json, userId);
             if (res.getStatusCode().is2xxSuccessful())
                 return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
         } catch (Exception e) {
@@ -114,13 +125,15 @@ public class ProjectProxyController {
     }
 
     @GetMapping("/tasks")
-    public ResponseEntity<Map<String, Object>> getProjectTasks(@RequestParam String project_id) {
+    public ResponseEntity<Map<String, Object>> getProjectTasks(@RequestParam String project_id,
+            HttpServletRequest req) {
+        String userId = proxy.extractUserIdFromRequest(req);
         try {
             String url = UriComponentsBuilder
                     .fromHttpUrl(proxy.getBaseUrl() + "/api/project/tasks")
                     .queryParam("project_id", project_id)
                     .build().toUriString();
-            ResponseEntity<String> res = proxy.get(url, true);
+            ResponseEntity<String> res = proxy.get(url, true, userId);
             if (res.getStatusCode().is2xxSuccessful())
                 return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
         } catch (Exception e) {
