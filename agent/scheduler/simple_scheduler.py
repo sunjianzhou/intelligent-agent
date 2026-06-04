@@ -236,6 +236,10 @@ class SimpleTaskScheduler:
                     else:
                         result = await agent.chat(prompt, **_chat_kwargs)
                 content = result.get("content", result.get("message", "")) if isinstance(result, dict) else str(result)
+                _ERR_PREFIXES = ("请求失败", "模型调用失败", "处理请求时出错", "AI 定时生成失败")
+                if any(content.startswith(p) for p in _ERR_PREFIXES):
+                    logger.error(f"[llm_generate] 模型返回错误内容，不推送给用户: {content[:80]}")
+                    return {"success": False, "error": content}
                 ts = datetime.now().isoformat()
                 _push_notification(content, ts, role=role)
                 logger.info(f"[llm_generate] 生成完成，长度 {len(content)}")
