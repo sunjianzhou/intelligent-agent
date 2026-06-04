@@ -371,9 +371,12 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const switchModel = async (modelName) => {
     const result = await apiSwitchModel(modelName)
     if (result?.success) {
-      currentModel.value = modelName
+      currentModel.value = result.current_model || modelName
+      // 切换后同步云端模式状态，确保 Header 显示正确的模型名
+      cloudMode.value  = !!result.cloud_mode
+      cloudModel.value = result.cloud_mode ? (result.current_model || modelName) : ''
       if (systemInfo.value) {
-        systemInfo.value = { ...systemInfo.value, agent_model: modelName }
+        systemInfo.value = { ...systemInfo.value, agent_model: result.current_model || modelName }
       }
     }
     return result
