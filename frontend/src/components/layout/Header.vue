@@ -258,6 +258,7 @@ const toggleDropdown = () => { dropdownOpen.value = !dropdownOpen.value }
 const adminMenuOpen = ref(false)
 const adminMenuRef  = ref(null)
 const adminItems = [
+  { name: 'admin-tasks',  label: '任务管理', icon: 'fas fa-tasks',       path: '/admin/tasks' },
   { name: 'admin-tools',  label: '工具管理', icon: 'fas fa-tools',       path: '/admin/tools' },
   { name: 'admin-skills', label: 'Skill 管理', icon: 'fas fa-magic',     path: '/admin/skills' },
   { name: 'admin-system', label: '系统信息', icon: 'fas fa-info-circle', path: '/admin/system' },
@@ -288,7 +289,7 @@ const handleSwitch = async (modelName) => {
   if (modelName === currentModel.value || switchingModel.value) return
   switchingModel.value = modelName
   const result = await store.switchModel(modelName)
-  if (!result?.success) alert(`切换失败: ${result?.message || '未知错误'}`)
+  if (!result?.success) ElMessage.error(`切换失败: ${result?.message || '未知错误'}`)
   switchingModel.value = ''
   dropdownOpen.value   = false
 }

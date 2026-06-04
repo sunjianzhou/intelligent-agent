@@ -557,16 +557,16 @@ class SimpleTaskScheduler:
         """清理已完成的任务（超过1小时）"""
         cutoff_time = datetime.now() - timedelta(seconds=max_completed_age)
 
-        tasks_to_remove = []
-        for task_id, task in self.tasks.items():
-            if (task.status == SimpleTaskStatus.COMPLETED and
-                task.completed_at and
-                task.completed_at < cutoff_time):
-                tasks_to_remove.append(task_id)
-
-        for task_id in tasks_to_remove:
-            del self.tasks[task_id]
-            logger.debug(f"清理已完成的任务: {task_id}")
+        with self._tasks_lock:
+            tasks_to_remove = [
+                task_id for task_id, task in self.tasks.items()
+                if (task.status == SimpleTaskStatus.COMPLETED and
+                    task.completed_at and
+                    task.completed_at < cutoff_time)
+            ]
+            for task_id in tasks_to_remove:
+                del self.tasks[task_id]
+                logger.debug(f"清理已完成的任务: {task_id}")
 
     def start(self):
         """启动调度器"""
@@ -620,24 +620,26 @@ class SimpleTaskScheduler:
 
     def delete_task(self, task_id: str) -> bool:
         """删除任务"""
-        if task_id in self.tasks:
+        with self._tasks_lock:
+            if task_id not in self.tasks:
+                return False
             del self.tasks[task_id]
-            with self._file_lock:
-                self._flush_tasks_now()
-            logger.info(f"删除任务: {task_id}")
-            return True
-        return False
+        with self._file_lock:
+            self._flush_tasks_now()
+        logger.info(f"删除任务: {task_id}")
+        return True
 
     def cancel_task(self, task_id: str) -> bool:
         """取消任务"""
-        if task_id in self.tasks:
-            task = self.tasks[task_id]
+        with self._tasks_lock:
+            task = self.tasks.get(task_id)
+            if task is None:
+                return False
             task.status = SimpleTaskStatus.CANCELLED
-            with self._file_lock:
-                self._flush_tasks_now()
-            logger.info(f"取消任务: {task_id}")
-            return True
-        return False
+        with self._file_lock:
+            self._flush_tasks_now()
+        logger.info(f"取消任务: {task_id}")
+        return True
 
     def update_task(self, task_id: str, **kwargs) -> Optional[SimpleTask]:
         """更新任务属性。支持修改名称、描述、消息内容、执行间隔等，下次执行时间自动重算。"""
