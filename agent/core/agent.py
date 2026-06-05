@@ -1699,67 +1699,6 @@ class IntelligentAgent:
     # 消息构建
     # ═══════════════════════════════════════════════════════════════
 
-    def _build_messages(self, message: str, use_memory: bool,
-                        user_id: str = "default") -> List[Dict[str, str]]:
-        if use_memory:
-            self.memory.store_conversation("user", message, user_id=user_id)
-            # 预编码消息向量并缓存，避免 _filter_tools_by_intent 中重复编码
-            self._encode_message_for_intent(message)
-
-        messages = [{"role": "system", "content": self.system_prompt}]
-
-        if use_memory:
-            ctx = self.memory.build_context(
-                query=message,
-                current_user_message=message,
-                recent_conversations=10,
-                relevant_memories=3,
-                user_id=user_id,
-            )
-
-            history_pairs = ctx["recent_conversations"]
-            if history_pairs:
-                # 历史条目截断放宽到 300 字符，让记忆更有参考价值
-                history_text = "\n".join(
-                    f"{'用户' if m.metadata.get('role') == 'user' else '助手'}: "
-                    f"{m.content[:300]}{'...' if len(m.content) > 300 else ''}"
-                    for m in history_pairs
-                )
-                messages.append({
-                    "role": "system",
-                    "content": (
-                        "以下是与当前用户的历史对话，其中包含用户透露的个人信息，"
-                        "回答问题时必须参考（如用户姓名、偏好等）：\n"
-                        f"{history_text}"
-                    )
-                })
-
-            relevant = ctx["relevant_knowledge"]
-            if relevant:
-                mem_text = "\n".join(
-                    f"[{r.memory.metadata.get('category', '?')}] {r.memory.content}"
-                    for r in relevant
-                )
-                messages.append({
-                    "role": "system",
-                    "content": f"【相关背景知识】:\n{mem_text}"
-                })
-
-        messages.append({"role": "user", "content": message})
-
-        # 上下文保护：超出预算时先尝试语义压缩，失败则截断
-        max_context = getattr(settings, 'max_context_tokens', 0)
-        if max_context > 0:
-            current_tokens = self._estimate_messages_tokens(messages)
-            if current_tokens > max_context:
-                # _compress_context 是异步方法，此处同步调用兼容路径：
-                # 如果已在事件循环内（chat/chat_stream 直接调用），需 await；
-                # 此同步方法返回消息列表，调用方按需 await 替换版本。
-                # 回退到截断保证同步路径安全
-                messages = self._trim_context(messages, max_context)
-
-        return messages
-
     async def _build_messages_async(self, message: str, use_memory: bool,
                                     user_id: str = "default",
                                     project_id: Optional[str] = None,
