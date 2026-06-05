@@ -281,7 +281,7 @@ async def lifespan(app: FastAPI):
     try:
         if agent and hasattr(agent, 'memory'):
             logger.info("预热 embedding 模型...")
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None,
                 lambda: agent.memory.long_term.embedding_model.encode("warmup")
@@ -764,7 +764,7 @@ async def chat_stream_endpoint(request: ChatRequest, http_req: Request):
                         )),
                         ChatMessage(role='user', content=request.message),
                     ]
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     queue: asyncio.Queue = asyncio.Queue(maxsize=100)
                     DONE = object()
 

@@ -93,10 +93,11 @@ class IntelligentAgent:
 
             # MCP 工具初始化（异步，放到启动后执行）
             self._mcp_initialized = False
-            _loop = asyncio.get_event_loop()
-            if _loop.is_running():
-                _loop.create_task(self._init_mcp_tools())
-                _loop.create_task(self._start_memory_cleanup())
+            try:
+                asyncio.get_running_loop().create_task(self._init_mcp_tools())
+                asyncio.get_running_loop().create_task(self._start_memory_cleanup())
+            except RuntimeError:
+                pass  # 无运行中的事件循环（CLI/测试），任务在 lifespan 中单独启动
 
             logger.info("任务调度器已启动")
         except Exception as e:
@@ -104,9 +105,7 @@ class IntelligentAgent:
 
         # 预缓存意图分类向量（仅在事件循环运行时调度，CLI/测试环境安全跳过）
         try:
-            _loop = asyncio.get_event_loop()
-            if _loop.is_running():
-                _loop.create_task(self._warmup_embeddings())
+            asyncio.get_running_loop().create_task(self._warmup_embeddings())
         except RuntimeError:
             pass
 
@@ -297,7 +296,7 @@ class IntelligentAgent:
                 top_k=40,
                 num_ctx=2048,
             )
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             chat_messages = [ChatMessage(role=m["role"], content=m["content"]) for m in summary_prompt]
             resp = await asyncio.wait_for(
                 loop.run_in_executor(None, lambda: self._get_eff_provider()[0].chat(chat_messages, config)),
@@ -334,7 +333,7 @@ class IntelligentAgent:
         """预热 embedding 模型 + 缓存意图分类向量"""
         try:
             await asyncio.sleep(2)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None, self._match_categories_by_embedding, "warmup"
             )
@@ -1126,7 +1125,7 @@ class IntelligentAgent:
             ChatMessage(role=m["role"], content=m["content"])
             for m in merged
         ]
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         last_err: str = ""
         eff_provider, _ = self._get_eff_provider()
 
@@ -1273,7 +1272,7 @@ class IntelligentAgent:
 
     async def _extract_tool_calls_async(self, text: str) -> List[Dict[str, Any]]:
         """在 executor 中运行同步解析，避免阻塞事件循环。"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._extract_tool_calls, text)
 
     async def _execute_tool_call(self, tool_call: Dict[str, Any]) -> ToolResult:
@@ -1441,7 +1440,7 @@ class IntelligentAgent:
         cancel_event：外部传入的取消信号，客户端断连时设置，
         生产者线程检测到后停止写队列，避免内存无限堆积。
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         queue: asyncio.Queue = asyncio.Queue(maxsize=100)
         DONE = object()
         if cancel_event is None:
@@ -1544,7 +1543,7 @@ class IntelligentAgent:
             }, ensure_ascii=False)
         )
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         timeout = getattr(settings, 'chat_timeout', 120)
 
         # ── 文本工具调用模式（dolphin 等不支持 Ollama 原生 Function Calling 的模型）──
@@ -2314,7 +2313,7 @@ class IntelligentAgent:
             self.task_manager.stop()
         try:
             from services.mcp_client import mcp_manager
-            asyncio.get_event_loop().run_until_complete(mcp_manager.close_all())
+            asyncio.run(mcp_manager.close_all())
         except Exception:
             pass
         logger.info("智能体已停止")
