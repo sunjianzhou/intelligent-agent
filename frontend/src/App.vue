@@ -45,11 +45,8 @@ useErrorBusStore()   // 激活 store，确保 api.js 首次调用前已初始化
 const isMockMode     = computed(() => websocketStore.isMockMode)
 const isLoginPage    = computed(() => !authStore.isLoggedIn)
 
-const _doConnect = () => {
-  if (websocketStore.isConnected) return
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  websocketStore.connect(`${protocol}//${window.location.host}/ws`)
-}
+// connect() 内部已封装 _defaultWsUrl()，无需在外部重复构造 URL
+const _doConnect = () => websocketStore.connect()
 
 // 登录状态变化时立即响应：登录后连 WS + 加载项目列表，退出后断连
 // immediate:true 确保页面刷新时（已有 token）同样建立连接

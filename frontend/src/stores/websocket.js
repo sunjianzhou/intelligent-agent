@@ -304,6 +304,10 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
 
       case 'error':
+        // 若正在流式输出时收到 error，在已接收内容末尾加截断标记，让用户知道回复不完整
+        if (isStreaming.value && streamingIndex.value !== -1) {
+          messages.value[streamingIndex.value].content += String.fromCharCode(10, 10) + '⚠️ *[响应被中断]*'
+        }
         finalizeStream(null)
         addMessage({ role: 'system', content: `错误: ${data.message}`, timestamp: new Date() })
         break
