@@ -552,7 +552,7 @@ class SimpleTaskScheduler:
                     else:
                         _submitted_ids.discard(task_id)
                         loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
+                        # 不调 set_event_loop：在多线程环境下会污染其他线程的 event loop
                         try:
                             loop.run_until_complete(self.execute_task(task_id))
                         finally:
