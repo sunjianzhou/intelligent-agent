@@ -58,6 +58,8 @@ watch(
   (loggedIn) => {
     if (loggedIn) {
       _doConnect()
+      // 登录确认后才从 localStorage 恢复激活项目，防止跨用户污染
+      projectStore.restoreActiveProject()
       projectStore.loadProjects().then(() => {
         // 刷新后恢复激活项目的完整数据（含 spec 未同步重试）
         const stored = projectStore.activeProjectId
@@ -65,6 +67,8 @@ watch(
       })
     } else {
       websocketStore.disconnect()
+      // 退出时清除激活项目，防止下一个用户看到本次会话的项目
+      projectStore.deactivateProject()
     }
   },
   { immediate: true }

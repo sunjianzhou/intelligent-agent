@@ -36,6 +36,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
   let ws = null
   let heartbeatTimer = null       // 定期 REST 心跳，触发 X-New-Token 续期
+  let _historyLoaded = false      // 每次登录只加载一次历史，重连时不覆盖内存消息
+  const _shownNotifKeys = new Set() // 通知去重：防止 WS 重连时同一条通知被重复展示
+  let _manualClose = false        // cancelStreaming 主动关闭时，阻止 onclose 的自动重连
 
   // ── Token 工具 ────────────────────────────────────────────
   const redirectToLogin = () => {
@@ -79,13 +82,20 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
   const connect = (url) => {
     const wsTarget = url || _defaultWsUrl()
-    if (ws && ws.readyState === WebSocket.OPEN) return
+    // 同时检查 OPEN(1) 和 CONNECTING(0)，防止并发调用泄漏 WebSocket 对象
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
     if (USE_MOCK) { enableMockMode(); return }
 
     const token = localStorage.getItem('agent_token') || ''
     if (!token) {
       console.log('[WS] 未登录，跳过连接')
       return
+    }
+
+    // 仅首次连接（非重连）加载历史，避免重连时覆盖内存中的新消息
+    if (!_historyLoaded) {
+      _loadChatHistory()
+      _historyLoaded = true
     }
 
     const wsUrl = `${wsTarget}?token=${token}`
@@ -128,6 +138,12 @@ export const useWebSocketStore = defineStore('websocket', () => {
       isConnected.value = false
       clearInterval(heartbeatTimer)
       heartbeatTimer = null
+
+      // cancelStreaming 已负责 500ms 后重连，此处不再追加第二个重连定时器
+      if (_manualClose) {
+        console.log('[WS] 主动关闭，跳过自动重连')
+        return
+      }
 
       const token = localStorage.getItem('agent_token')
       if (!token) return
@@ -251,8 +267,21 @@ export const useWebSocketStore = defineStore('websocket', () => {
         const cleanMsg = (msg) => msg
           ? msg.replace(/^[⏰🔔]\s*(周期?提醒[:：]\s*)?/u, '').replace(/^提醒[:：]\s*/, '').trim() || msg
           : ''
-        const assistantNotifs = allNotifs.filter(n => n.role === 'assistant').slice(-3)
-        const systemNotifs    = allNotifs.filter(n => n.role !== 'assistant')
+
+        // 去重：用 "timestamp_message" 作 key，防止 WS 重连时同一通知被展示两次
+        const _notifKey = (n) => `${n.timestamp || ''}_${(n.message || '').slice(0, 80)}`
+        const newNotifs = allNotifs.filter(n => {
+          const k = _notifKey(n)
+          if (_shownNotifKeys.has(k)) return false
+          _shownNotifKeys.add(k)
+          // 防止 Set 无限增长：保留最近 200 条
+          if (_shownNotifKeys.size > 200) _shownNotifKeys.delete(_shownNotifKeys.values().next().value)
+          return true
+        })
+        if (!newNotifs.length) break
+
+        const assistantNotifs = newNotifs.filter(n => n.role === 'assistant').slice(-3)
+        const systemNotifs    = newNotifs.filter(n => n.role !== 'assistant')
         const systemGroups = {}
         systemNotifs.forEach(n => {
           const key = cleanMsg(n.message)
@@ -357,14 +386,18 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
     }
     streamingIndex.value = -1
-    // 断开 WebSocket（Java SSE 流随之终止）
+    // 设置 flag：阻止 onclose 在 5s 后再次触发重连，与下面的 500ms 定时器竞争
+    _manualClose = true
     if (ws) {
       ws.close()
       ws = null
     }
     isConnected.value = false
     // 500ms 后重连（使用与初始连接相同的同源动态 URL）
-    setTimeout(() => connect(), 500)
+    setTimeout(() => {
+      _manualClose = false   // 重置，让后续正常断线仍能自动重连
+      connect()
+    }, 500)
   }
 
   // ── 模型管理 ──────────────────────────────────────────────
@@ -439,9 +472,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     } catch { /* 损坏的缓存直接忽略 */ }
   }
 
-  // 应用启动时恢复历史
-  _loadChatHistory()
-
   // ── 工具方法 ──────────────────────────────────────────────
   // _saveChatHistory 防抖：批量通知到来时多条 addMessage 合并为一次写盘
   let _saveTimer = null
@@ -464,12 +494,17 @@ export const useWebSocketStore = defineStore('websocket', () => {
     } catch { /* 网络失败不影响前端清空 */ }
   }
   const disconnect    = ()    => {
+    clearTimeout(_saveTimer)         // 防 logout 后 debounce 写入上一个用户的数据
     clearInterval(heartbeatTimer)
     heartbeatTimer = null
     ws?.close()
     ws = null
     isConnected.value = false
     isMockMode.value  = false
+    // 退出时清空消息和持久化，防止下一个用户看到本次会话数据
+    messages.value = []
+    localStorage.removeItem(CHAT_STORAGE_KEY)
+    _historyLoaded = false           // 重置，下次登录重新加载属于新用户的历史
   }
 
   return {
