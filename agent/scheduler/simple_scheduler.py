@@ -430,8 +430,7 @@ class SimpleTaskScheduler:
                     task.status = SimpleTaskStatus.COMPLETED
                     logger.info(f"任务执行成功: {task.name} (运行次数: {task.run_count})")
 
-            with self._file_lock:
-                self._save_tasks()
+            self._save_tasks()  # sets dirty flag only; actual write batched by _flush_tasks_if_dirty
 
             return {
                 "success": True,
@@ -456,8 +455,7 @@ class SimpleTaskScheduler:
                     task.next_run = task.calculate_next_run()
                 else:
                     task.status = SimpleTaskStatus.FAILED
-            with self._file_lock:
-                self._save_tasks()
+            self._save_tasks()  # sets dirty flag only; actual write batched by _flush_tasks_if_dirty
             raise  # 必须重新抛出，让 asyncio 正确完成取消流程
 
         except Exception as e:
@@ -478,8 +476,7 @@ class SimpleTaskScheduler:
             else:
                 logger.error(f"任务达到最大重试次数: {task.name}")
 
-            with self._file_lock:
-                self._save_tasks()
+            self._save_tasks()  # sets dirty flag only; actual write batched by _flush_tasks_if_dirty
 
             return {
                 "success": False,

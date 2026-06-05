@@ -866,13 +866,14 @@ async def update_memory_importance(memory_id: str, body: dict):
     importance = max(0.0, min(1.0, float(body.get("importance", 0.5))))
     try:
         lt = agent.memory.long_term
+        if lt.collection is None:
+            return {"success": False, "message": "ChromaDB 不可用，重要性更改不会持久化，请稍后重试"}
         # 1. 先更新 ChromaDB（持久层），成功后再更新内存缓存，避免两者状态不一致
-        if lt.collection is not None:
-            existing = lt.collection.get(ids=[memory_id], include=["metadatas"])
-            if existing and existing["ids"]:
-                meta = (existing["metadatas"] or [{}])[0] or {}
-                meta["importance"] = importance
-                lt.collection.update(ids=[memory_id], metadatas=[meta])
+        existing = lt.collection.get(ids=[memory_id], include=["metadatas"])
+        if existing and existing["ids"]:
+            meta = (existing["metadatas"] or [{}])[0] or {}
+            meta["importance"] = importance
+            lt.collection.update(ids=[memory_id], metadatas=[meta])
         # 2. 更新内存缓存（memories 是公开属性）
         if memory_id in lt.memories:
             lt.memories[memory_id].importance = importance
@@ -909,7 +910,44 @@ async def get_memory_summaries(limit: int = 30, request: Request = None):
     if not agent:
         return {"summaries": [], "count": 0}
     user_id = getattr(request.state, "user_id", "default") if request else "default"
-    all_mems = agent.memory.long_term.list(limit=1000)
+    lt = agent.memory.long_term
+
+    # 用 ChromaDB 服务端 where 过滤，不再 list(limit=1000) 全量加载再 Python 过滤
+    if lt.collection is not None:
+        try:
+            if user_id in ("default", "anonymous"):
+                where_clause = {"type": {"$eq": "session_summary"}}
+            else:
+                where_clause = {
+                    "$and": [
+                        {"type": {"$eq": "session_summary"}},
+                        {"user_id": {"$eq": user_id}},
+                    ]
+                }
+            results = lt.collection.get(
+                where=where_clause,
+                limit=limit,
+                include=["documents", "metadatas"],
+            )
+            ids       = results.get("ids", []) or []
+            docs      = results.get("documents", []) or []
+            metas     = results.get("metadatas", []) or []
+            summaries = []
+            for i, sid in enumerate(ids):
+                meta = metas[i] if i < len(metas) else {}
+                summaries.append({
+                    "id":         sid,
+                    "content":    docs[i] if i < len(docs) else "",
+                    "timestamp":  (meta or {}).get("timestamp", ""),
+                    "created_at": (meta or {}).get("timestamp", ""),
+                })
+            summaries.sort(key=lambda s: s["timestamp"], reverse=True)
+            return {"summaries": summaries, "count": len(summaries)}
+        except Exception as _e:
+            logger.warning(f"ChromaDB summaries 查询失败，回退全量扫描: {_e}")
+
+    # 回退：全量加载（ChromaDB 不可用时）
+    all_mems = lt.list(limit=500)
     summaries = [
         m for m in all_mems
         if m.metadata.get("type") == "session_summary"
@@ -920,9 +958,9 @@ async def get_memory_summaries(limit: int = 30, request: Request = None):
     return {
         "summaries": [
             {
-                "id": m.id,
-                "content": m.content,
-                "timestamp": m.metadata.get("timestamp", m.created_at.strftime("%Y-%m-%d %H:%M")),
+                "id":         m.id,
+                "content":    m.content,
+                "timestamp":  m.metadata.get("timestamp", m.created_at.strftime("%Y-%m-%d %H:%M")),
                 "created_at": m.created_at.isoformat(),
             }
             for m in summaries[:limit]
@@ -1635,9 +1673,6 @@ async def update_env_config(body: dict):
     return {"success": True, "updated": updated}
 
 
-_runtime_params: dict = {}
-
-
 _PARAMS_ENV_KEYS = {
     "temperature": "OLLAMA_TEMPERATURE",
     "max_tokens":  "OLLAMA_MAX_TOKENS",
@@ -1652,16 +1687,15 @@ async def update_inference_params(body: dict):
     for k, v in body.items():
         if k not in allowed:
             continue
-        _runtime_params[k] = v
-        settings_key = f"ollama_{k}"
+            settings_key = f"ollama_{k}"
         if hasattr(settings, settings_key):
             try:
                 setattr(settings, settings_key, type(getattr(settings, settings_key))(v))
             except Exception:
                 pass
         _persist_model_to_env(_PARAMS_ENV_KEYS[k], str(v))
-    logger.info(f"推理参数已更新: {_runtime_params}")
-    return {"success": True, "params": _runtime_params}
+    logger.info(f"推理参数已更新")
+    return {"success": True}
 
 
 # ── 图片文件服务（ImageGenerationTool 生成后存储于此）─────────────────────
