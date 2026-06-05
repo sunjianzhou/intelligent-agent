@@ -442,6 +442,24 @@ class SimpleTaskScheduler:
                 "duration": (task.completed_at - task.started_at).total_seconds()
             }
 
+        except asyncio.CancelledError:
+            # CancelledError 继承 BaseException 不是 Exception，必须单独捕获。
+            # asyncio 取消协程（服务重启/外部 cancel()）时会抛此异常，若不处理则
+            # task.status 永久卡在 RUNNING，调度器永远不会再触发该任务。
+            logger.warning(f"任务被取消: {task.name}")
+            with self._tasks_lock:
+                task.completed_at = datetime.now()
+                task.last_error = "任务被取消"
+                # interval/cron 保持可调度；一次性任务标为 FAILED
+                if task.schedule_type in ("interval", "cron"):
+                    task.status = SimpleTaskStatus.PENDING
+                    task.next_run = task.calculate_next_run()
+                else:
+                    task.status = SimpleTaskStatus.FAILED
+            with self._file_lock:
+                self._save_tasks()
+            raise  # 必须重新抛出，让 asyncio 正确完成取消流程
+
         except Exception as e:
             logger.error(f"任务执行失败: {task.name} - {e}")
 
@@ -543,6 +561,9 @@ class SimpleTaskScheduler:
                 # 清理已完成的任务
                 self._cleanup_completed_tasks()
 
+                # 恢复卡在 RUNNING 状态超时的任务（防止任务永久死锁）
+                self._recover_stuck_tasks()
+
                 # 批量写盘（每10s最多一次，减少高频 interval 任务的磁盘 I/O）
                 self._flush_tasks_if_dirty()
 
@@ -567,6 +588,40 @@ class SimpleTaskScheduler:
             for task_id in tasks_to_remove:
                 del self.tasks[task_id]
                 logger.debug(f"清理已完成的任务: {task_id}")
+
+    def _recover_stuck_tasks(self, max_running_seconds: int = 600):
+        """检测并恢复卡在 RUNNING 状态超时的任务（第二道防线）。
+
+        正常情况下 execute_task 的 CancelledError 处理会重置状态；
+        但若发生更底层的异常（如 asyncio 内部错误、进程信号）导致
+        finally 未运行，状态会永久卡在 RUNNING。
+        此方法每个调度周期调用一次，超时后强制恢复。
+        """
+        now = datetime.now()
+        recovered = []
+        with self._tasks_lock:
+            for task in self.tasks.values():
+                if task.status != SimpleTaskStatus.RUNNING:
+                    continue
+                if not task.started_at:
+                    continue
+                elapsed = (now - task.started_at).total_seconds()
+                if elapsed < max_running_seconds:
+                    continue
+                logger.warning(
+                    f"任务 {task.name!r} 已运行 {elapsed:.0f}s（超过 {max_running_seconds}s），强制恢复"
+                )
+                task.last_error = f"执行超时（{elapsed:.0f}s），已自动恢复"
+                if task.schedule_type in ("interval", "cron"):
+                    task.status = SimpleTaskStatus.PENDING
+                    task.next_run = task.calculate_next_run()
+                else:
+                    task.status = SimpleTaskStatus.FAILED
+                    task.completed_at = now
+                recovered.append(task.name)
+        if recovered:
+            self._tasks_dirty = True
+            logger.info(f"已恢复 {len(recovered)} 个卡死任务: {recovered}")
 
     def start(self):
         """启动调度器"""
