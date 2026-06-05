@@ -468,8 +468,9 @@ async def get_models(http_req: Request):
 
     local_models = []
     try:
-        import requests as _req
-        r = _req.get(f"{ollama_url}/api/tags", timeout=5)
+        import httpx
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(f"{ollama_url}/api/tags")
         if r.status_code == 200:
             local_models = [m["name"] for m in r.json().get("models", [])]
     except Exception:
@@ -1112,9 +1113,15 @@ async def list_actions():
 async def get_system_resources():
     import psutil
 
+    def _collect_cpu():
+        # psutil.cpu_percent(interval>0) 会阻塞 interval 秒，必须在 executor 中运行
+        overall = psutil.cpu_percent(interval=0.2, percpu=False)
+        per_core = psutil.cpu_percent(interval=0.1, percpu=True)
+        return overall, per_core
+
+    loop = asyncio.get_running_loop()
+    cpu_percent, cpu_per_core = await loop.run_in_executor(None, _collect_cpu)
     cpu_count = psutil.cpu_count(logical=True)
-    cpu_percent = psutil.cpu_percent(interval=0.2, percpu=False)
-    cpu_per_core = psutil.cpu_percent(interval=0.1, percpu=True)
     mem = psutil.virtual_memory()
 
     result = {
