@@ -65,6 +65,11 @@ class SimpleTaskScheduler:
         self._tool_manager = tool_manager
         # Agent 引用，供 llm_generate action 调用 LLM（由 agent.py 在初始化后注入）
         self._agent = None
+        # H-7: 可注入依赖，解除对 api.fastapi_app 的循环 import
+        # 由 fastapi_app.py 在 agent 创建后注入；CLI/测试环境保持 None
+        self._provider_getter = None   # callable(user_id) -> provider | None
+        self._persona_getter = None    # callable(user_id) -> str | None
+        self._inference_slot = None    # async context manager
 
         # 动作注册表
         self.actions: Dict[str, Callable] = {}
@@ -184,17 +189,19 @@ class SimpleTaskScheduler:
                 # 还原用户的 provider（模型）和 persona（角色内容）
                 provider_override = None
                 persona_override = None
-                try:
-                    from api.fastapi_app import _get_user_provider, _get_user_persona_content
-                    _uid = user_id or "java-service"
-                    provider_override = _get_user_provider(_uid)
-                    persona_override = _get_user_persona_content(_uid)
-                    if provider_override:
-                        logger.debug(f"[llm_generate] 还原用户 {_uid} 的 provider: {provider_override.current_model}")
-                    if persona_override:
-                        logger.debug(f"[llm_generate] 还原用户 {_uid} 的 persona (前30字): {persona_override[:30]}")
-                except Exception as _prov_err:
-                    logger.warning(f"[llm_generate] 还原用户 provider/persona 失败（使用默认）: {_prov_err}")
+                if self._provider_getter or self._persona_getter:
+                    try:
+                        _uid = user_id or "java-service"
+                        if self._provider_getter:
+                            provider_override = self._provider_getter(_uid)
+                        if self._persona_getter:
+                            persona_override = self._persona_getter(_uid)
+                        if provider_override:
+                            logger.debug(f"[llm_generate] 还原用户 {_uid} 的 provider: {provider_override.current_model}")
+                        if persona_override:
+                            logger.debug(f"[llm_generate] 还原用户 {_uid} 的 persona (前30字): {persona_override[:30]}")
+                    except Exception as _prov_err:
+                        logger.warning(f"[llm_generate] 还原用户 provider/persona 失败（使用默认）: {_prov_err}")
 
                 # 限制并发 LLM 调用：
                 #   _llm_sem(1) 防止多个 llm_generate 任务互相碰撞；
@@ -208,11 +215,8 @@ class SimpleTaskScheduler:
                     SimpleTaskScheduler._llm_sem = asyncio.Semaphore(1)
                     SimpleTaskScheduler._llm_loop = _cur_loop
 
-                try:
-                    from api.fastapi_app import _inference_slot as _slot
-                    _use_slot = True
-                except ImportError:
-                    _use_slot = False
+                _slot = self._inference_slot
+                _use_slot = _slot is not None
 
                 _chat_kwargs = dict(
                     use_tools=False,

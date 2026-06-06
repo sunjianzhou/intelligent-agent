@@ -436,6 +436,12 @@ if OLLAMA_AVAILABLE and provider:
         from core.agent import IntelligentAgent
 
         agent = IntelligentAgent(provider=provider)
+        # H-7: 注入依赖，解除 scheduler 对 fastapi_app 的循环 import
+        if agent.task_manager:
+            sch = agent.task_manager.scheduler
+            sch._provider_getter = _get_user_provider
+            sch._persona_getter = _get_user_persona_content
+            sch._inference_slot = _inference_slot
         logger.info("IntelligentAgent 初始化成功")
     except Exception as e:
         logger.error(f"IntelligentAgent 初始化失败，降级为 Provider 直连: {e}")
@@ -945,7 +951,7 @@ async def search_memory(q: str, limit: int = 10):
 
 
 @app.get("/api/memory/summaries")
-async def get_memory_summaries(limit: int = 30, request: Request = None):
+async def get_memory_summaries(limit: int = 30, request: Request):
     """返回当前用户的阶段性对话摘要列表（按时间倒序）。"""
     if not agent:
         return {"summaries": [], "count": 0}
@@ -1010,7 +1016,7 @@ async def get_memory_summaries(limit: int = 30, request: Request = None):
 
 
 @app.get("/api/memory/export")
-async def export_memory(format: str = "json", request: Request = None):
+async def export_memory(format: str = "json", request: Request):
     """导出当前用户的全部长期记忆。format=json|markdown"""
     if not agent:
         return Response(content="[]", media_type="application/json")
