@@ -434,6 +434,11 @@ if CLOUD_MODE:
     )
     OLLAMA_AVAILABLE = True
     logger.info(f"使用云端模型: {settings.cloud_model} ({settings.cloud_provider}, {_effective_cloud_url})")
+    # 保留本地 Ollama 作为降级备选（云端离线时 decompose 等端点可用）
+    try:
+        _fallback_ollama: OllamaProvider = OllamaProvider(base_url=settings.ollama_base_url)
+    except Exception:
+        _fallback_ollama = None
 else:
     try:
         provider = OllamaProvider()
@@ -1531,10 +1536,28 @@ async def decompose_project_tasks(request: TaskDecomposeRequest):
     try:
         import uuid as _uuid
         from datetime import datetime as _dt
-        raw = await agent._call_model([
+        _decompose_msgs = [
             {"role": "system", "content": "你是任务分解助手，只输出JSON。"},
             {"role": "user",   "content": prompt},
-        ], fallback_timeout=90)
+        ]
+        raw = await agent._call_model(_decompose_msgs, fallback_timeout=90)
+        # 云端失败时降级到本地 Ollama
+        if agent._is_error_response(raw):
+            _fb = globals().get("_fallback_ollama")
+            if _fb is not None:
+                logger.warning("decompose: 云端失败，降级到本地 Ollama")
+                loop = asyncio.get_running_loop()
+                _cfg = LLMConfig(temperature=0.3, max_tokens=2048)
+                _chat_msgs = [ChatMessage(role=m["role"], content=m["content"]) for m in _decompose_msgs]
+                try:
+                    _resp = await asyncio.wait_for(
+                        loop.run_in_executor(None, lambda: _fb.chat(_chat_msgs, _cfg)),
+                        timeout=90,
+                    )
+                    if _resp.success:
+                        raw = _resp.content
+                except Exception as _fb_err:
+                    logger.warning(f"decompose Ollama 降级失败: {_fb_err}")
         clean = raw.strip().replace("```json", "").replace("```", "").strip()
         parsed = _json.loads(clean)
         task_tree = parsed.get("task_tree", [])
