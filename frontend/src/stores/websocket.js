@@ -66,10 +66,10 @@ export const useWebSocketStore = defineStore('websocket', () => {
   })
 
   const modelStatus = computed(() => {
-    // 云端模式下显示实际云端模型名，避免显示 Ollama 模型名误导用户
-    const isCloud = cloudMode.value || systemInfo.value?.cloud_mode
-    const cModel  = cloudModel.value || systemInfo.value?.cloud_model
-    if (isCloud && cModel) return `${cModel} ☁`
+    // cloudMode comes from REST /api/models (per-user, authoritative).
+    // systemInfo.cloud_mode is global config — intentionally excluded here
+    // to prevent the global cloud setting from overriding a per-user local mode.
+    if (cloudMode.value && cloudModel.value) return `${cloudModel.value} ☁`
     return currentModel.value || systemInfo.value?.agent_model || '未知'
   })
 

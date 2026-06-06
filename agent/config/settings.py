@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     tool_result_max_chars: int = 3000
 
     # 请求超时（秒）；CPU 推理大模型（dolphin 16GB）需 200-300s，设 300 避免多次重试
-    chat_timeout: int = 3000
+    chat_timeout: int = 300
     # 上下文 token 预算上限（与 ollama_num_ctx 配合）
     # 留 1000+ token 余量给模型生成输出；可通过 MAX_CONTEXT_TOKENS 环境变量覆盖
     max_context_tokens: int = 7000
@@ -120,6 +120,15 @@ class Settings(BaseSettings):
     cloud_api_key: str = ""
     cloud_base_url: str = ""
     cloud_model: str = ""
+
+    # 数据库工具配置（留空则不启用 DatabaseTool）
+    db_type: str = ""        # mysql（目前仅支持 MySQL/OceanBase）
+    db_host: str = ""
+    db_port: int = 3306
+    db_user: str = ""
+    db_password: str = ""
+    db_database: str = ""
+    db_charset: str = "utf8mb4"
 
     # 图片生成配置
     # image_gen_provider: siliconflow（默认，云端）| sd_webui（本地 SD WebUI）
