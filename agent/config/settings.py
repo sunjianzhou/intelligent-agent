@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     tool_result_max_chars: int = 3000
 
     # 请求超时（秒）；CPU 推理大模型（dolphin 16GB）需 200-300s，设 300 避免多次重试
-    chat_timeout: int = 300
+    chat_timeout: int = 3000
     # 上下文 token 预算上限（与 ollama_num_ctx 配合）
     # 留 1000+ token 余量给模型生成输出；可通过 MAX_CONTEXT_TOKENS 环境变量覆盖
     max_context_tokens: int = 7000

@@ -951,7 +951,7 @@ async def search_memory(q: str, limit: int = 10):
 
 
 @app.get("/api/memory/summaries")
-async def get_memory_summaries(limit: int = 30, request: Request):
+async def get_memory_summaries(request: Request, limit: int = 30):
     """返回当前用户的阶段性对话摘要列表（按时间倒序）。"""
     if not agent:
         return {"summaries": [], "count": 0}
@@ -1016,7 +1016,7 @@ async def get_memory_summaries(limit: int = 30, request: Request):
 
 
 @app.get("/api/memory/export")
-async def export_memory(format: str = "json", request: Request):
+async def export_memory(request: Request, format: str = "json"):
     """导出当前用户的全部长期记忆。format=json|markdown"""
     if not agent:
         return Response(content="[]", media_type="application/json")
