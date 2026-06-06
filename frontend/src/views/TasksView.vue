@@ -35,7 +35,7 @@
         <button class="refresh-btn" :class="{ spinning: loading }" @click="load">
           <i class="fas fa-sync-alt" />
         </button>
-        <button class="create-btn" @click="showCreate = true">
+        <button class="create-btn" @click="showCreate = true; loadActions()">
           <i class="fas fa-plus" /> 新建任务
         </button>
       </div>

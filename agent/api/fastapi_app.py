@@ -1188,7 +1188,7 @@ async def task_stats():
 @app.get("/api/tasks/actions")
 async def list_actions():
     if not agent or not agent.task_manager:
-        return {"actions": []}
+        return {"actions": ["log", "llm_generate"]}
     return {"actions": list(agent.task_manager.scheduler.actions.keys())}
 
 
