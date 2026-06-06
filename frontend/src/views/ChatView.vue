@@ -750,6 +750,11 @@ watch(isStreaming, (val) => {
   scrollToBottom()
 })
 
+// chat_done / error 到达时（无论是否有 token）确保 thinking 被清除
+watch(() => store.chatEndSignal, () => {
+  isThinking.value = false
+})
+
 // 流式过程中持续滚到底（rAF 节流，不会每个 token 重复 nextTick）
 watch(
   () => {

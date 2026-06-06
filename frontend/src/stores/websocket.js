@@ -26,6 +26,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const isStreaming      = ref(false)
   const streamingIndex   = ref(-1)
   const activeToolSteps  = ref([])   // 工具执行中的实时步骤列表
+  // Increments on every chat_done / error so ChatView can watch and reset local isThinking
+  const chatEndSignal    = ref(0)
   const currentModel     = ref('')
   const availableModels  = ref([])
   const cloudMode        = ref(false)
@@ -350,6 +352,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
     streamingIndex.value = -1
     isStreaming.value    = false
+    chatEndSignal.value++  // notify watchers (e.g. ChatView.isThinking reset)
     // 流式完成后持久化（此时 isStreaming 已为 false）
     _saveChatHistory()
   }
@@ -369,8 +372,12 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
   }
 
-  const sendChatMessage = (message, useTools = true, useMemory = true) =>
-    send({ type: 'chat_message', message, use_tools: useTools, use_memory: useMemory })
+  const sendChatMessage = (message, useTools = true, useMemory = true, projectId = null, pendingTasks = null) => {
+    const payload = { type: 'chat_message', message, use_tools: useTools, use_memory: useMemory }
+    if (projectId) payload.project_id = projectId
+    if (pendingTasks && pendingTasks.length) payload.pending_tasks = pendingTasks
+    return send(payload)
+  }
 
   /** 取消当前正在生成的响应：断开并重连 WebSocket，Java 侧 SSE 流随之终止 */
   const cancelStreaming = () => {
@@ -515,7 +522,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     // 状态
     isConnected, messages, systemInfo, lastResponseTime,
     error, isMockMode, currentModel, availableModels,
-    isStreaming, streamingIndex, activeToolSteps,
+    isStreaming, streamingIndex, activeToolSteps, chatEndSignal,
     currentPersona, availablePersonas,
     // 计算属性
     connectionStatus, modelStatus,
