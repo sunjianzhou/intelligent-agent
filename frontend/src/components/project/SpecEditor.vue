@@ -23,15 +23,14 @@
         placeholder="在这里描述项目目标、功能需求、技术约束等规格内容…&#10;&#10;AI 会周期性地参考此文档，确保回答符合项目要求。"
         @input="dirty = true"
       />
-      <div class="spec-hint">
-        <div class="hint-title"><i class="fas fa-lightbulb" /> 使用提示</div>
-        <ul class="hint-list">
-          <li>描述项目背景、目标和核心功能，越详细 AI 理解越准确</li>
-          <li>列出技术栈、约束条件或不能做的事</li>
-          <li>写好后点 <strong>保存</strong>，AI 聊天和任务分解将自动参考此文档</li>
-          <li>点右侧面板的 <strong>AI 分解</strong> 按钮，AI 将基于此规格自动拆解任务树</li>
-        </ul>
-      </div>
+    </div>
+    <div v-if="!preview" class="spec-hint">
+      <i class="fas fa-lightbulb hint-icon" />
+      <span class="hint-items">
+        描述项目目标与技术栈 ·
+        写好后点<strong>保存</strong> ·
+        点右侧<strong>AI 分解</strong>按钮自动拆解任务树
+      </span>
     </div>
 
     <div v-else class="preview-wrap">
@@ -195,29 +194,18 @@ async function saveSpec() {
 .spec-textarea::placeholder { color: #bbb; }
 
 .spec-hint {
-  width: 180px;
-  flex-shrink: 0;
-  border-left: 1px solid #e8eaed;
-  padding: 12px;
-  background: #fafbff;
-  font-size: 0.75rem;
-  color: #666;
-  overflow-y: auto;
-}
-.hint-title {
-  font-weight: 600;
-  color: #667eea;
-  margin-bottom: 8px;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #f0f4ff;
+  border-top: 1px solid #dce4ff;
+  font-size: 0.72rem;
+  color: #555;
+  flex-shrink: 0;
 }
-.hint-list {
-  padding-left: 14px;
-  margin: 0;
-  line-height: 1.7;
-}
-.hint-list li { margin-bottom: 6px; }
+.hint-icon { color: #667eea; }
+.hint-items strong { color: #667eea; }
 
 .preview-wrap {
   flex: 1;
