@@ -1092,8 +1092,10 @@ class IntelligentAgent:
         return [merged] + non_system
 
     async def _call_model(self, messages: List[Dict[str, str]],
-                          fallback_timeout: int = 120) -> str:
+                          fallback_timeout: Optional[int] = None) -> str:
         """调用模型（非工具模式），带超时保护 + 指数退避重试（最多3次）。"""
+        if fallback_timeout is None:
+            fallback_timeout = getattr(settings, 'chat_timeout', 300)
         config = LLMConfig(
             temperature=settings.ollama_temperature,
             max_tokens=settings.ollama_max_tokens,

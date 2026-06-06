@@ -525,8 +525,16 @@ class SimpleTaskScheduler:
                 # 检查需要运行的任务（持锁快照，避免与 execute_task 写操作竞争）
                 tasks_to_run = []
                 with self._tasks_lock:
+                    # llm_generate 任务串行：已有 LLM 任务 RUNNING 时，跳过其他 LLM 任务，
+                    # 避免多个 LLM 任务同时显示 RUNNING（实际上只有一个能执行推理）
+                    llm_is_running = any(
+                        t.action == 'llm_generate' and t.status == SimpleTaskStatus.RUNNING
+                        for t in self.tasks.values()
+                    )
                     for task_id, task in list(self.tasks.items()):
                         if task_id not in _submitted_ids and task.should_run():
+                            if task.action == 'llm_generate' and llm_is_running:
+                                continue  # 等当前 LLM 任务完成后再提交
                             tasks_to_run.append(task_id)
 
                 # 执行任务（带并发度限制）

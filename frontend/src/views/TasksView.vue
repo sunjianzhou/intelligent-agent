@@ -90,8 +90,10 @@
           <div v-if="task.last_error" class="task-result error">
             <i class="fas fa-exclamation-circle" /> {{ task.last_error }}
           </div>
-          <div v-else-if="task.last_result" class="task-result success">
-            <i class="fas fa-check-circle" /> {{ extractResultMessage(task.last_result) }}
+          <div v-else-if="task.last_result"
+               :class="['task-result', isResultError(task.last_result) ? 'error' : 'success']">
+            <i :class="isResultError(task.last_result) ? 'fas fa-exclamation-circle' : 'fas fa-check-circle'" />
+            {{ extractResultMessage(task.last_result) }}
           </div>
         </div>
 
@@ -394,8 +396,10 @@ const quickDelays    = [
   { label: '30分钟', s: 1800 }, { label: '1小时', s: 3600 },
 ]
 const quickIntervals = [
-  { label: '5分钟', s: 300 }, { label: '30分钟', s: 1800 },
-  { label: '1小时', s: 3600 }, { label: '1天', s: 86400 },
+  { label: '30秒', s: 30 }, { label: '1分钟', s: 60 },
+  { label: '5分钟', s: 300 }, { label: '10分钟', s: 600 },
+  { label: '30分钟', s: 1800 }, { label: '1小时', s: 3600 },
+  { label: '6小时', s: 21600 }, { label: '1天', s: 86400 },
 ]
 
 const emptyForm = () => ({
@@ -513,27 +517,35 @@ const actionLabel = (action) => ({
 }[action] || action)
 
 // last_result 从 Python str(dict) 格式中提取 message 字段
+const _parseResult = (result) => {
+  if (!result) return null
+  if (typeof result === 'object') return result
+  try { return JSON.parse(result) } catch {}
+  return null
+}
+
+const isResultError = (result) => {
+  const obj = _parseResult(result)
+  if (obj && obj.success === false) return true
+  if (typeof result === 'string' && result.includes('"success": false')) return true
+  return false
+}
+
 const extractResultMessage = (result) => {
   if (!result) return ''
-  if (typeof result === 'object') {
-    // llm_generate 返回 {success, length, timestamp}
-    if (result.success === true && result.length != null && !result.message) {
-      return `AI 已生成（${result.length} 字符）`
-    }
-    if (result.success === false && result.error) return `失败: ${result.error}`
-    return result.message || JSON.stringify(result)
-  }
-  try {
-    const obj = JSON.parse(result)
-    if (obj?.success === true && obj?.length != null && !obj?.message) {
+  const obj = _parseResult(result)
+  if (obj) {
+    if (obj.success === true && obj.length != null && !obj.message) {
       return `AI 已生成（${obj.length} 字符）`
     }
-    if (obj?.message) return truncate(obj.message)
-  } catch {}
+    if (obj.success === false && obj.error) return `失败: ${obj.error}`
+    if (obj.message) return truncate(obj.message)
+    return truncate(JSON.stringify(obj))
+  }
   // Python repr: {'message': '...', ...}
-  const m = result.match(/'message'\s*:\s*'((?:[^'\\]|\\.)*)'/)
+  const m = typeof result === 'string' && result.match(/'message'\s*:\s*'((?:[^'\\]|\\.)*)'/)
   if (m) return truncate(m[1])
-  return truncate(result)
+  return truncate(String(result))
 }
 
 const formatCountdown = (iso) => {
@@ -633,10 +645,10 @@ const cancel = async (id) => {
   try {
     await ElMessageBox.confirm(
       isRunning
-        ? '任务正在执行中，取消后当前本次执行仍会继续到结束，但之后不会再被调度。'
-        : '确定取消该任务？',
+        ? '任务正在执行中，停止后当前本次执行仍会继续到结束，但之后不会再被调度。'
+        : '确定取消该任务？任务将标记为已取消，不再自动调度。',
       isRunning ? '停止任务' : '取消任务',
-      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+      { confirmButtonText: isRunning ? '确认停止' : '确认取消', cancelButtonText: '保留', type: 'warning' }
     )
   } catch { return }
   const result = await cancelTask(id)
@@ -651,7 +663,7 @@ const cancel = async (id) => {
 const remove = async (id) => {
   try {
     await ElMessageBox.confirm('确定删除该任务？此操作不可恢复。', '删除任务', {
-      confirmButtonText: '删除', cancelButtonText: '取消', type: 'error'
+      confirmButtonText: '删除', cancelButtonText: '保留', type: 'error'
     })
   } catch { return }
   const result = await deleteTask(id)
