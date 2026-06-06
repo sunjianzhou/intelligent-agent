@@ -1506,133 +1506,148 @@ class IntelligentAgent:
             messages: List[Dict[str, str]],
             config=None,
             intent_message: str = "",
-            _trace_id: str = "",   # 追踪 ID（由 chat/chat_stream 传入）
+            _trace_id: str = "",
     ) -> Dict[str, Any]:
+        """调度入口：完成公共准备后派发到 text-tool 或 native FC 分支。"""
         _t0 = time.time()
         eff_provider, eff_model = self._get_eff_provider()
 
-        if intent_message:
-            filtered_tools = self._filter_tools_by_intent(intent_message)
-        else:
-            filtered_tools = self.tool_manager.get_all_tools()
-
+        filtered_tools = (
+            self._filter_tools_by_intent(intent_message)
+            if intent_message
+            else self.tool_manager.get_all_tools()
+        )
         if intent_message:
             messages, filtered_tools, _ = await self.skill_applicator.apply(
                 intent_message, messages, filtered_tools, self._call_model
             )
 
-        tool_names = list(filtered_tools.keys()) if filtered_tools else []
         model_lower = (eff_model or "").lower()
         use_text_tools = any(p in model_lower for p in self._TEXT_TOOL_CALLING_PATTERNS)
 
-        logger.debug(
-            json.dumps({
-                "event": "llm_call_start",
-                "trace_id": _trace_id,
-                "model": eff_model,
-                "filtered_tools": tool_names,
-                "tool_count": len(tool_names),
-                "message_count": len(messages),
-                "intent": intent_message[:60] if intent_message else "",
-                "text_tool_mode": use_text_tools,
-            }, ensure_ascii=False)
-        )
+        logger.debug(json.dumps({
+            "event": "llm_call_start",
+            "trace_id": _trace_id,
+            "model": eff_model,
+            "filtered_tools": list(filtered_tools.keys()) if filtered_tools else [],
+            "tool_count": len(filtered_tools) if filtered_tools else 0,
+            "message_count": len(messages),
+            "intent": intent_message[:60] if intent_message else "",
+            "text_tool_mode": use_text_tools,
+        }, ensure_ascii=False))
 
         loop = asyncio.get_running_loop()
         timeout = getattr(settings, 'chat_timeout', 120)
+        ctx = (messages, filtered_tools, config, eff_provider, eff_model, loop, timeout, _t0, _trace_id)
 
-        # ── 文本工具调用模式（dolphin 等不支持 Ollama 原生 Function Calling 的模型）──
-        # 原因：Ollama 在接收 tools 参数时会用自己的模板覆盖用户的 system prompt，
-        # 导致 dolphin 的无审查人格提示词被替换，模型退化为受限行为。
-        # 解法：不传 tools，在 system prompt 中注入工具列表，依赖文本解析提取调用。
         if use_text_tools:
-            tool_prompt = self._build_tools_prompt_for(filtered_tools)
-            # Step 1: 先合并所有 system 消息为一条（防止 Ollama 多 system 消息不确定行为）
-            merged_msgs = self._merge_system_messages(messages)
-            # Step 2: 将工具提示追加到合并后的单一 system 消息
-            if tool_prompt and merged_msgs and merged_msgs[0]["role"] == "system":
-                merged_msgs[0] = {
-                    **merged_msgs[0],
-                    "content": merged_msgs[0]["content"] + "\n\n" + tool_prompt,
-                }
-            elif tool_prompt:
-                merged_msgs.insert(0, {"role": "system", "content": tool_prompt})
-            # Step 3: dolphin 防退化锚定（在 system 末尾加无审查声明，防长 context 稀释人格）
-            if merged_msgs and merged_msgs[0]["role"] == "system":
-                merged_msgs[0] = {**merged_msgs[0], "content": merged_msgs[0]["content"] + self._DOLPHIN_ANCHOR}
+            return await self._call_model_text_tools(*ctx)
+        return await self._call_model_native_tools(*ctx)
 
-            chat_messages = [
-                ChatMessage(role=m["role"], content=m.get("content", ""))
-                for m in merged_msgs
-            ]
-            last_err = ""
-            resp = None
-            for attempt in range(3):
-                try:
-                    resp = await asyncio.wait_for(
-                        loop.run_in_executor(None, lambda: eff_provider.chat(chat_messages, config)),
-                        timeout=timeout
-                    )
-                    break
-                except Exception as exc:
-                    if self._is_retryable_error(exc):
-                        last_err = str(exc) or type(exc).__name__
-                        logger.warning(f"text-tool chat 第 {attempt+1}/3 次失败: {last_err}")
-                        if attempt < 2:
-                            await asyncio.sleep(2 ** attempt)
-                    else:
-                        logger.error(f"text-tool chat 不可重试异常: {exc}")
-                        return {"success": False, "content": str(exc), "tool_calls": [], "error": str(exc)}
+    async def _call_model_text_tools(
+            self,
+            messages: List[Dict[str, str]],
+            filtered_tools: dict,
+            config,
+            eff_provider,
+            eff_model: str,
+            loop,
+            timeout: int,
+            _t0: float,
+            _trace_id: str,
+    ) -> Dict[str, Any]:
+        """文本工具调用模式（dolphin 等不支持 Ollama 原生 Function Calling 的模型）。
+        Ollama 接收 tools 参数时会覆盖 system prompt，导致自定义人格失效；
+        解法：不传 tools，在 system prompt 中注入工具列表，依赖文本解析提取调用。
+        """
+        tool_prompt = self._build_tools_prompt_for(filtered_tools)
+        # 合并所有 system 消息为一条，防止 Ollama 多 system 消息不确定行为
+        merged_msgs = self._merge_system_messages(messages)
+        if tool_prompt and merged_msgs and merged_msgs[0]["role"] == "system":
+            merged_msgs[0] = {**merged_msgs[0],
+                              "content": merged_msgs[0]["content"] + "\n\n" + tool_prompt}
+        elif tool_prompt:
+            merged_msgs.insert(0, {"role": "system", "content": tool_prompt})
+        # dolphin 防退化锚定：在 system 末尾加无审查声明，防长 context 稀释人格
+        if merged_msgs and merged_msgs[0]["role"] == "system":
+            merged_msgs[0] = {**merged_msgs[0],
+                              "content": merged_msgs[0]["content"] + self._DOLPHIN_ANCHOR}
 
-            if resp is None:
-                return {"success": False, "content": "请求超时", "tool_calls": [], "error": "timeout"}
-
-            content = resp.content if resp.success else ""
-            text_calls = await self._extract_tool_calls_async(content)
-            if text_calls:
-                logger.info(f"[text-tool] 从文本提取 {len(text_calls)} 个工具调用")
-                converted = [
-                    {"function": {"name": tc["tool"], "arguments": tc.get("args", {})}}
-                    for tc in text_calls
-                ]
-                result = {"success": True, "content": "", "tool_calls": converted, "_text_tools": True}
-            else:
-                result = {"success": True, "content": content, "tool_calls": []}
-
-            logger.debug(json.dumps({
-                "event": "llm_call_done", "trace_id": _trace_id, "model": eff_model,
-                "duration_ms": round((time.time() - _t0) * 1000),
-                "tool_calls_count": len(result.get("tool_calls", [])),
-                "text_tool_mode": True,
-            }, ensure_ascii=False))
-            return result
-
-        # ── 原生 Function Calling 模式 ────────────────────────────────
-        tool_schemas = eff_provider.build_tool_schemas_from(filtered_tools)
-        chat_messages = [
-            ChatMessage(role=m["role"], content=m.get("content", ""))
-            for m in messages
-        ]
-
-        # 调用模型（放到 executor，加超时 + 指数退避重试）
-        result = None
-        last_err: str = ""
+        chat_messages = [ChatMessage(role=m["role"], content=m.get("content", ""))
+                         for m in merged_msgs]
+        resp, last_err = None, ""
         for attempt in range(3):
             try:
-                result = await asyncio.wait_for(
-                    loop.run_in_executor(
-                        None,
-                        lambda: eff_provider.chat_with_tools(chat_messages, tool_schemas, config)
-                    ),
-                    timeout=timeout
+                resp = await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: eff_provider.chat(chat_messages, config)),
+                    timeout=timeout,
                 )
                 break
             except Exception as exc:
                 if self._is_retryable_error(exc):
                     last_err = str(exc) or type(exc).__name__
-                    logger.warning(
-                        f"chat_with_tools 第 {attempt + 1}/3 次失败（可重试）: {last_err}"
-                    )
+                    logger.warning(f"text-tool chat 第 {attempt+1}/3 次失败: {last_err}")
+                    if attempt < 2:
+                        await asyncio.sleep(2 ** attempt)
+                else:
+                    logger.error(f"text-tool chat 不可重试异常: {exc}")
+                    return {"success": False, "content": str(exc), "tool_calls": [], "error": str(exc)}
+
+        if resp is None:
+            return {"success": False, "content": "请求超时", "tool_calls": [], "error": "timeout"}
+
+        content = resp.content if resp.success else ""
+        text_calls = await self._extract_tool_calls_async(content)
+        if text_calls:
+            logger.info(f"[text-tool] 从文本提取 {len(text_calls)} 个工具调用")
+            result = {"success": True, "content": "",
+                      "tool_calls": [{"function": {"name": tc["tool"],
+                                                   "arguments": tc.get("args", {})}}
+                                     for tc in text_calls],
+                      "_text_tools": True}
+        else:
+            result = {"success": True, "content": content, "tool_calls": []}
+
+        logger.debug(json.dumps({
+            "event": "llm_call_done", "trace_id": _trace_id, "model": eff_model,
+            "duration_ms": round((time.time() - _t0) * 1000),
+            "tool_calls_count": len(result.get("tool_calls", [])),
+            "text_tool_mode": True,
+        }, ensure_ascii=False))
+        return result
+
+    async def _call_model_native_tools(
+            self,
+            messages: List[Dict[str, str]],
+            filtered_tools: dict,
+            config,
+            eff_provider,
+            eff_model: str,
+            loop,
+            timeout: int,
+            _t0: float,
+            _trace_id: str,
+    ) -> Dict[str, Any]:
+        """原生 Function Calling 模式；工具名解析失败时降级到文本提取。"""
+        tool_schemas = eff_provider.build_tool_schemas_from(filtered_tools)
+        chat_messages = [ChatMessage(role=m["role"], content=m.get("content", ""))
+                         for m in messages]
+
+        result, last_err = None, ""
+        for attempt in range(3):
+            try:
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        lambda: eff_provider.chat_with_tools(chat_messages, tool_schemas, config),
+                    ),
+                    timeout=timeout,
+                )
+                break
+            except Exception as exc:
+                if self._is_retryable_error(exc):
+                    last_err = str(exc) or type(exc).__name__
+                    logger.warning(f"chat_with_tools 第 {attempt+1}/3 次失败（可重试）: {last_err}")
                     if attempt < 2:
                         await asyncio.sleep(2 ** attempt)
                 else:
@@ -1643,26 +1658,17 @@ class IntelligentAgent:
             logger.error(f"chat_with_tools 重试 3 次后仍失败: {last_err}")
             return {"success": False, "content": "请求超时", "tool_calls": [], "error": "timeout"}
 
-        # ── 降级处理：工具名为空或 tool_calls 解析失败时，从文本内容提取 ──
         content = result.get("content", "")
-        tool_calls = result.get("tool_calls", [])
-
-        valid_calls = [tc for tc in tool_calls if tc.get("function", {}).get("name", "").strip()]
+        valid_calls = [tc for tc in result.get("tool_calls", [])
+                       if tc.get("function", {}).get("name", "").strip()]
 
         if not valid_calls and content:
-            # 放到 executor 中解析，避免阻塞事件循环
             text_calls = await self._extract_tool_calls_async(content)
             if text_calls:
                 logger.info(f"Function Calling 解析失败，降级从文本提取 {len(text_calls)} 个工具调用")
-                converted = []
-                for tc in text_calls:
-                    converted.append({
-                        "function": {
-                            "name": tc["tool"],
-                            "arguments": tc.get("args", {})
-                        }
-                    })
-                result["tool_calls"] = converted
+                result["tool_calls"] = [{"function": {"name": tc["tool"],
+                                                      "arguments": tc.get("args", {})}}
+                                        for tc in text_calls]
                 result["content"] = ""
                 result["_degraded"] = True
             else:
@@ -1670,19 +1676,15 @@ class IntelligentAgent:
         else:
             result["tool_calls"] = valid_calls
 
-        # 结构化追踪日志（供日志聚合分析）
-        _tc = result.get("tool_calls", [])
-        logger.debug(
-            json.dumps({
-                "event": "llm_call_done",
-                "trace_id": _trace_id,
-                "model": eff_model,
-                "duration_ms": round((time.time() - _t0) * 1000),
-                "tool_calls_count": len(_tc),
-                "degraded": result.get("_degraded", False),
-                "has_content": bool(result.get("content")),
-            }, ensure_ascii=False)
-        )
+        logger.debug(json.dumps({
+            "event": "llm_call_done",
+            "trace_id": _trace_id,
+            "model": eff_model,
+            "duration_ms": round((time.time() - _t0) * 1000),
+            "tool_calls_count": len(result.get("tool_calls", [])),
+            "degraded": result.get("_degraded", False),
+            "has_content": bool(result.get("content")),
+        }, ensure_ascii=False))
         return result
 
     # ═══════════════════════════════════════════════════════════════
