@@ -33,6 +33,12 @@ _request_persona_ctx: contextvars.ContextVar = contextvars.ContextVar(
     '_request_persona_ctx', default=None
 )
 
+# Per-request message embedding cache: avoids re-encoding the same message in build_context and
+# filter_tools within a single request. ContextVar guarantees concurrent requests don't collide.
+_last_message_vec_ctx: contextvars.ContextVar = contextvars.ContextVar(
+    '_last_message_vec_ctx', default=None
+)
+
 
 _SPEC_REVIEW_EVERY = 5  # inject spec reminder every N turns per project
 
@@ -91,26 +97,12 @@ class IntelligentAgent:
             self.task_manager.scheduler._agent = self
             self._register_task_tools()
 
-            # MCP 工具初始化（异步，放到启动后执行）
+            # C-1: MCP/cleanup/warmup 后台任务在 lifespan 中调度（事件循环运行后），CLI/测试环境跳过
             self._mcp_initialized = False
-            try:
-                asyncio.get_running_loop().create_task(self._init_mcp_tools())
-                asyncio.get_running_loop().create_task(self._start_memory_cleanup())
-            except RuntimeError:
-                pass  # 无运行中的事件循环（CLI/测试），任务在 lifespan 中单独启动
 
             logger.info("任务调度器已启动")
         except Exception as e:
             logger.warning(f"任务调度器初始化失败，跳过: {e}")
-
-        # 预缓存意图分类向量（仅在事件循环运行时调度，CLI/测试环境安全跳过）
-        try:
-            asyncio.get_running_loop().create_task(self._warmup_embeddings())
-        except RuntimeError:
-            pass
-
-        # 请求级缓存：避免同一消息在 build_context 和 filter_tools 中重复编码
-        self._last_message_vec: Optional[Tuple[str, List[float]]] = None
 
         # L1 精确响应缓存（OrderedDict LRU，并发读写需锁保护）
         self._response_cache: OrderedDict = OrderedDict()
@@ -592,13 +584,14 @@ class IntelligentAgent:
         同一请求中 build_context 和 filter_tools 都会用到消息向量，
         缓存后只编码一次。
         """
-        if self._last_message_vec and self._last_message_vec[0] == message:
-            return self._last_message_vec[1]
+        cached = _last_message_vec_ctx.get()
+        if cached and cached[0] == message:
+            return cached[1]
 
         embedding_model = self.memory.long_term.embedding_model
         vec = self._encode_one(embedding_model, message)
         if vec is not None:
-            self._last_message_vec = (message, vec)
+            _last_message_vec_ctx.set((message, vec))
         return vec
 
     def _filter_tools_by_intent(self, message: str) -> dict:
@@ -1923,8 +1916,8 @@ class IntelligentAgent:
                     self._cache_put(message, sem_hit)   # 回填 L1
                     return {"content": sem_hit, "tool_calls": [], "_from_cache": "L2"}
 
-        # 重置请求级缓存
-        self._last_message_vec = None
+        # 重置请求级 embedding 缓存（per-request ContextVar，自动隔离并发请求）
+        _last_message_vec_ctx.set(None)
 
         messages = await self._build_messages_async(message, use_memory, user_id=user_id,
                                                      project_id=project_id,
@@ -2071,8 +2064,8 @@ class IntelligentAgent:
         if persona_override is not None:
             _request_persona_ctx.set(persona_override)
 
-        # 重置请求级缓存
-        self._last_message_vec = None
+        # 重置请求级 embedding 缓存（per-request ContextVar，自动隔离并发请求）
+        _last_message_vec_ctx.set(None)
 
         messages = await self._build_messages_async(message, use_memory, user_id=user_id,
                                                      project_id=project_id,
@@ -2236,7 +2229,7 @@ class IntelligentAgent:
         self.model = self.provider.current_model
 
     def clear_history(self):
-        self._last_message_vec = None
+        _last_message_vec_ctx.set(None)
         self.memory.clear_all()
         logger.info("对话历史和记忆已清空")
 

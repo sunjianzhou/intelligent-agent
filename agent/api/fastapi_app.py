@@ -71,6 +71,7 @@ _USER_PREFS_FILE = Path(__file__).parent.parent / "data" / "user_model_prefs.jso
 # ── Per-user persona preferences ──────────────────────────────────────────
 # Maps user_id → persona_name (string); persona content loaded on demand from .md files
 _USER_PERSONA_PREFS_FILE = Path(__file__).parent.parent / "data" / "user_persona_prefs.json"
+_RUNTIME_CONFIG_FILE = Path(__file__).parent.parent / "data" / "runtime_config.json"
 
 
 def _load_user_persona_prefs() -> dict:
@@ -99,6 +100,28 @@ def _get_user_persona_content(user_id: str) -> str | None:
     if not persona_name or persona_name == "default":
         return None
     return _read_persona_content(persona_name)
+
+
+def _load_runtime_config() -> dict:
+    """从 data/runtime_config.json 加载运行时配置（不读 .env）。"""
+    try:
+        if _RUNTIME_CONFIG_FILE.exists():
+            return _json.loads(_RUNTIME_CONFIG_FILE.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.warning(f"读取运行时配置失败: {e}")
+    return {}
+
+
+def _save_runtime_config(config: dict) -> None:
+    """将运行时配置写入 data/runtime_config.json。"""
+    try:
+        _RUNTIME_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _RUNTIME_CONFIG_FILE.write_text(
+            _json.dumps(config, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        logger.warning(f"保存运行时配置失败: {e}")
 
 
 def _load_user_model_prefs() -> dict:
@@ -237,6 +260,15 @@ async def _inference_slot(queue_timeout: float = 30.0):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _inference_sem, _queue_sem
+
+    # M-11: 先恢复运行时配置，让后续 Semaphore 使用持久化后的值
+    for _k, _v in _load_runtime_config().items():
+        try:
+            if hasattr(settings, _k):
+                setattr(settings, _k, type(getattr(settings, _k))(_v))
+        except Exception as _e:
+            logger.warning(f"恢复运行时配置 {_k}={_v} 失败: {_e}")
+
     _inference_sem = asyncio.Semaphore(
         getattr(settings, 'inference_concurrency', 3)
     )
@@ -253,9 +285,9 @@ async def lifespan(app: FastAPI):
             logger.error("❌ JWT_ENABLED=true 但 JWT_SECRET 为空，所有鉴权请求将被拒绝！请设置 JWT_SECRET 环境变量。")
         elif settings.jwt_secret == _LOCAL_DEV_SECRET:
             if not settings.debug:
-                logger.critical(
-                    "🚨 生产模式下检测到默认 JWT 密钥！任何知道该密钥的人都可以伪造合法 token。"
-                    "请立即通过 JWT_SECRET 环境变量设置强随机密钥（建议 ≥32 字符随机字符串）。"
+                raise RuntimeError(
+                    "生产模式下不允许使用默认 JWT 密钥！"
+                    "请通过 JWT_SECRET 环境变量设置强随机密钥（建议 ≥32 字符随机字符串）。"
                 )
             else:
                 logger.warning("⚠️  使用本地开发 JWT 密钥，生产环境请通过 JWT_SECRET 环境变量注入强随机密钥。")
@@ -289,6 +321,14 @@ async def lifespan(app: FastAPI):
             logger.info("embedding 模型预热完成")
     except Exception as e:
         logger.warning(f"embedding 预热失败（不影响主流程）: {e}")
+
+    # C-1: 后台长期任务须在事件循环运行后调度，不在 __init__ 里调度
+    if agent:
+        _loop = asyncio.get_running_loop()
+        _loop.create_task(agent._init_mcp_tools())
+        _loop.create_task(agent._start_memory_cleanup())
+        _loop.create_task(agent._warmup_embeddings())
+
     yield
     # 关闭时清理（可选）
 
@@ -1648,8 +1688,11 @@ async def patch_runtime_config(body: dict):
                 settings.ollama_num_ctx = v
                 logger.info(f"上下文窗口已调整为 {v} tokens（下次请求生效）")
             updated[key] = v
-            # 持久化到 .env，确保重启后生效
-            _persist_model_to_env(_RUNTIME_ENV_KEYS[key], str(v))
+            # 持久化到 runtime_config.json（使用 settings 字段名）
+            _settings_key = "scheduler_max_concurrent_tasks" if key == "scheduler_max_concurrent" else key
+            _rt = _load_runtime_config()
+            _rt[_settings_key] = v
+            _save_runtime_config(_rt)
         except Exception as e:
             errors[key] = str(e)
             logger.warning(f"运行时配置更新失败 {key}: {e}")
@@ -1693,7 +1736,9 @@ async def update_inference_params(body: dict):
                 setattr(settings, settings_key, type(getattr(settings, settings_key))(v))
             except Exception:
                 pass
-        _persist_model_to_env(_PARAMS_ENV_KEYS[k], str(v))
+        _rt = _load_runtime_config()
+        _rt[f"ollama_{k}"] = v
+        _save_runtime_config(_rt)
     logger.info(f"推理参数已更新")
     return {"success": True}
 
