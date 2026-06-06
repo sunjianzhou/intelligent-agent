@@ -1597,23 +1597,6 @@ async def get_runtime_config():
     return {"config": cfg, "usage": usage}
 
 
-# API key → .env 变量名（与 pydantic-settings 字段一一对应）
-_RUNTIME_ENV_KEYS: dict = {
-    "inference_concurrency":      "INFERENCE_CONCURRENCY",
-    "inference_queue_size":       "INFERENCE_QUEUE_SIZE",
-    "response_cache_max_size":    "RESPONSE_CACHE_MAX_SIZE",
-    "response_cache_ttl_secs":    "RESPONSE_CACHE_TTL_SECS",
-    "semantic_cache_threshold":   "SEMANTIC_CACHE_THRESHOLD",
-    "semantic_cache_max_entries": "SEMANTIC_CACHE_MAX_ENTRIES",
-    "short_term_max_size":        "SHORT_TERM_MAX_SIZE",
-    "short_term_ttl_hours":       "SHORT_TERM_TTL_HOURS",
-    "scheduler_max_concurrent":   "SCHEDULER_MAX_CONCURRENT_TASKS",
-    "chat_timeout":               "CHAT_TIMEOUT",
-    "tool_result_max_chars":      "TOOL_RESULT_MAX_CHARS",
-    "ollama_max_tokens":          "OLLAMA_MAX_TOKENS",
-    "ollama_temperature":         "OLLAMA_TEMPERATURE",
-    "ollama_num_ctx":             "OLLAMA_NUM_CTX",   # 上下文窗口（tokens），影响显存/内存占用
-}
 
 # 各参数合法范围
 _RUNTIME_LIMITS: dict = {
@@ -1720,13 +1703,6 @@ async def update_env_config(body: dict):
         _persist_model_to_env(key, str(value))
         updated.append(key)
     return {"success": True, "updated": updated}
-
-
-_PARAMS_ENV_KEYS = {
-    "temperature": "OLLAMA_TEMPERATURE",
-    "max_tokens":  "OLLAMA_MAX_TOKENS",
-    "top_p":       "OLLAMA_TOP_P",
-}
 
 
 @app.patch("/api/config/params")

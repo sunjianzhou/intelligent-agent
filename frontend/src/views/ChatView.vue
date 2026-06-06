@@ -190,7 +190,7 @@
       </div>
     </div>
 
-    <!-- 悬浮导出 / 清空按钮 -->
+    <!-- 悬浮导出按钮（仅安全的导出操作） -->
     <div class="export-float" v-if="messages.length > 0">
       <button class="export-float-btn" title="导出对话"
               @click.stop="showExportMenu = !showExportMenu">
@@ -203,11 +203,15 @@
         <button @click="exportChat('txt'); showExportMenu = false">
           <i class="fas fa-file-alt" /> TXT
         </button>
-        <div class="export-menu-divider" />
-        <button class="export-menu-danger" @click="handleClearChat(); showExportMenu = false">
-          <i class="fas fa-trash-alt" /> 清空对话
-        </button>
       </div>
+    </div>
+
+    <!-- 悬浮清空按钮（独立放置，避免与导出操作混排造成误操作） -->
+    <div class="clear-float" v-if="messages.length > 0">
+      <button class="clear-float-btn" title="清空对话"
+              @click.stop="handleClearChat">
+        <i class="fas fa-trash-alt" />
+      </button>
     </div>
 
     <!-- Token 超限警告横幅 -->
@@ -1320,10 +1324,31 @@ onUnmounted(() => {
 }
 .export-menu button:hover { background: #f5f5f5; }
 .export-menu button i { color: #667eea; width: 14px; }
-.export-menu-divider { height: 1px; background: #f0f0f0; margin: 4px 0; }
-.export-menu-danger { color: #e53935 !important; }
-.export-menu-danger i { color: #e53935 !important; }
-.export-menu-danger:hover { background: #fff5f5 !important; }
+
+/* 独立清空悬浮按钮 */
+.clear-float {
+  position: absolute;
+  bottom: 46px;
+  right: 20px;
+  z-index: 10;
+}
+.clear-float-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: 1px solid #ffd0cd;
+  background: #fff;
+  color: #e53935;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transition: all 0.2s;
+}
+.clear-float-btn:hover {
+  border-color: #e53935;
+  background: #fff5f5;
+  box-shadow: 0 3px 12px rgba(229,57,53,0.25);
+}
 
 /* 定时通知气泡底部链接 */
 .notif-task-link {
@@ -1345,6 +1370,7 @@ onUnmounted(() => {
   .input-area        { padding: 8px !important; }
   .message-row.user  { justify-content: flex-end; }
   .export-float      { bottom: 70px; right: 10px; }
+  .clear-float       { bottom: 26px; right: 10px; }
   .tool-calls-card,
   .tool-running-card { max-width: 95% !important; }
   .search-bar-input  { font-size: 16px !important; }
