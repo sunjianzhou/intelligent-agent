@@ -57,6 +57,9 @@
               </span>
             </div>
             <div class="task-desc" v-if="task.description">{{ task.description }}</div>
+            <div class="task-desc task-prompt" v-if="task.args?.prompt || task.args?.message">
+              {{ task.args?.prompt || task.args?.message }}
+            </div>
           </div>
 
           <div class="task-meta-row">
@@ -363,7 +366,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { ElMessageBox, ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import {
   getTasksList, createTask, updateTask, deleteTask,
   cancelTask, executeTaskNow, getTaskStats, getTaskActions
@@ -642,15 +645,10 @@ const runNow = async (id) => {
 const cancel = async (id) => {
   const task = tasks.value.find(t => t.id === id)
   const isRunning = task?.status === 'running'
-  try {
-    await ElMessageBox.confirm(
-      isRunning
-        ? '任务正在执行中，停止后当前本次执行仍会继续到结束，但之后不会再被调度。'
-        : '确定取消该任务？任务将标记为已取消，不再自动调度。',
-      isRunning ? '停止任务' : '取消任务',
-      { confirmButtonText: isRunning ? '确认停止' : '确认取消', cancelButtonText: '保留', type: 'warning' }
-    )
-  } catch { return }
+  const msg = isRunning
+    ? '任务正在执行中，停止后当前本次执行仍会继续到结束，但之后不会再被调度。确认停止？'
+    : '确定取消该任务？任务将标记为已取消，不再自动调度。'
+  if (!window.confirm(msg)) return
   const result = await cancelTask(id)
   if (!result || result?.success === false) {
     ElMessage({ message: `取消失败: ${result?.message || '请求失败'}`, type: 'error', duration: 3000 })
@@ -661,11 +659,7 @@ const cancel = async (id) => {
 }
 
 const remove = async (id) => {
-  try {
-    await ElMessageBox.confirm('确定删除该任务？此操作不可恢复。', '删除任务', {
-      confirmButtonText: '删除', cancelButtonText: '保留', type: 'error'
-    })
-  } catch { return }
+  if (!window.confirm('确定删除该任务？此操作不可恢复。')) return
   const result = await deleteTask(id)
   if (!result || result?.success === false) {
     ElMessage({ message: `删除失败: ${result?.message || '请求失败'}`, type: 'error', duration: 3000 })
@@ -918,6 +912,9 @@ onUnmounted(() => {
 .status-badge.cancelled { background: #f5f5f5; color: #888; }
 
 .task-desc { font-size: 0.83rem; color: #888; }
+.task-prompt { color: #666; white-space: pre-wrap; word-break: break-word;
+  max-height: 3.6em; overflow: hidden; display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
 .task-meta-row {
   display: flex; flex-wrap: wrap; gap: 12px;

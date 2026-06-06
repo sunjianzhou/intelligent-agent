@@ -1540,24 +1540,27 @@ async def decompose_project_tasks(request: TaskDecomposeRequest):
             {"role": "system", "content": "你是任务分解助手，只输出JSON。"},
             {"role": "user",   "content": prompt},
         ]
-        raw = await agent._call_model(_decompose_msgs, fallback_timeout=90)
-        # 云端失败时降级到本地 Ollama
-        if agent._is_error_response(raw):
-            _fb = globals().get("_fallback_ollama")
-            if _fb is not None:
-                logger.warning("decompose: 云端失败，降级到本地 Ollama")
-                loop = asyncio.get_running_loop()
-                _cfg = LLMConfig(temperature=0.3, max_tokens=2048)
-                _chat_msgs = [ChatMessage(role=m["role"], content=m["content"]) for m in _decompose_msgs]
-                try:
-                    _resp = await asyncio.wait_for(
-                        loop.run_in_executor(None, lambda: _fb.chat(_chat_msgs, _cfg)),
-                        timeout=90,
-                    )
-                    if _resp.success:
-                        raw = _resp.content
-                except Exception as _fb_err:
-                    logger.warning(f"decompose Ollama 降级失败: {_fb_err}")
+        # 优先使用本地 Ollama（与用户选模型一致），失败时再用 agent provider
+        _fb = globals().get("_fallback_ollama")
+        raw = None
+        if _fb is not None:
+            loop = asyncio.get_running_loop()
+            _cfg = LLMConfig(temperature=0.3, max_tokens=2048)
+            _chat_msgs = [ChatMessage(role=m["role"], content=m["content"]) for m in _decompose_msgs]
+            try:
+                _resp = await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: _fb.chat(_chat_msgs, _cfg)),
+                    timeout=90,
+                )
+                if _resp.success:
+                    raw = _resp.content
+                else:
+                    logger.warning(f"decompose Ollama 失败: {_resp.error}")
+            except Exception as _fb_err:
+                logger.warning(f"decompose Ollama 异常: {_fb_err}")
+        if not raw:
+            logger.info("decompose: 本地 Ollama 不可用，使用 agent provider")
+            raw = await agent._call_model(_decompose_msgs, fallback_timeout=90)
         clean = raw.strip().replace("```json", "").replace("```", "").strip()
         parsed = _json.loads(clean)
         task_tree = parsed.get("task_tree", [])

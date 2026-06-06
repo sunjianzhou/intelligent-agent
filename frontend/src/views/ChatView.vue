@@ -320,7 +320,7 @@ hljs.registerLanguage('rust', langRust)
 hljs.registerLanguage('cpp', langCpp);        hljs.registerLanguage('c', langCpp)
 hljs.registerLanguage('yaml', langYaml);      hljs.registerLanguage('yml', langYaml)
 hljs.registerLanguage('markdown', langMd);    hljs.registerLanguage('md', langMd)
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { useWebSocketStore }    from '@/stores/websocket'
 import { useAuthStore }         from '@/stores/auth'
 import { useLocalSessionStore } from '@/stores/localSession'
@@ -707,12 +707,7 @@ const handleNewConversation = async () => {
 }
 
 const handleClearChat = async () => {
-  try {
-    await ElMessageBox.confirm('清空后将同时清除 AI 的对话记忆，无法恢复。', '确认清空对话', {
-      confirmButtonText: '清空', cancelButtonText: '取消', type: 'warning',
-      confirmButtonClass: 'el-button--danger',
-    })
-  } catch { return }
+  if (!window.confirm('确认清空对话？此操作将同时清除 AI 的对话记忆，无法恢复。')) return
   isThinking.value = false
   stopThinkingTimer()
   await store.clearMessages()
