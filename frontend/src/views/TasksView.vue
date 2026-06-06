@@ -640,8 +640,8 @@ const cancel = async (id) => {
     )
   } catch { return }
   const result = await cancelTask(id)
-  if (result?.success === false) {
-    ElMessage({ message: `取消失败: ${result.message || '未知错误'}`, type: 'error', duration: 3000 })
+  if (!result || result?.success === false) {
+    ElMessage({ message: `取消失败: ${result?.message || '请求失败'}`, type: 'error', duration: 3000 })
   } else {
     ElMessage({ message: isRunning ? '已标记停止，本次执行结束后生效' : '任务已取消', type: 'success', duration: 2000 })
   }
@@ -655,8 +655,8 @@ const remove = async (id) => {
     })
   } catch { return }
   const result = await deleteTask(id)
-  if (result?.success === false) {
-    ElMessage({ message: `删除失败: ${result.message || '未知错误'}`, type: 'error', duration: 3000 })
+  if (!result || result?.success === false) {
+    ElMessage({ message: `删除失败: ${result?.message || '请求失败'}`, type: 'error', duration: 3000 })
   } else {
     ElMessage({ message: '任务已删除', type: 'success', duration: 2000 })
   }

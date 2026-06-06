@@ -238,22 +238,27 @@ _queue_sem: Optional[asyncio.Semaphore] = None        # 等待队列上限
 async def _inference_slot(queue_timeout: float = 30.0):
     """获取推理槽位的上下文管理器。
     先争抢队列名额（超时 → 503），再争抢推理信号量（等待直到有空位）。
+    只释放实际获取到的信号量，避免因异常导致虚假 release。
     """
+    _queue_acquired = False
+    _sem_acquired = False
     if _queue_sem is not None:
         try:
             await asyncio.wait_for(_queue_sem.acquire(), timeout=queue_timeout)
+            _queue_acquired = True
         except asyncio.TimeoutError:
             raise HTTPException(status_code=503, detail="服务繁忙，请稍后重试")
     try:
         if _inference_sem is not None:
             await _inference_sem.acquire()
+            _sem_acquired = True
         inference_active.inc()
         yield
     finally:
         inference_active.dec()
-        if _inference_sem is not None:
+        if _inference_sem is not None and _sem_acquired:
             _inference_sem.release()
-        if _queue_sem is not None:
+        if _queue_sem is not None and _queue_acquired:
             _queue_sem.release()
 
 
@@ -279,6 +284,16 @@ async def lifespan(app: FastAPI):
         f"推理并发控制已启用：并发上限={_inference_sem._value}，"
         f"队列上限={_queue_sem._value}"
     )
+
+    # FIX: 将 scheduler.main_loop 更新为 uvicorn 实际运行的事件循环。
+    # scheduler.start() 在模块加载时（uvicorn 创建事件循环之前）执行，
+    # 导致 main_loop 指向旧循环。若不修正，调度器会走 fallback 路径
+    # （asyncio.new_event_loop），把 _inference_sem/_queue_sem 绑定到临时循环，
+    # 临时循环关闭后再有用户请求就会抛出 "Semaphore bound to different event loop"。
+    _uvicorn_loop = asyncio.get_running_loop()
+    if agent and agent.task_manager:
+        agent.task_manager.scheduler.main_loop = _uvicorn_loop
+        logger.info("已将 scheduler.main_loop 更新为 uvicorn 事件循环")
     # 安全检查：JWT 密钥
     if settings.jwt_enabled:
         if not settings.jwt_secret:
