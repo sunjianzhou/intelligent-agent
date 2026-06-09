@@ -1,0 +1,46 @@
+# 核心依赖
+python-dotenv==1.0.1
+pydantic==2.7.1
+pydantic-settings==2.3.4
+loguru==0.7.2
+pyyaml==6.0.2
+
+# Web框架
+fastapi==0.111.0
+uvicorn==0.30.1
+httpx==0.27.0
+
+# 异步和并发
+aiohttp==3.9.5
+
+# JWT 验证（与 Java 后端共享密钥）
+PyJWT==2.8.0
+
+# Cron 表达式解析（任务调度 schedule_type=cron）
+croniter==2.0.5
+
+# Prometheus 指标暴露（/metrics 端点）
+prometheus-client==0.20.0
+
+# Ollama相关
+ollama==0.3.3
+openai==1.35.7
+
+# 向量数据库（记忆存储）
+chromadb==0.5.3
+sentence-transformers==3.0.1
+
+# 网页搜索
+duckduckgo-search==6.2.13
+googlesearch-python==1.2.3
+
+# 进程/系统监控（SystemView 指标）
+psutil==6.0.0
+
+# 开发工具（不随服务部署，仅 dev 环境）
+pytest==8.2.2
+pytest-asyncio==0.23.8
+black==24.4.2
+isort==5.13.2
+mypy==1.10.1
+pylint==3.2.3

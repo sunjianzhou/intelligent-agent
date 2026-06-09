@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intelligent-agent"
+version = "0.1.0"
+description = "智能代理系统，支持定时任务、网页搜索、工具调用等功能"
+authors = [{name = "Your Name", email = "your.email@example.com"}]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "loguru>=0.7.0",
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "ollama>=0.1.8",
+    "chromadb>=0.4.0",
+    "duckduckgo-search>=4.1.0",
+    "sh>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4.0", "pytest-asyncio>=0.23.0", "black>=23.0.0", "isort>=5.12.0", "mypy>=1.5.0", "pylint>=3.0.0"]
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+
+[tool.isort]
+profile = "black"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

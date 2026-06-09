@@ -1,0 +1,203 @@
+services:
+
+  # ── Ollama（本地推理，云端模式不需要，按需启动）──────────────
+  # 启动方式：docker-compose --profile local up -d
+  ollama:
+    profiles: [local]
+    image: ollama/ollama:latest
+    container_name: ia-ollama
+    volumes:
+      # 通过 OLLAMA_MODELS_DIR 环境变量指定模型缓存目录（默认使用 docker 命名卷）
+      - ${OLLAMA_MODELS_DIR:-ollama_models}:/root/.ollama
+    ports:
+      - "11434:11434"
+    environment:
+      # 同时只加载一个模型，避免显存 OOM（多轮切换场景下尤为重要）
+      - OLLAMA_MAX_LOADED_MODELS=1
+      # 模型闲置 10 分钟后卸载（默认 5min，延长减少冷启动频率）
+      - OLLAMA_KEEP_ALIVE=10m
+      # CPU 并发推理线程数（CPU offload 层用这些核，i7-10700 建议 4-6）
+      - OLLAMA_NUM_PARALLEL=1
+      # CPU 线程数：当模型层 offload 到 CPU 时用于矩阵计算
+      - OLLAMA_NUM_THREAD=6
+    restart: unless-stopped
+    networks:
+      - ia_net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ── Python Agent ──────────────────────────────────────────
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+      args:
+        # 默认不安装 GitHub MCP，减少 200MB+ 镜像体积；如需开启传 INSTALL_MCP=1
+        INSTALL_MCP: ${INSTALL_MCP:-0}
+    container_name: ia-agent
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.docker
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - LOG_LEVEL=WARNING
+      - TZ=Asia/Shanghai
+      # JWT_SECRET 必须通过 .env / .env.docker 注入，禁止 docker-compose.yml 硬编码默认值
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 未设置，请在 .env.docker 中配置（≥32 字符强随机串）}
+      # 限制 torch/OpenMP 线程数，降低 RSS（不影响语义搜索质量）
+      - OMP_NUM_THREADS=2
+      - MKL_NUM_THREADS=2
+      - OPENBLAS_NUM_THREADS=2
+      - TOKENIZERS_PARALLELISM=false
+      # 模型 GPU 层数：-1=自动；大模型（如 dolphin 16GB）+ 小显存 GPU 需手动设置
+      # 例：GTX1660 6GB 跑 dolphin 建议 OLLAMA_NUM_GPU=18
+      - OLLAMA_NUM_GPU=${OLLAMA_NUM_GPU:--1}
+      # 自动记忆提炼 + 阶段摘要间隔（9.3 / 9.4）；覆盖 settings.py 默认值
+      - MEMORY_DISTILL_INTERVAL=${MEMORY_DISTILL_INTERVAL:-5}
+      - MEMORY_SUMMARY_INTERVAL=${MEMORY_SUMMARY_INTERVAL:-10}
+      # CPU 单核串行推理：dolphin 是 CPU 密集型，并发=1 防止多请求争抢 CPU 导致超时
+      - INFERENCE_CONCURRENCY=${INFERENCE_CONCURRENCY:-1}
+      # HuggingFace 离线模式：模型已预缓存至 volume，跳过网络检查加快启动
+      - HF_HUB_OFFLINE=1
+    volumes:
+      - agent_chroma_data:/app/chroma-data
+      - agent_chroma_data_longterm:/app/chroma-data-longterm
+      - ./agent/prompts:/app/prompts       # 挂载 prompts 目录，修改 YAML 无需重新构建
+      - ./agent/skills:/app/skills         # 挂载 skills 目录，同上
+      - ./agent/personas:/app/personas     # 挂载 personas 目录（9.2），新增角色无需重建
+      - agent_data:/app/data
+      - agent_cache:/home/appuser/.cache
+    restart: unless-stopped
+    networks:
+      - ia_net
+    deploy:
+      resources:
+        limits:
+          memory: 2g       # 适当增大：embedding + CPU offload 层需要更多内存
+          cpus: "4.0"      # i7-10700 有 8 核，给 agent 4 核，剩余留给 Ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s   # 嵌入模型冷加载需要时间（HF_HUB_OFFLINE=1 后通常 <30s）
+
+  # ── Java 后端 ──────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend/web
+      dockerfile: Dockerfile
+    container_name: ia-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - PYTHON_SERVICE_BASE_URL=http://agent:8000
+      - SPRING_PROFILES_ACTIVE=docker
+      - LOG_LEVEL=WARN
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 未设置}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD 未设置}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
+    depends_on:
+      agent:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ia_net
+    deploy:
+      resources:
+        limits:
+          memory: 512m     # JVM Xmx=400m + 非堆（元空间/JIT）约 100 MB
+          cpus: "1.0"      # Spring Boot 轻量网关，1 核足够
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── 前端（Nginx）──────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ia-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ia_net
+    deploy:
+      resources:
+        limits:
+          memory: 64m      # Nginx 静态文件服务极轻量
+          cpus: "0.25"     # Nginx 静态服务极轻，0.25 核绰绰有余
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Cloudflare Tunnel（外网访问，按需启动）──────────────────
+  # 启动方式：docker-compose --profile tunnel up -d
+  # 使用前在 .env.docker 中设置 CLOUDFLARE_TUNNEL_TOKEN=<token>
+  cloudflared:
+    profiles: [tunnel]
+    image: cloudflare/cloudflared:latest
+    container_name: ia-cloudflared
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-placeholder}
+    restart: unless-stopped
+    networks:
+      - ia_net
+    depends_on:
+      frontend:
+        condition: service_healthy
+
+  # ── HTTPS 反向代理（可选，按需启动）────────────────────────
+  # 使用前先生成自签名证书（开发）或配置 Let's Encrypt（生产）：
+  #   sh nginx/generate-certs.sh          # 生成自签名证书
+  # 启动方式：docker compose --profile https up -d
+  # 访问：https://localhost（浏览器会提示证书不受信任，点"高级→继续"）
+  nginx-https:
+    profiles: [https]
+    image: nginx:alpine
+    container_name: ia-nginx-https
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx-https.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+      # 生产 Let's Encrypt 证书（需先 certbot --nginx）：
+      # - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ia_net
+
+volumes:
+  agent_data:
+  agent_cache:
+  ollama_models:
+  agent_chroma_data:
+  agent_chroma_data_longterm:
+
+networks:
+  ia_net:
+    driver: bridge
+    name: intelligent-agent-net
