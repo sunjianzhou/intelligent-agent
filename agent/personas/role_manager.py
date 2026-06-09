@@ -155,9 +155,12 @@ class RoleManager:
         memory_type="short_term" → 写入内存 deque（重启丢失）
         memory_type="long_term"  → 写入 ChromaDB role_{role_id}_memory collection
         """
-        role = self.load_role(role_id)
-        size = role.role_memory.short_term_size if role else 20
-        self._ensure_short_term(role_id, size)
+        if memory_type == "short_term":
+            # deque 已存在时直接写，避免为读取 short_term_size 而 load 整个 JSON
+            if role_id not in self._short_term_cache:
+                role = self.load_role(role_id)
+                size = role.role_memory.short_term_size if role else 20
+                self._ensure_short_term(role_id, size)
 
         if memory_type == "short_term":
             # ⚠️ 运行时内存，重启后清空
@@ -302,10 +305,11 @@ class RoleManager:
             self._short_term_cache[role_id] = deque(maxlen=max_size)
 
     def _get_collection(self, name: str) -> chromadb.Collection:
-        """获取或创建 ChromaDB collection。"""
+        """获取或创建 ChromaDB collection（cosine 距离，与 LongTermMemory 保持一致）。"""
         return self._chroma.get_or_create_collection(
             name=name,
             embedding_function=self._embed_fn,
+            metadata={"hnsw:space": "cosine"},
         )
 
     def _semantic_search(
@@ -328,11 +332,11 @@ class RoleManager:
             )
             docs = results.get("documents", [[]])[0]
             distances = results.get("distances", [[]])[0]
-            # ChromaDB 返回的是 L2 distance，转换为粗略相似度（距离越小越相似）
+            # cosine 空间：distance ∈ [0,1]，similarity = 1 - distance
             filtered = [
                 doc
                 for doc, dist in zip(docs, distances)
-                if dist <= (1.0 - threshold) * 2  # 经验阈值转换
+                if (1.0 - dist) >= threshold
             ]
             return filtered
         except Exception as e:

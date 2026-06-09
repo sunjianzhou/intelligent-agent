@@ -13,10 +13,33 @@
       </el-select>
 
       <div class="header-actions">
+        <!-- 激活状态标识 -->
+        <el-tag
+          v-if="isActiveRole"
+          type="success"
+          effect="dark"
+          size="small"
+        >
+          <i class="fas fa-circle" style="font-size:8px;margin-right:4px" />
+          已激活
+        </el-tag>
+
         <el-tooltip content="开启后保存时同步到后端 API">
           <el-switch v-model="syncEnabled" active-text="同步后端" inactive-text="仅本地" />
         </el-tooltip>
         <el-button type="primary" @click="handleSave" :loading="saving">保存</el-button>
+        <el-button
+          v-if="!isActiveRole"
+          type="success"
+          :disabled="!currentRoleId || currentRoleId === '__new__'"
+          :loading="activating"
+          @click="handleActivate"
+        >激活角色</el-button>
+        <el-button
+          v-else
+          type="warning" plain
+          @click="handleDeactivate"
+        >停用</el-button>
         <el-button
           type="danger" plain
           :disabled="!currentRoleId || currentRoleId === '__new__'"
@@ -259,7 +282,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, defineComponent, onMounted } from 'vue'
+import { ref, reactive, computed, defineComponent, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { saveRole, loadRole, listRoles, deleteRole, newRoleConfig } from '@/services/roleStorage'
 
@@ -316,15 +339,25 @@ async function apiRequest(method, path, body) {
 // ── 响应式状态 ────────────────────────────────────────────────────────────
 const syncEnabled = ref(false)
 const saving = ref(false)
+const activating = ref(false)
 const activeTab = ref('card')
 const currentRoleId = ref('')
+const activeRoleId = ref('')   // 后端当前激活的 role_id
 const roleList = ref([])
 const avatarInputEl = ref(null)
 const form = reactive(newRoleConfig())
 
+// 当前表单对应的角色是否为激活状态
+const isActiveRole = computed(() => !!currentRoleId.value && currentRoleId.value === activeRoleId.value)
+
 // ── 生命周期 ─────────────────────────────────────────────────────────────
 onMounted(async () => {
   roleList.value = await listRoles()
+  // 拉取后端当前激活角色
+  try {
+    const data = await apiRequest('GET', '/activate')
+    if (data.role_id) activeRoleId.value = data.role_id
+  } catch { /* 后端未接入时静默失败 */ }
 })
 
 // ── 角色切换 ─────────────────────────────────────────────────────────────
@@ -382,6 +415,33 @@ async function handleDelete() {
   currentRoleId.value = ''
   roleList.value = await listRoles()
   ElMessage.success('已删除')
+}
+
+// ── 激活 / 停用 ───────────────────────────────────────────────────────────
+async function handleActivate() {
+  if (!currentRoleId.value) return
+  activating.value = true
+  try {
+    // 确保角色已同步到后端
+    await apiRequest('PUT', `/${form.roleId}`, { ...form })
+    await apiRequest('POST', '/activate', { role_id: form.roleId })
+    activeRoleId.value = form.roleId
+    ElMessage.success(`已激活角色「${form.roleCard.name}」，AI 将使用此角色配置`)
+  } catch (e) {
+    ElMessage.error(`激活失败: ${e.message}`)
+  } finally {
+    activating.value = false
+  }
+}
+
+async function handleDeactivate() {
+  try {
+    await apiRequest('DELETE', '/activate')
+    activeRoleId.value = ''
+    ElMessage.success('已停用角色，AI 恢复默认模板')
+  } catch (e) {
+    ElMessage.error(`停用失败: ${e.message}`)
+  }
 }
 
 // ── 原则 & 底线增删 ──────────────────────────────────────────────────────

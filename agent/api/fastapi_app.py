@@ -30,6 +30,11 @@ from api.personas_router import (
     _user_personas as _personas_state,
     _read_persona_content as _read_persona_content,
 )
+from api.roles_router import (
+    router as roles_router,
+    _user_active_roles as _user_active_roles_state,
+    get_role_manager as _get_role_manager,
+)
 from api.metrics import (
     metrics_router, metrics_middleware,
     llm_inference_total, llm_inference_duration_seconds,
@@ -100,6 +105,27 @@ def _get_user_persona_content(user_id: str) -> str | None:
     if not persona_name or persona_name == "default":
         return None
     return _read_persona_content(persona_name)
+
+
+async def _get_user_role_persona_content(user_id: str, query: str) -> str | None:
+    """
+    若用户有激活的角色配置，通过 RoleManager + PromptBuilder 构建 system prompt。
+    优先级高于 .md persona（在 chat 端点中先尝试此路径）。
+    """
+    role_id = _user_active_roles_state.get(user_id)
+    if not role_id:
+        return None
+    try:
+        from personas.prompt_builder import PromptBuilder
+        rm = _get_role_manager()
+        loop = asyncio.get_event_loop()
+        ctx = await loop.run_in_executor(None, rm.get_role_context, role_id, query)
+        if not ctx:
+            return None
+        return PromptBuilder().build_system_prompt(ctx)
+    except Exception as _e:
+        logger.warning(f"构建角色提示失败 [user={user_id}, role={role_id}]: {_e}")
+        return None
 
 
 def _load_runtime_config() -> dict:
@@ -367,6 +393,7 @@ app.add_middleware(
 app.include_router(skills_router)
 app.include_router(analytics_router)
 app.include_router(personas_router)
+app.include_router(roles_router)
 app.include_router(metrics_router)
 app.middleware("http")(metrics_middleware)
 
@@ -724,7 +751,11 @@ async def chat(request: ChatRequest, http_req: Request):
     logger.info(f"收到聊天请求 [user={user_id}, len={len(request.message)}]")
 
     user_provider = _get_user_provider(user_id)
-    user_persona_content = _get_user_persona_content(user_id)
+    # 优先使用结构化角色配置，降级到 .md persona，再降级到默认模板
+    user_persona_content = (
+        await _get_user_role_persona_content(user_id, request.message)
+        or _get_user_persona_content(user_id)
+    )
     async with _inference_slot():
         if agent and OLLAMA_AVAILABLE:
             try:
@@ -790,7 +821,10 @@ async def chat_stream_endpoint(request: ChatRequest, http_req: Request):
     """
     user_id = getattr(http_req.state, "user_id", "default")
     user_provider = _get_user_provider(user_id)
-    user_persona_content = _get_user_persona_content(user_id)
+    user_persona_content = (
+        await _get_user_role_persona_content(user_id, request.message)
+        or _get_user_persona_content(user_id)
+    )
 
     if not OLLAMA_AVAILABLE:
         async def err():

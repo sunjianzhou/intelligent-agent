@@ -150,8 +150,9 @@ class PromptBuilder:
 
     def _build_short_term(self, memories: List[str]) -> str:
         """⚠️ 短期记忆来自内存 deque，Python 重启后此段为空。"""
-        items = "\n".join(f"  [{i+1}] {m}" for i, m in enumerate(memories[-10:]))
-        return f"## 近期对话记忆（当前会话，共 {len(memories)} 条）\n{items}"
+        displayed = memories[-10:]
+        items = "\n".join(f"  [{i+1}] {m}" for i, m in enumerate(displayed))
+        return f"## 近期对话记忆（当前会话，展示最新 {len(displayed)} 条）\n{items}"
 
     def _build_long_term(self, memories: List[str]) -> str:
         """长期记忆来自 ChromaDB 语义检索。"""

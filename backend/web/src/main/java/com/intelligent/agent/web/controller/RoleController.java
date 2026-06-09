@@ -1,125 +1,137 @@
 package com.intelligent.agent.web.controller;
 
-import com.intelligent.agent.web.dto.response.ApiResponse;
-import com.intelligent.agent.web.dto.role.RoleConfigDto;
-import com.intelligent.agent.web.service.RoleService;
-import lombok.RequiredArgsConstructor;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.intelligent.agent.web.service.PythonProxyService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
-import java.io.Serializable;
-import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 角色配置 REST API。
- *
- * 所有数据存 RoleService 内存 Map（⚠️ 重启后丢失）。
- * 鉴权由上游 JwtAuthFilter 统一处理，此处不重复校验。
+ * 角色配置代理端点 — 所有请求转发到 Python Agent /api/roles/*。
+ * Python Agent 使用文件系统持久化角色 JSON，不依赖 Java 内存存储。
  */
 @Slf4j
 @RestController
 @RequestMapping("/api/roles")
-@RequiredArgsConstructor
 public class RoleController {
 
-    private final RoleService roleService;
+    @Autowired private PythonProxyService proxy;
+    @Autowired private ObjectMapper objectMapper;
 
-    /** GET /api/roles — 获取所有角色列表 */
+    // ── 激活管理（路径须在 /{roleId} 之前，防止被路径变量优先匹配） ─────────────
+
+    @GetMapping("/activate")
+    public ResponseEntity<Map<String, Object>> getActiveRole(HttpServletRequest req) {
+        return forward("GET", "/api/roles/activate", null, req);
+    }
+
+    @PostMapping("/activate")
+    public ResponseEntity<Map<String, Object>> activateRole(@RequestBody Map<String, Object> body,
+                                                             HttpServletRequest req) {
+        return forward("POST", "/api/roles/activate", body, req);
+    }
+
+    @DeleteMapping("/activate")
+    public ResponseEntity<Map<String, Object>> deactivateRole(HttpServletRequest req) {
+        return forward("DELETE", "/api/roles/activate", null, req);
+    }
+
+    // ── 角色 CRUD ──────────────────────────────────────────────────────────────
+
     @GetMapping
-    public ResponseEntity<ApiResponse<List<RoleConfigDto>>> listRoles() {
-        List<RoleConfigDto> roles = roleService.listRoles();
-        return ResponseEntity.ok(ApiResponse.success(roles));
+    public ResponseEntity<Map<String, Object>> listRoles(HttpServletRequest req) {
+        return forward("GET", "/api/roles", null, req);
     }
 
-    /** GET /api/roles/{roleId} — 获取单个角色完整配置 */
-    @GetMapping("/{roleId}")
-    public ResponseEntity<ApiResponse<RoleConfigDto>> getRole(@PathVariable String roleId) {
-        return roleService.getRole(roleId)
-                .map(role -> ResponseEntity.ok(ApiResponse.success(role)))
-                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body(ApiResponse.error("角色不存在: " + roleId)));
-    }
-
-    /** GET /api/roles/{roleId}/card — 仅返回 RoleCard（前端展示用，响应轻量） */
-    @GetMapping("/{roleId}/card")
-    public ResponseEntity<ApiResponse<RoleConfigDto.RoleCardDto>> getRoleCard(
-            @PathVariable String roleId) {
-        return roleService.getRole(roleId)
-                .map(role -> ResponseEntity.ok(ApiResponse.success(role.getRoleCard())))
-                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body(ApiResponse.error("角色不存在: " + roleId)));
-    }
-
-    /** POST /api/roles — 创建角色 */
     @PostMapping
-    public ResponseEntity<ApiResponse<RoleConfigDto>> createRole(
-            @RequestBody RoleConfigDto dto) {
-        if (dto.getRoleCard() == null || dto.getRoleCard().getName() == null) {
-            return ResponseEntity.badRequest()
-                    .body(ApiResponse.error("roleCard.name 为必填项"));
-        }
-        RoleConfigDto created = roleService.createRole(dto);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("角色已创建", created));
+    public ResponseEntity<Map<String, Object>> createRole(@RequestBody Map<String, Object> body,
+                                                           HttpServletRequest req) {
+        return forward("POST", "/api/roles", body, req);
     }
 
-    /** PUT /api/roles/{roleId} — 全量更新角色配置 */
+    @GetMapping("/{roleId}")
+    public ResponseEntity<Map<String, Object>> getRole(@PathVariable String roleId,
+                                                        HttpServletRequest req) {
+        return forward("GET", "/api/roles/" + roleId, null, req);
+    }
+
+    @GetMapping("/{roleId}/card")
+    public ResponseEntity<Map<String, Object>> getRoleCard(@PathVariable String roleId,
+                                                            HttpServletRequest req) {
+        return forward("GET", "/api/roles/" + roleId + "/card", null, req);
+    }
+
     @PutMapping("/{roleId}")
-    public ResponseEntity<ApiResponse<RoleConfigDto>> updateRole(
-            @PathVariable String roleId,
-            @RequestBody RoleConfigDto dto) {
-        return roleService.updateRole(roleId, dto)
-                .map(updated -> ResponseEntity.ok(ApiResponse.success("角色已更新", updated)))
-                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body(ApiResponse.error("角色不存在: " + roleId)));
+    public ResponseEntity<Map<String, Object>> updateRole(@PathVariable String roleId,
+                                                           @RequestBody Map<String, Object> body,
+                                                           HttpServletRequest req) {
+        return forward("PUT", "/api/roles/" + roleId, body, req);
     }
 
-    /**
-     * PATCH /api/roles/{roleId} — 局部更新角色配置。
-     * 请求体只需包含要修改的字段，未传字段保持原值。
-     */
     @PatchMapping("/{roleId}")
-    public ResponseEntity<ApiResponse<RoleConfigDto>> patchRole(
-            @PathVariable String roleId,
-            @RequestBody Map<String, Object> patch) {
-        return roleService.patchRole(roleId, patch)
-                .map(updated -> ResponseEntity.ok(ApiResponse.success("角色已更新", updated)))
-                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body(ApiResponse.error("角色不存在: " + roleId)));
+    public ResponseEntity<Map<String, Object>> patchRole(@PathVariable String roleId,
+                                                          @RequestBody Map<String, Object> body,
+                                                          HttpServletRequest req) {
+        String userId = proxy.extractUserIdFromRequest(req);
+        try {
+            String json = objectMapper.writeValueAsString(body);
+            ResponseEntity<String> res = proxy.patch("/api/roles/" + roleId, json, userId);
+            if (res.getStatusCode().is2xxSuccessful())
+                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
+            return ResponseEntity.status(res.getStatusCode())
+                    .body(objectMapper.readValue(res.getBody(), Map.class));
+        } catch (Exception e) {
+            log.error("PATCH /api/roles/{} 失败", roleId, e);
+            return error("局部更新角色失败");
+        }
     }
 
-    /**
-     * POST /api/roles/{roleId}/memory — 追加记忆条目。
-     * 请求体：{ "type": "commitment", "content": "..." }
-     * type=commitment → 追加到 commitments 列表并持久化
-     * type=long_term  → Java 仅记录元数据，实际向量写入由 Python Agent 处理
-     */
     @PostMapping("/{roleId}/memory")
-    public ResponseEntity<ApiResponse<RoleConfigDto>> appendMemory(
-            @PathVariable String roleId,
-            @RequestBody Map<String, Object> body) {
-        if (body.get("content") == null || body.get("content").toString().isBlank()) {
-            return ResponseEntity.badRequest()
-                    .body(ApiResponse.error("content 不能为空"));
-        }
-        return roleService.appendMemory(roleId, body)
-                .map(updated -> ResponseEntity.ok(ApiResponse.success("记忆已追加", updated)))
-                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body(ApiResponse.error("角色不存在: " + roleId)));
+    public ResponseEntity<Map<String, Object>> appendMemory(@PathVariable String roleId,
+                                                             @RequestBody Map<String, Object> body,
+                                                             HttpServletRequest req) {
+        return forward("POST", "/api/roles/" + roleId + "/memory", body, req);
     }
 
-    /** DELETE /api/roles/{roleId} — 删除角色 */
     @DeleteMapping("/{roleId}")
-    public ResponseEntity<ApiResponse<Void>> deleteRole(@PathVariable String roleId) {
-        boolean deleted = roleService.deleteRole(roleId);
-        if (deleted) {
-            return ResponseEntity.ok(ApiResponse.success("角色已删除", null));
+    public ResponseEntity<Map<String, Object>> deleteRole(@PathVariable String roleId,
+                                                           HttpServletRequest req) {
+        return forward("DELETE", "/api/roles/" + roleId, null, req);
+    }
+
+    // ── 辅助 ──────────────────────────────────────────────────────────────────
+
+    @SuppressWarnings("unchecked")
+    private ResponseEntity<Map<String, Object>> forward(String method, String path,
+                                                         Object body, HttpServletRequest req) {
+        String userId = proxy.extractUserIdFromRequest(req);
+        try {
+            ResponseEntity<String> res;
+            switch (method) {
+                case "POST":   res = proxy.post(path, body, userId);   break;
+                case "PUT":    res = proxy.put(path, body, userId);    break;
+                case "DELETE": res = proxy.delete(path, userId);       break;
+                default:       res = proxy.get(path, userId);          break;  // GET
+            }
+            if (res.getStatusCode().is2xxSuccessful())
+                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
+            return ResponseEntity.status(res.getStatusCode())
+                    .body(objectMapper.readValue(res.getBody(), Map.class));
+        } catch (Exception e) {
+            log.error("{} {} 失败", method, path, e);
+            return error(method + " " + path + " 失败");
         }
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(ApiResponse.error("角色不存在: " + roleId));
+    }
+
+    private ResponseEntity<Map<String, Object>> error(String msg) {
+        Map<String, Object> m = new HashMap<>();
+        m.put("success", false);
+        m.put("message", msg);
+        return ResponseEntity.internalServerError().body(m);
     }
 }
