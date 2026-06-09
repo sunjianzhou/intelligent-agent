@@ -1,0 +1,70 @@
+server:
+  port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+      force-request: true
+      force-response: true
+  tomcat:
+    uri-encoding: UTF-8
+    threads:
+      # 空闲线程从默认 10 降至 4；峰值从默认 200 降至 80（本地单用户完全够用）
+      min-spare: 4
+      max: 80
+    connection-timeout: 30000
+
+spring:
+  application:
+    name: intelligent-agent-backend
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  jackson:
+    default-property-inclusion: NON_NULL
+    deserialization:
+      fail-on-unknown-properties: false
+    serialization:
+      write-dates-as-timestamps: false
+  web:
+    resources:
+      # 静态文件优先：可通过 FRONTEND_DIST 环境变量指定绝对路径
+      # 默认从 classpath:/static/（jar 内打包的前端）服务，确保任何机器都能开箱运行
+      static-locations: "${FRONTEND_DIST_LOCATION:classpath:/static/}"
+      cache:
+        period: 3600
+
+# 智能体配置（可通过环境变量覆盖）
+intelligent-agent:
+  python-service:
+    base-url: ${PYTHON_SERVICE_BASE_URL:http://localhost:8000}
+    timeout: ${PYTHON_SERVICE_TIMEOUT:600s}
+
+logging:
+  level:
+    com.intelligent.agent: ${LOG_LEVEL:INFO}
+    org.springframework.web: WARN
+    org.springframework.web.socket: WARN
+    com.intelligent.agent.web.controller.HealthController: WARN
+  file:
+    name: logs/intelligent-agent.log
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file:    "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# CORS 允许来源（多个用逗号分隔）
+# 生产环境通过环境变量 CORS_ALLOWED_ORIGINS 注入，如 https://yourdomain.com
+cors:
+  allowed-origins: "${CORS_ALLOWED_ORIGINS:*}"
+
+auth:
+  jwt:
+    # 生产环境必须通过环境变量 JWT_SECRET 注入强随机密钥（≥32 字符）
+    secret: "${JWT_SECRET:ABCDEFGHIJKLMNOPQRSTUVWXYZlinmiaoshusheng123}"
+    expiry-hours: 24
+  users:
+    - username: admin
+      # 生产环境必须通过环境变量 ADMIN_PASSWORD 注入
+      password: "${ADMIN_PASSWORD:admin123}"

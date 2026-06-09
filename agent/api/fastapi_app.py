@@ -343,6 +343,7 @@ async def lifespan(app: FastAPI):
         _loop.create_task(agent._init_mcp_tools())
         _loop.create_task(agent._start_memory_cleanup())
         _loop.create_task(agent._warmup_embeddings())
+        _loop.create_task(agent._warmup_llm())
 
     yield
     # 关闭时清理（可选）

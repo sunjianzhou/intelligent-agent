@@ -1,0 +1,19 @@
+{
+  "session_id": "0684d472",
+  "started_at": "2026-05-24T18:28:03.543326",
+  "saved_at": "2026-05-24T18:28:03.545421",
+  "model": "qwen2.5:7b",
+  "persona": "technical",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hello",
+      "timestamp": "2026-05-24T18:28:03.544840"
+    },
+    {
+      "role": "assistant",
+      "content": "Hi there!",
+      "timestamp": "2026-05-24T18:28:03.545421"
+    }
+  ]
+}

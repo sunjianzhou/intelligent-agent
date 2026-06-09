@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     # GPU 层数：-1=Ollama 自动；正整数 N=只把 N 层放到 GPU，其余 layers 在 CPU 跑
     # 用于显存 < 模型大小的场景。例：dolphin 16GB F16 + GTX1660 6GB 建议 ollama_num_gpu=18
     ollama_num_gpu: int = -1
+    # 模型在显存中的常驻时长：Ollama 默认空闲 5 分钟卸载模型，大模型重新加载需几秒到几十秒。
+    # "-1"=永久常驻，"30m"=30分钟，"0"=用完即卸载。可通过 OLLAMA_KEEP_ALIVE 环境变量覆盖
+    ollama_keep_alive: str = "30m"
 
     # 工具结果注入到上下文时的字符上限：超过则自动截断并附说明
     tool_result_max_chars: int = 3000

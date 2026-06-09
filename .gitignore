@@ -1,0 +1,54 @@
+# 环境配置（含 API Key，不提交）
+**/.env
+!**/.env.example
+.env.docker
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# ChromaDB 数据目录及备份
+agent/chroma-data/
+agent/chroma-data-longterm/
+agent/chroma-data*.bak_*/
+agent/chroma-data-longterm*.bak_*/
+
+# 日志
+agent/logs/
+backend/web/logs/
+backend/logs/
+logs/
+*.log
+*.log.*
+
+# Java
+backend/web/target/
+backend/web/*.iml
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+
+# Docker
+**/.dockerignore
+
+# IDE / 工具
+.idea/
+.vscode/
+*.iml
+.gstack/
+.claude/
+
+# QA 截图（体积大，不入库）
+agent/qa-screenshots/
+frontend/qa-screenshots/
+
+# 运行时数据（用户偏好、任务状态、调用日志）
+agent/data/tasks.json
+agent/data/user_model_prefs.json
+agent/data/user_persona_prefs.json
+agent/data/runtime_config.json
+agent/data/feedback/
+agent/data/skill_logs/
+agent/data/tool_calls/

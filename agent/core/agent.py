@@ -21,6 +21,7 @@ from services.ollama_provider import OllamaProvider
 from services.base_provider import LLMConfig, ChatMessage
 from skills import skill_manager, SkillApplicator
 from prompts.prompt_manager import prompt_manager
+from api.metrics import cache_hits_total, cache_misses_total
 
 # Per-request provider override: each asyncio Task gets its own copy, so concurrent
 # requests for different users cannot interfere with each other.
@@ -185,12 +186,21 @@ class IntelligentAgent:
             return 0
         return max(1, int(len(text) / 2.5))
 
+    def _msg_token_count(self, m: Dict[str, Any]) -> int:
+        """返回单条消息的 token 数估算，并缓存到消息 dict 的 _token_count 字段。
+
+        同一轮内 _build_messages_async → _compress_context → _trim_context 会对
+        同一批消息 dict（同一对象引用）反复调用 _estimate_messages_tokens，
+        缓存可避免重复对 content 做 len()/2.5 计算。"""
+        cached = m.get("_token_count")
+        if cached is None:
+            cached = self._estimate_tokens(m.get("content", "")) + 4  # role overhead
+            m["_token_count"] = cached
+        return cached
+
     def _estimate_messages_tokens(self, messages: List[Dict[str, str]]) -> int:
         """估算消息列表的总 token 数"""
-        total = 0
-        for m in messages:
-            total += self._estimate_tokens(m.get("content", "")) + 4  # role overhead
-        return int(total)
+        return int(sum(self._msg_token_count(m) for m in messages))
 
     def _trim_context(self, messages: List[Dict[str, str]], max_tokens: int) -> List[Dict[str, str]]:
         """截断消息列表以保持在 token 预算内。
@@ -224,7 +234,7 @@ class IntelligentAgent:
         kept = []
         kept_tokens = 0
         for m in reversed(middle):
-            t = self._estimate_tokens(m.get("content", "")) + 4
+            t = self._msg_token_count(m)
             if kept_tokens + t <= budget:
                 kept.insert(0, m)
                 kept_tokens += t
@@ -332,6 +342,35 @@ class IntelligentAgent:
             logger.info("意图分类向量预热完成")
         except Exception as e:
             logger.warning(f"embedding 预热失败: {e}")
+
+    async def _warmup_llm(self):
+        """启动时给 Ollama 发一个极短 prompt，把模型加载/编译开销提前到启动阶段
+        （配合 keep_alive 常驻显存，避免用户首个请求承担冷启动延迟）"""
+        if not isinstance(self.provider, OllamaProvider):
+            return
+        try:
+            await asyncio.sleep(3)
+            loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.provider.chat(
+                    [ChatMessage(role="user", content="hi")],
+                    LLMConfig(
+                        temperature=settings.ollama_temperature,
+                        max_tokens=4,
+                        top_p=settings.ollama_top_p,
+                        top_k=settings.ollama_top_k,
+                        repeat_penalty=settings.ollama_repeat_penalty,
+                        num_ctx=settings.ollama_num_ctx,
+                    )
+                )
+            )
+            if response.success:
+                logger.info(f"LLM 预热完成（模型 {self.provider.current_model} 已加载到显存）")
+            else:
+                logger.warning(f"LLM 预热请求未成功: {response.error}")
+        except Exception as e:
+            logger.warning(f"LLM 预热失败（不影响主流程）: {e}")
 
     async def _init_mcp_tools(self):
         """异步初始化 MCP 工具，不阻塞 Agent 启动"""
@@ -455,18 +494,35 @@ class IntelligentAgent:
             ])
             if summary:
                 ts = datetime.now().strftime('%Y-%m-%d %H:%M')
-                self.memory.long_term.store(
+                await self._store_knowledge_async(
                     content=summary,
+                    importance=0.8,
                     metadata={
                         "type": "session_summary",
                         "user_id": user_id,
                         "timestamp": ts,
                     },
-                    importance=0.8,
                 )
                 logger.info(f"阶段摘要已生成: user={user_id} — {summary[:60]}...")
         except Exception as exc:
             logger.warning(f"生成阶段摘要失败 (user={user_id}): {exc}")
+
+    async def _store_knowledge_async(self, content: str, importance: float = 0.7,
+                                      metadata: Optional[Dict[str, Any]] = None) -> None:
+        """在线程池中写入长期记忆。
+
+        长期记忆写入包含 embedding 编码（CPU 密集）和 ChromaDB upsert（磁盘 I/O），
+        若在事件循环线程中同步执行会阻塞并发请求处理；蒸馏/摘要等后台任务对实时性
+        无要求，挪到线程池异步执行即可解耦。"""
+        loop = asyncio.get_running_loop()
+        if metadata is not None:
+            await loop.run_in_executor(
+                None, lambda: self.memory.long_term.store(content=content, metadata=metadata, importance=importance)
+            )
+        else:
+            await loop.run_in_executor(
+                None, lambda: self.memory.store_knowledge(content, importance=importance)
+            )
 
     async def _distill_short_term_memories(self):
         """把短期记忆蒸馏成结构化知识"""
@@ -507,19 +563,19 @@ class IntelligentAgent:
             stored = 0
             for pref in extracted.get("preferences", []):
                 if pref:
-                    self.memory.store_knowledge(f"[用户偏好] {pref}", importance=0.7)
+                    await self._store_knowledge_async(f"[用户偏好] {pref}", importance=0.7)
                     stored += 1
             for info in extracted.get("personal_info", []):
                 if info:
-                    self.memory.store_knowledge(f"[用户信息] {info}", importance=0.9)
+                    await self._store_knowledge_async(f"[用户信息] {info}", importance=0.9)
                     stored += 1
             for topic in extracted.get("frequent_topics", []):
                 if topic:
-                    self.memory.store_knowledge(f"[常用话题] {topic}", importance=0.6)
+                    await self._store_knowledge_async(f"[常用话题] {topic}", importance=0.6)
                     stored += 1
             for pattern in extracted.get("behavior_patterns", []):
                 if pattern:
-                    self.memory.store_knowledge(f"[行为模式] {pattern}", importance=0.6)
+                    await self._store_knowledge_async(f"[行为模式] {pattern}", importance=0.6)
                     stored += 1
 
             if stored > 0:
@@ -543,7 +599,7 @@ class IntelligentAgent:
                 {"role": "user", "content": f"请总结：\n{conv_text}"}
             ])
             if summary:
-                self.memory.store_knowledge(
+                await self._store_knowledge_async(
                     f"[每日摘要 {datetime.now().strftime('%Y-%m-%d')}] {summary}",
                     importance=0.8
                 )
@@ -1910,15 +1966,19 @@ class IntelligentAgent:
             # L1：精确匹配
             cached = self._cache_get(message)
             if cached is not None:
+                cache_hits_total.labels(level="L1").inc()
                 logger.debug(f"[L1-cache] 命中: {message[:40]}")
                 return {"content": cached, "tool_calls": [], "_from_cache": "L1"}
+            cache_misses_total.labels(level="L1").inc()
 
             # L2：语义相似（按模型过滤，防止跨模型缓存污染）
             if self._semantic_cache is not None:
                 sem_hit = self._semantic_cache.get(message, model=eff_model)
                 if sem_hit is not None:
+                    cache_hits_total.labels(level="L2").inc()
                     self._cache_put(message, sem_hit)   # 回填 L1
                     return {"content": sem_hit, "tool_calls": [], "_from_cache": "L2"}
+                cache_misses_total.labels(level="L2").inc()
 
         # 重置请求级 embedding 缓存（per-request ContextVar，自动隔离并发请求）
         _last_message_vec_ctx.set(None)

@@ -177,7 +177,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useWebSocketStore } from '@/stores/websocket'
@@ -322,6 +322,15 @@ onMounted(() => {
   store.loadModels()
   store.loadPersonas()
   applyTheme(isDark.value)  // 初始化主题
+})
+
+// 容器刚启动时后端可能尚未就绪，首次拉取会失败且没有重试，
+// 导致下拉框一直显示"暂无可用角色/模型"。WS 重连成功后，
+// 若列表仍为空则补拉一次。
+watch(isConnected, (connected) => {
+  if (!connected) return
+  if (availableModels.value.length === 0) store.loadModels()
+  if (availablePersonas.value.length === 0) store.loadPersonas()
 })
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)

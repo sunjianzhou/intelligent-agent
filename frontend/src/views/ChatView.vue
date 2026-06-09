@@ -324,6 +324,7 @@ import { ElMessage } from 'element-plus'
 import { useWebSocketStore }    from '@/stores/websocket'
 import { useAuthStore }         from '@/stores/auth'
 import { useLocalSessionStore } from '@/stores/localSession'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useProjectStore }      from '@/stores/project'
 import { submitFeedback as apiFeedback } from '@/services/api'
 import { formatTime, formatForFilename } from '@/utils/date'
@@ -345,6 +346,7 @@ marked.setOptions({
 const router       = useRouter()
 const store        = useWebSocketStore()
 const sessionStore = useLocalSessionStore()
+const confirmDialog = useConfirmDialogStore()
 const projectStore = useProjectStore()
 const messages     = computed(() => store.messages)
 const isConnected  = computed(() => store.isConnected)
@@ -707,7 +709,11 @@ const handleNewConversation = async () => {
 }
 
 const handleClearChat = async () => {
-  if (!window.confirm('确认清空对话？此操作将同时清除 AI 的对话记忆，无法恢复。')) return
+  const ok = await confirmDialog.confirm(
+    '确认清空对话？此操作将同时清除 AI 的对话记忆，无法恢复。',
+    { title: '清空对话', confirmText: '清空', danger: true }
+  )
+  if (!ok) return
   isThinking.value = false
   stopThinkingTimer()
   await store.clearMessages()

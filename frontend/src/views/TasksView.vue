@@ -367,11 +367,13 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import {
   getTasksList, createTask, updateTask, deleteTask,
   cancelTask, executeTaskNow, getTaskStats, getTaskActions
 } from '@/services/api'
 
+const confirmDialog = useConfirmDialogStore()
 const tasks      = ref([])
 const stats      = ref({})
 const actions     = ref([])
@@ -648,7 +650,12 @@ const cancel = async (id) => {
   const msg = isRunning
     ? '任务正在执行中，停止后当前本次执行仍会继续到结束，但之后不会再被调度。确认停止？'
     : '确定取消该任务？任务将标记为已取消，不再自动调度。'
-  if (!window.confirm(msg)) return
+  const ok = await confirmDialog.confirm(msg, {
+    title: isRunning ? '停止任务' : '取消任务',
+    confirmText: isRunning ? '确认停止' : '确认取消',
+    danger: true,
+  })
+  if (!ok) return
   const result = await cancelTask(id)
   if (!result || result?.success === false) {
     ElMessage({ message: `取消失败: ${result?.message || '请求失败'}`, type: 'error', duration: 3000 })
@@ -659,7 +666,10 @@ const cancel = async (id) => {
 }
 
 const remove = async (id) => {
-  if (!window.confirm('确定删除该任务？此操作不可恢复。')) return
+  const ok = await confirmDialog.confirm('确定删除该任务？此操作不可恢复。', {
+    title: '删除任务', confirmText: '删除', danger: true,
+  })
+  if (!ok) return
   const result = await deleteTask(id)
   if (!result || result?.success === false) {
     ElMessage({ message: `删除失败: ${result?.message || '请求失败'}`, type: 'error', duration: 3000 })

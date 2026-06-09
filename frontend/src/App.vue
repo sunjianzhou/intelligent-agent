@@ -23,6 +23,7 @@
         <StatusBar />
       </div>
     </div>
+    <ConfirmDialog />
   </div>
 </template>
 
@@ -37,6 +38,7 @@ import Header from '@/components/layout/Header.vue'
 import StatusBar from '@/components/layout/StatusBar.vue'
 import LoginView from '@/views/LoginView.vue'
 import InstallPrompt from '@/components/InstallPrompt.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const websocketStore = useWebSocketStore()
 const authStore      = useAuthStore()

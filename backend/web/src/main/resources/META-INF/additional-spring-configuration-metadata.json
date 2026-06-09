@@ -1,0 +1,8 @@
+{
+  "properties": [
+    {
+      "name": "intelligent-agent.python-service.base-url",
+      "type": "java.lang.String",
+      "description": "Description for intelligent-agent.python-service.base-url."
+  }
+] }

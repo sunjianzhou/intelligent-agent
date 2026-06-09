@@ -1,0 +1,178 @@
+# Java Backend 模块
+
+> Spring Boot 2.7 服务，port 8080。纯粹的 WebSocket 网关 + HTTP 代理层，不含任何 AI 业务逻辑。
+
+---
+
+## 定位与职责
+
+| 职责 | 说明 |
+|------|------|
+| WebSocket 网关 | 接收前端 WS 消息，异步转发至 Python SSE 流，推送 token / 工具事件 / 任务更新 |
+| JWT 认证 | 前端 JWT 验证；向 Python 发请求时使用服务间 token（`java-service`）|
+| HTTP 代理 | 所有 `/api/*` 请求透明代理至 Python Agent（附带 jwt 鉴权）|
+| 模型 / 角色切换 | HealthController + PersonaProxyController 封装后转发至 Python |
+
+**不在这里做的事**：LLM 推理、记忆存取、工具执行——这些全在 Python。
+
+---
+
+## 目录结构
+
+```
+backend/web/src/main/java/.../
+├── controller/
+│   ├── WebSocketController.java     WS 消息路由（chat_message / ping / get_system_info）
+│   ├── ChatController.java          /api/chat（非 WS 同步聊天，供飞书/直接 REST 调用）
+│   ├── HealthController.java        /api/health、/api/models、/api/model/switch、/api/config/*
+│   ├── PersonaProxyController.java  /api/personas/* → Python
+│   ├── MemoryProxyController.java   /api/memory/* → Python
+│   ├── TaskProxyController.java     /api/tasks/* → Python
+│   ├── ToolProxyController.java     /api/tools/* → Python
+│   ├── SkillProxyController.java    /api/skills/* → Python
+│   ├── AnalyticsProxyController.java /api/analytics/* → Python
+│   ├── ImageProxyController.java    /api/images/* → Python
+│   ├── ProjectProxyController.java  /api/project/* → Python（spec CRUD、context 查询）
+│   ├── AuthController.java          /api/auth/login、/api/auth/refresh
+│   └── SpaController.java           兜底路由（Vue Router history mode）
+├── service/
+│   ├── AgentService.java            Python SSE 流读取 + WS 推送（线程池）
+│   └── PythonProxyService.java      通用 HTTP 代理（GET/POST/PUT/PATCH/DELETE）
+├── filter/
+│   └── JwtAuthFilter.java           JWT 验证 + X-New-Token 滑动续期
+├── util/
+│   ├── JwtUtil.java                 JWT 签发 / 解析
+│   └── JsonUtil.java                WS 消息序列化工具
+└── dto/
+    ├── request/ChatRequest.java     含 message、use_tools、use_memory、project_id、pending_tasks
+    └── WebSocketMessageType.java    事件类型常量
+```
+
+---
+
+## WebSocket 消息协议
+
+### 前端 → Java（发送）
+
+```json
+{ "type": "chat_message", "message": "用户消息", "use_tools": true, "use_memory": true,
+  "project_id": "proj-xxx", "pending_tasks": [...] }
+{ "type": "ping", "request_id": "req-xxx" }
+{ "type": "get_system_info" }
+```
+
+### Java → 前端（接收）
+
+| type | 含义 | 关键字段 |
+|------|------|---------|
+| `connection_established` | WS 连接成功 | — |
+| `thinking` | AI 开始推理 | `request_id` |
+| `chat_token` | 流式 token | `data`（token 文本）|
+| `tool_call_start` | 工具开始执行 | `tool_name`、`args_summary` |
+| `tool_calls_done` | 本轮工具全部完成 | `data`（工具调用列表）|
+| `chat_done` | 本轮完整回复 | `content`、`response_time_ms` |
+| `task_update` | 任务完成 | `task_data.task_id`、`project_id` |
+| `task_blocked` | 任务阻塞 | `task_data.task_id`、`project_id` |
+| `pong` | 心跳回复 | — |
+| `system_info` | 系统信息 | `data`（健康 + 模型信息）|
+| `error` | 异常 | `message` |
+
+---
+
+## 关键实现细节
+
+### 流式聊天（AgentService）
+
+```
+WebSocketController.handleChatMessage()
+    │ threadPool.submit()
+    ▼
+AgentService.doStreamChat()
+    │ HTTP POST /api/chat/stream（Python SSE）
+    │ CloseableHttpClient（独立 HTTP 客户端，读超时 600s）
+    ▼
+逐行读 SSE → 解析 JSON → 构造 WS 消息 → JsonUtil.sendJsonMessage(session, msg)
+```
+
+**注意事项**：
+- 流式使用独立的 `CloseableHttpClient`（非 RestTemplate），避免影响普通 REST 请求
+- `streamHttpClient` 连接池：`PoolingHttpClientConnectionManager`，max-per-route=20，socket timeout=620s（防 Python 挂住时线程永久阻塞）
+- `streamExecutor`：专用线程池（核心2/最大10/队列100），队列满时返回 503（AbortPolicy）而不是卡 Tomcat 线程
+- `session.isOpen()` 检查：客户端断连时及时终止流读取
+- 任务通知推送：`@Scheduled(fixedDelay=5000)` 主动轮询 Python `/api/notifications/poll` 并 broadcast WS `notification` 事件，取代前端 30s 轮询
+
+### JWT 服务间 token
+
+```java
+// 所有向 Python 的请求都携带此 token（Python 解析 sub="java-service"）
+serviceToken = jwtUtil.generateToken("java-service");
+```
+
+token 统一由 `PythonProxyService.getServiceToken()` 管理（单一来源），临近过期（5 分钟内）自动刷新。`AgentService` 不再维护独立 token。
+
+**用户 ID 透传（已完成 P0 改造）**：
+- `JwtHandshakeInterceptor`：WebSocket 握手时解码前端 JWT，提取 `sub` 字段存入 session attributes
+- `WebSocketController`：从 session attributes 读取 userId，写入 `ChatRequest.userId`
+- `AgentService.doStreamChat()`：从 ChatRequest 读取 userId，加 `X-User-Id` 请求头
+- `PythonProxyService.authHeaders(userId)`：所有 REST 代理端点携带 `X-User-Id` 头
+- 所有代理 Controller（Memory/Task/Persona/Tool/Skill/Analytics/Project）：通过 `proxy.extractUserIdFromRequest(req)` 提取并透传用户身份
+- Python Agent：middleware 读取 `X-User-Id`，当 JWT sub 是 java-service 时以此为 user_id
+
+**效果**：每个前端用户（admin/user1/user2 等）拥有独立的模型偏好和角色偏好，互不干扰。
+
+### JWT 滑动续期
+
+`JwtAuthFilter` 在每次有效请求后在响应头写入 `X-New-Token`，前端自动更新本地 token，实现无感续期（24h token，活跃用户永不过期）。
+
+---
+
+## 配置项（application.yml）
+
+| 配置 | 默认值 | 说明 |
+|------|--------|------|
+| `intelligent-agent.python-service.base-url` | `http://localhost:8000` | Python Agent 地址；Docker 中为 `http://agent:8000` |
+| `auth.jwt.secret` | 通过 `JWT_SECRET` 环境变量注入 | 与 Python 保持一致，≥32 字符 |
+| `auth.jwt.expiry-hours` | `24` | token 有效期 |
+| `auth.users` | admin / user 各一个 | 用户名 + 密码配置 |
+| `spring.websocket.allowed-origins` | `*` | WS CORS |
+| `LOG_LEVEL` | `WARN` (Docker) / `INFO` (本地) | 日志级别 |
+
+---
+
+## 启动与开发
+
+```bash
+cd backend/web
+
+# 启动（使用项目内置 Maven wrapper）
+# wrapper 路径：E:\workspace\llm\mock_webflux\maven-dist\apache-maven-3.9.6\bin\mvn.cmd
+./mvnw spring-boot:run
+
+# 仅编译
+./mvnw compile
+
+# 打包
+./mvnw package -DskipTests
+
+# 测试
+./mvnw test
+```
+
+**环境变量注入（本地）**：
+```powershell
+$env:PYTHON_SERVICE_BASE_URL = "http://localhost:8000"   # 或 8001
+./mvnw spring-boot:run
+```
+
+日志输出文件：`spring.log`（stdout）、`spring.log.err`（stderr）。
+
+---
+
+## 已知问题与技术债
+
+| 编号 | 问题 | 状态 |
+|------|------|------|
+| J-01 | `java-service` 固定 token，无法向 Python 透传真实用户 | ✅ 已完成（2026-06-02）：所有 Controller 提取并透传 X-User-Id |
+| J-02 | `PythonProxyService` 和 `AgentService` 各维护独立 serviceToken，重复逻辑 | 可合并为单一 Token 管理 bean |
+| J-03 | `CloseableHttpClient.createDefault()` 无连接池配置，高并发场景可能连接耗尽 | 低优先级（当前单用户） |
+| J-04 | WebSocket 握手无 JWT 验证（仅 query string token，未在 HandshakeInterceptor 校验）| 安全隐患，低优先级 |
