@@ -3,21 +3,23 @@ import LoginView from '@/views/LoginView.vue'  // 直接 import，不懒加载
 import { isTokenExpired } from '@/utils/jwt'
 import { useAuthStore } from '@/stores/auth'
 
-const ChatView    = () => import('@/views/ChatView.vue')
-const ToolsView   = () => import('@/views/ToolsView.vue')
-const TasksView   = () => import('@/views/TasksView.vue')
-const SystemView  = () => import('@/views/SystemView.vue')
-const MemoryView  = () => import('@/views/MemoryView.vue')
-const SkillView   = () => import('@/views/SkillView.vue')
-const ProjectView = () => import('@/views/ProjectView.vue')
+const ChatView       = () => import('@/views/ChatView.vue')
+const ToolsView      = () => import('@/views/ToolsView.vue')
+const TasksView      = () => import('@/views/TasksView.vue')
+const SystemView     = () => import('@/views/SystemView.vue')
+const MemoryView     = () => import('@/views/MemoryView.vue')
+const SkillView      = () => import('@/views/SkillView.vue')
+const ProjectView    = () => import('@/views/ProjectView.vue')
+const RoleEditorView = () => import('@/views/RoleEditorView.vue')
 
 const routes = [
   { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
   { path: '/',      redirect: '/chat' },
 
   // ── 客户端路由 ──────────────────────────────────────────
-  { path: '/chat',     name: 'chat',     component: ChatView,   meta: { title: '聊天' } },
-  { path: '/personas', name: 'personas', component: () => import('@/views/PersonasView.vue'), meta: { title: '角色管理' } },
+  { path: '/chat',         name: 'chat',        component: ChatView,   meta: { title: '聊天' } },
+  { path: '/personas',     name: 'personas',    component: () => import('@/views/PersonasView.vue'), meta: { title: '角色管理' } },
+  { path: '/roles/editor', name: 'role-editor', component: RoleEditorView, meta: { title: '角色配置' } },
   { path: '/memory',   name: 'memory',   component: MemoryView, meta: { title: '我的记忆' } },
   { path: '/project',  name: 'project',  component: ProjectView, meta: { title: '项目文件' } },
 

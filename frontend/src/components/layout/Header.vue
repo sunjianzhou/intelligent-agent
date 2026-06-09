@@ -200,10 +200,11 @@ const store = useWebSocketStore()
 const showMobileMenu = ref(false)
 
 const navItems = [
-  { name: 'chat',        label: '聊天', icon: 'fas fa-comment',      path: '/chat' },
-  { name: 'personas',    label: '角色', icon: 'fas fa-user-circle',  path: '/personas' },
-  { name: 'memory',      label: '记忆', icon: 'fas fa-brain',        path: '/memory' },
-  { name: 'project',     label: '项目', icon: 'fas fa-folder-open',  path: '/project' },
+  { name: 'chat',        label: '聊天',   icon: 'fas fa-comment',      path: '/chat' },
+  { name: 'personas',    label: '角色',   icon: 'fas fa-user-circle',  path: '/personas' },
+  { name: 'role-editor', label: '角色配置', icon: 'fas fa-id-card',    path: '/roles/editor' },
+  { name: 'memory',      label: '记忆',   icon: 'fas fa-brain',        path: '/memory' },
+  { name: 'project',     label: '项目',   icon: 'fas fa-folder-open',  path: '/project' },
 ]
 
 const adminNavItems = [
@@ -216,10 +217,11 @@ const adminNavItems = [
 
 // ── 页面配置 ──────────────────────────────────────────────
 const pageConfigs = {
-  chat:         { title: '与智能体对话', icon: 'fas fa-comment' },
-  personas:     { title: '角色管理',     icon: 'fas fa-user-circle' },
-  memory:       { title: '我的记忆',     icon: 'fas fa-brain' },
-  project:      { title: '项目文件',     icon: 'fas fa-folder-open' },
+  chat:          { title: '与智能体对话', icon: 'fas fa-comment' },
+  personas:      { title: '角色管理',     icon: 'fas fa-user-circle' },
+  'role-editor': { title: '角色配置',     icon: 'fas fa-id-card' },
+  memory:        { title: '我的记忆',     icon: 'fas fa-brain' },
+  project:       { title: '项目文件',     icon: 'fas fa-folder-open' },
   'admin-tools':  { title: '工具管理',   icon: 'fas fa-tools' },
   'admin-skills': { title: 'Skill 管理', icon: 'fas fa-magic' },
   'admin-tasks':  { title: '任务管理',   icon: 'fas fa-tasks' },
