@@ -1,9 +1,16 @@
 <template>
   <div class="personas-view">
+    <!-- 迁移提示：新版角色配置（JSON roles）已取代此处的简单模板 -->
+    <div style="margin-bottom:12px;padding:10px 14px;background:#fffbe6;border:1px solid #ffe58f;border-radius:6px;font-size:13px;color:#7d5a00;line-height:1.6">
+      <b>提示：</b>此页面为「简单文本模板」角色，仅支持基础 prompt 替换。
+      如需完整人设（个性、原则、底线、记忆库、日记），请使用
+      <router-link to="/role-editor" style="color:#1677ff;font-weight:600">角色配置编辑器</router-link>。
+    </div>
+
     <!-- 顶部操作栏 -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <span class="page-desc">定义 AI 助手的角色与行为风格</span>
+        <span class="page-desc">简单文本模板 — 快速切换 AI 行为风格</span>
       </div>
       <button class="btn-primary" @click="openEditor()">
         <i class="fas fa-plus" /> 新建角色

@@ -104,12 +104,8 @@ async def deactivate_role(req: Request):
 @router.get("")
 async def list_roles():
     rm = get_role_manager()
-    roles = []
-    for role_id in rm.list_roles():
-        role = rm.load_role(role_id)
-        if role:
-            roles.append(role.model_dump())
-    return {"success": True, "roles": roles, "count": len(roles)}
+    cards = rm.list_role_cards()
+    return {"success": True, "roles": cards, "count": len(cards)}
 
 
 @router.get("/{role_id}/card")

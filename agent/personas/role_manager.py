@@ -91,10 +91,27 @@ class RoleManager:
     def list_roles(self) -> List[str]:
         """返回所有已存角色的 role_id 列表。"""
         return [
-            fname.removesuffix(".json")
+            fname[:-5]  # strip ".json" suffix
             for fname in os.listdir(self.roles_dir)
             if fname.endswith(".json")
         ]
+
+    def list_role_cards(self) -> List[Dict[str, Any]]:
+        """仅读取每个角色 JSON 的 role_card 字段，避免全量 Pydantic 验证。
+        返回 [{"role_id": ..., "role_card": {...}}, ...]，用于列表页展示。
+        """
+        cards = []
+        for role_id in self.list_roles():
+            path = self._role_path(role_id)
+            try:
+                raw = json.loads(open(path, encoding="utf-8").read())
+                cards.append({
+                    "role_id": role_id,
+                    "role_card": raw.get("role_card", {}),
+                })
+            except Exception as _e:
+                logger.warning(f"读取角色卡片失败 [{role_id}]: {_e}")
+        return cards
 
     def delete_role(self, role_id: str) -> bool:
         """删除角色配置文件及其所有 ChromaDB collections。"""
