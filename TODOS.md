@@ -6,125 +6,124 @@
 
 ## TODO-1: HTTPS/TLS — 生产环境全程 HTTP 明文
 
-**什么**: 当前整个栈（前端 → Java → Python）全程 HTTP。即使完成 JWT 密钥迁移（D2），在网络传输级别，Token 和聊天内容仍为明文。
+**什么**: 当前整个栈（前端 → Java → Python）全程 HTTP。在网络传输级别，Token 和聊天内容仍为明文。
 
-**为什么**: Token + 聊天内容在明文传输就是 OWASP A02:2021 加密失效风险。如果部署到内网之外或多设备访问，这是必须解决的问题。
+**为什么**: Token + 聊天内容明文传输是 OWASP A02:2021 加密失效风险。若部署到内网之外或多设备访问，必须解决。
 
-**如何实现**: 在 docker-compose 前加一层 Nginx 反向代理，配置 Let's Encrypt 自动证书。后端 Java/Python 无需改动，Nginx 终结 TLS。
-
-**依赖**: D2（JWT 迁到环境变量）完成后再处理。
+**如何实现**: docker-compose 前加一层 Nginx 反向代理，配置 Let's Encrypt 自动证书。Java/Python 后端无需改动，Nginx 终结 TLS。
 
 **当前状态**: 项目属于本地优先开发阶段，暂不影响开发体验。
 
 ---
 
-## TODO-12: 性能优化清单（不缩减现有资源配置的前提下）
+## TODO-12: 性能优化剩余项（⏸️ 待触发条件）
 
-**背景**: 2026-06-08 与用户讨论"在当前机器条件、不削减给定资源的前提下，代码/架构/机制流程层面是否还有优化空间"，梳理出以下条目，用户已确认"这些建议都可以做"，留作后续逐项落地。按"性价比"大致排序：
+以下项目已确认可做，但当前规模不值得操作，待对应触发条件出现再处理：
 
-### ✅ 已完成 (2026-06-08，已构建部署 ia-agent 并验证)
+4. **L1 响应缓存锁优化** — `agent/core/agent.py:108-109`；需 `inference_concurrency` 调高后出现热点再做。
+5. **Java 侧 token 批量转发** — 需先有延迟抖动证据再做。
+8. **Scheduler 轮询改事件驱动** — 任务量小时无所谓；调度器历史上多次出现并发/绑定 bug，改动有风险，待任务量真正增长再做。
 
-1. **【优先】Ollama `keep_alive` 显式设置** — 新增 `settings.ollama_keep_alive`（默认 `"30m"`，可通过 `OLLAMA_KEEP_ALIVE` 环境变量覆盖），在 `OllamaProvider` 的 `chat`/`chat_stream_generator`/`chat_with_tools` 三处请求 payload 中都加上 `"keep_alive": settings.ollama_keep_alive`。已通过容器内直接调用验证：请求被 Ollama 正常接受（200，非"unknown field"错误）。
-2. **首请求预热** — 新增 `IntelligentAgent._warmup_llm()`（`agent/core/agent.py`），仅当 `self.provider` 是 `OllamaProvider` 时才执行（云端模式下自动跳过），在 lifespan 启动时与 `_warmup_embeddings` 一并调度，发送极短 prompt 让模型预先加载到显存，与 #1 配合发挥最大效果。
-3. **`_trim_context` token 计数缓存** — 新增 `_msg_token_count(m)` 辅助方法，把估算结果缓存到消息 dict 的 `_token_count` 字段；`_estimate_messages_tokens`/`_trim_context` 均改用该方法，避免同一轮内 `_build_messages_async → _compress_context → _trim_context` 链路对同一批消息重复计算 `len(content)/2.5`。
-7. **长期记忆写入异步化** — 新增 `_store_knowledge_async()`，把 `_distill_short_term_memories`/`_generate_daily_summary`/`_generate_stage_summary` 中原本同步阻塞事件循环的 `self.memory.store_knowledge`/`long_term.store` 调用全部改为 `loop.run_in_executor` 异步执行，解耦"记忆写入"（embedding 编码 + ChromaDB I/O）与对话响应路径。
-9. **语义缓存命中率埋点** — 复用 `agent/api/metrics.py` 中已定义但从未调用的 `cache_hits_total`/`cache_misses_total`（label=`level: L1|L2`），在 `agent.py` 聊天主流程的 L1/L2 缓存检查点上分别打点；并在 `SemanticCache.get()` 中为 `similarity` 与 `threshold` 差距 <0.05 的"近似未命中"补充 INFO 级诊断日志，便于后续评估调低阈值是否可行。已通过直接调用验证计数器可正确递增并出现在 `/metrics` 输出中（`cache_hits_total{level="L1"} 1.0` / `cache_misses_total{level="L2"} 1.0`），已构建部署，`/metrics` 已暴露 `cache_hits_total`/`cache_misses_total` 的 HELP/TYPE（具体 label 数据将在真实对话流量经过缓存路径后出现，属 Prometheus Counter 的惰性创建行为，非异常）。
-
-全量测试 78 通过（12 个失败：11 个为 pre-existing pytest-asyncio 插件缺失问题，1 个 `test_cron_scheduler.py::test_every_minute_not_yet` 为按当前秒数判定的计时类 flaky 测试，单独重跑可通过；均与本次改动无关）。
-
-### ⏸️ 暂缓（清单本身标注"需先有证据/统计再决定"，或涉及数据迁移需用户确认）
-
-4. **L1 响应缓存锁优化** — `agent/core/agent.py:108-109`；清单原文"当前并发量下无影响"，需 `inference_concurrency` 调高后出现热点再做。
-5. **Java 侧 token 批量转发** — 清单原文"需先有抖动证据再做"。
-8. **Scheduler 轮询改事件驱动** — 清单原文"任务量小时无所谓，未来任务变多可以改"；且调度器历史上多次出现并发/绑定 bug（见 [[session_2026-06-06_semaphore_fix]]），改动有风险，待任务量真正增长再做。
-6. **✅ ChromaDB 存储改用 Docker 具名卷** — 2026-06-09 完成迁移并验证。
-   - 具名卷：`intelligent_agent_agent_chroma_data`（13 文件）、`intelligent_agent_agent_chroma_data_longterm`（5 文件）
-   - bind-mount 备份保留于：`agent/chroma-data.bak_20260609_215213`、`agent/chroma-data-longterm.bak_20260609_215213`
-   - 注意：中间创建的无前缀卷 `agent_chroma_data`/`agent_chroma_data_longterm` 可按需用 `docker volume rm` 清理（数据已在带前缀的正式卷中）
-
-**如何继续**: #6 已进入方案讨论阶段（见上方草案），下次直接细化每步并执行。#4/#5/#8 待对应触发条件出现再处理。#9 已补埋点，待积累一段时间真实命中率数据后再决定是否调阈值。
+> ChromaDB 迁移至 Docker 具名卷已于 2026-06-09 完成，具名卷为 `intelligent_agent_agent_chroma_data` / `intelligent_agent_agent_chroma_data_longterm`。
+> 中间无前缀卷 `agent_chroma_data`/`agent_chroma_data_longterm` 可按需 `docker volume rm` 清理。
 
 ---
 
-## ~~TODO-2: ToolManager 全局单例 — 多用户工具状态隔离~~ ✅ 已完成 (2026-05-25)
+## TODO-16: Java 死代码清理（LOW）
 
-**方案**: 每个 `IntelligentAgent` 实例调用 `ToolManager()` 创建独享实例（`self.tool_manager = ToolManager()`）；`TaskManager` / `SimpleTaskScheduler` 接受 `tool_manager` 参数注入，调度器工具回退链也走 per-agent 实例。全局 `tool_manager = ToolManager()` 保留供 CLI / 测试单用户场景兼容使用，不被 Agent 引用。
+**什么**: `RoleController.java` 改为纯代理层后，以下两个文件成为死代码，没有任何代码路径引用它们：
+- `backend/.../service/RoleService.java`
+- `backend/.../dto/role/RoleConfigDto.java`
+
+**如何实现**: 直接删除两个文件。删前先 grep 确认无引用：
+```bash
+grep -r "RoleService\|RoleConfigDto" backend/web/src/main/java/
+```
+
+**文件**: `backend/.../service/RoleService.java`，`backend/.../dto/role/RoleConfigDto.java`
+
+**代价**: Human ~5min / CC ~2min
 
 ---
 
-## ~~TODO-3: pyproject.toml 中的 feishu/wechat 可选依赖 — 无实现代码~~ ✅ 已确认不存在
+## TODO-17: `list_roles` 接口改为只返回卡片信息（LOW）
 
-当前 `pyproject.toml` 的 `[project.optional-dependencies]` 只有 `dev`，无 feishu/wechat 条目。本 TODO 描述的问题已不存在，无需处理。
+**什么**: `agent/api/roles_router.py:77-85` 中 `GET /api/roles` 对每个 role_id 都调用 `rm.load_role()` 即完整加载 JSON 文件。角色列表页面只需要展示名称、头像、签名，无需完整配置。
+
+**为什么**: 角色数量增多后，列表接口将做 O(N) 全量磁盘读取。现有 `GET /{role_id}/card` 端点已返回轻量 RoleCard。
+
+**如何实现**: `list_roles` 端点改为只调 `rm.load_role(role_id)` 取 `.role_card` 而非整个 config。或新增 `RoleManager.list_role_cards()` 方法，只读 JSON 文件中的 `role_card` 字段（避免 Pydantic 完整 validate）。
+
+**文件**: `agent/api/roles_router.py`，`agent/personas/role_manager.py`
+
+**代价**: Human ~20min / CC ~10min
 
 ---
 
-## ~~TODO-4 ~ TODO-11~~: 三大智能能力实现 ✅ 已完成 (2026-05-24)
+## TODO-18: 两套角色体系的合并方向（MEDIUM，需先设计决策）
 
-_由 /plan-eng-review 于 2026-05-24 生成，2026-05-24 全部实现。_
-_完整任务列表见 `~/.gstack/projects/intelligent_agent/tasks-eng-review-20260524-three-features.jsonl`。_
+**什么**: 系统中存在两套并行的角色体系：
+1. **旧体系**：`agent/personas/*.md` 文件 → `personas_router.py` → `PersonasView.vue`（简单文本 prompt 模板）
+2. **新体系**：`agent/data/roles/*.json` + ChromaDB → `roles_router.py` → `RoleEditorView.vue`（完整角色配置）
 
-### Phase 0（前置 Spike，解锁所有 end-to-end 测试）
+当前优先级链：JSON role > .md persona > default。两套体系在 UI 上各自独立，用户可能困惑"角色"和"人设"的区别。
 
-**TODO-4: Java 透传 project_id**
-- `ChatRequest.java` 加 `private String projectId`（`@JsonProperty("project_id")`）
-- `WebSocketController.handleChatMessage()` 读 `request.get("project_id")` 写入 ChatRequest
-- `AgentService.doStreamChat()/chatFull()` body 加 `project_id`
-- 文件：`backend/.../dto/request/ChatRequest.java`，`WebSocketController.java`，`AgentService.java`
+**选项**:
+- **A（推荐）**: 逐步废弃 .md 体系，给 PersonasView 加一个"迁移向导"，将现有 .md personas 一键转为 JSON roles（name + language_style → CoreIdentity，文件内容 → role_card.signature）。完成后隐藏 PersonasView 入口。
+- **B**: 保留两套体系，改善 UI 说明（".md 角色是简单模板，角色配置是完整人设"），不做代码合并。
 
-**TODO-5: Python 接收 project_id**
-- `fastapi_app.py` 的 `ChatRequest` Pydantic model 加 `project_id: Optional[str] = None`
-- `/api/chat` 和 `/api/chat/stream` 将 `project_id` 传给 `agent.chat()/agent.chat_stream()`
-- `agent.py` 的 `chat()`、`chat_stream()`、`_build_messages_async()` 签名加 `project_id` 参数
-- 文件：`agent/api/fastapi_app.py`，`agent/core/agent.py`
+**当前状态**: 设计决策未定，代码暂无需改动。
 
-### Phase 1（上下文持久化 MVP）
+---
 
-**TODO-6: IDB 升级 + useProjectStore**
-- `localDB.js` DB_VERSION 1→2，`onupgradeneeded` 创建 `projects` store，新增 CRUD 函数
-- `frontend/src/stores/project.js`：新建 `useProjectStore`，CRUD + 离线重试队列
-- Project 结构：`{id, title, session_ids, context_version, context_summary, spec, task_tree, synced}`
-- 文件：`frontend/src/services/localDB.js`，`frontend/src/stores/project.js`
+## TODO-19: 角色相关测试补全（HIGH）
 
-**TODO-7: ContextExtractor + /api/project/context 端点**
-- `agent/memory/context_extractor.py`：类比 `MemoryDistiller`，键为 `{user_id}:{project_id}`，写入 ChromaDB 集合 `project_{id}_context`
-- `fastapi_app.py`：`POST /api/project/context/extract`、`GET /api/project/context?project_id=X&query=MSG`
-- `agent.py`：`_get_project_context(project_id, message)` 私有方法；`_build_messages_async()` 中注入 `[PROJECT CONTEXT]` 区块
-- `sendChatMessage()` 在 `websocket.js` 中接受 `projectId` 参数，ChatView 从 store 读取后传入
-- 文件：`agent/memory/context_extractor.py`，`agent/api/fastapi_app.py`，`agent/core/agent.py`，`frontend/src/services/websocket.js`
+**什么**: 本次评审发现角色体系（`roles_router.py`、`role_manager.py`、`prompt_builder.py`、`role_models.py`）完全没有测试覆盖。
 
-### Phase 2（规格驱动开发）
+**覆盖路径**:
 
-**TODO-8: SpecEditor.vue + /api/project/spec 端点**
-- `SpecEditor.vue`：textarea + 预览切换，保存时写 IDB + 调 `PUT /api/project/spec`，失败标 `synced:false`
-- `fastapi_app.py`：`PUT /api/project/spec`（ChromaDB delete + re-insert）、`GET /api/project/spec`
-- `agent.py`：`_spec_turn_counts` 字典，`inject_spec_if_due()` 每 10 轮注入 `[SPEC]` 区块
-- 文件：`frontend/src/components/SpecEditor.vue`，`agent/api/fastapi_app.py`，`agent/core/agent.py`
+```
+角色 CRUD 路径（未测）
+├── POST /api/roles → create_role → RoleManager.save_role → JSON 写盘
+├── GET /api/roles/{id} → load_role → JSON 读盘 + Pydantic validate
+├── PUT /api/roles/{id} → update_role → 覆盖写盘
+├── PATCH /api/roles/{id} → patch_role → _deep_merge → Pydantic validate
+└── DELETE /api/roles/{id} → delete_role → 删 JSON + 删 ChromaDB collections
 
-### Phase 3（自主任务分解）
+角色激活路径（未测）
+├── POST /api/roles/activate → _user_active_roles[user_id] = role_id
+├── GET /api/roles/activate → 返回当前激活
+└── DELETE /api/roles/activate → pop
 
-**TODO-9: TaskTree.vue + /api/project/tasks/decompose + [TASK_DONE] 机制**
-- `TaskTree.vue`：树形展示，状态 badge，AI 分解按钮，手动添加任务
-- `fastapi_app.py`：`POST /api/project/tasks/decompose`（LLM 分解）、`GET /api/project/tasks`
-- `agent.py`：`chat_stream()` 末尾扫描 `full_response` 中的 `[TASK_DONE]`（D1=B 方案），yield `task_update`/`task_blocked`，清除 sentinel 字符串
-- Java `AgentService`：switch 中处理 `task_update`/`task_blocked` 事件，转发给 WS
-- `websocket.js`：处理 `task_update`/`task_blocked`，更新 IDB task_tree
-- 文件：`frontend/src/components/TaskTree.vue`，`agent/api/fastapi_app.py`，`agent/core/agent.py`，`backend/.../service/AgentService.java`，`frontend/src/services/websocket.js`
+上下文构建路径（未测，最关键）
+├── get_role_context → load_role + 3x _semantic_search
+│   └── PromptBuilder.build_system_prompt → 9 个 section 构建器
+└── _get_user_role_persona_content → fastapi_app.py → 注入 chat 请求
+```
 
-**TODO-10: ProjectView.vue 项目仪表板**
-- `/project/:id` 路由：三栏（项目列表 / SpecEditor / TaskTree）
-- Sidebar.vue 加入'项目'入口
-- 文件：`frontend/src/views/ProjectView.vue`，`frontend/src/router/index.js`，`frontend/src/components/layout/Sidebar.vue`
+**需新增**:
+- `agent/tests/test_role_manager.py`：RoleManager CRUD + add_memory + get_role_context（mock ChromaDB）
+- `agent/tests/test_prompt_builder.py`：build_system_prompt 的所有 9 个 section + 边界（空上下文、无 redlines 等）
+- `agent/tests/test_roles_endpoints.py`：全部端点 happy path + 404 / 400 错误路径（`httpx.ASGITransport` + mock RoleManager）
 
-### 配套测试
+**文件**: 新建 `agent/tests/test_role_manager.py`，`agent/tests/test_prompt_builder.py`，`agent/tests/test_roles_endpoints.py`
 
-**TODO-11: 新功能测试**
-- `agent/tests/test_context_extractor.py`：类比 `test_distiller.py`，用 stub ChromaCollection，无 ChromaDB 依赖
-- `agent/tests/test_project_endpoints.py`：类比 `test_memory_endpoints.py`，用 `httpx.ASGITransport`，mock LLM 和 ChromaDB
+**代价**: Human ~2h / CC ~30min
 
-**架构评审关键约束（实现时必须遵守）**:
-- ChromaDB 每项目独立集合 `project_{id}_context`，避免全扫描（`long_term` 集合不加 metadata filter）
-- spec 更新 = delete(`spec_{project_id}`) + add(`spec_{project_id}_v{version}`)（ChromaDB 无原生更新）
-- `_context_extractor.record_turn()` 键必须是 `f"{user_id}:{project_id}"`（按项目隔离，非全局 per-user）
-- `_spec_turn_counts` 同上，否则切换项目时注入周期紊乱
-- `[TASK_DONE]` 检测前必须从 `full_response` 中清除 sentinel，避免显示给用户
-- IDB 版本升级需正确处理 `oldVersion < 2`，不能用 `e.target.result.deleteObjectStore()` 删旧 store
+---
+
+## TODO-20: Docker 中间无前缀卷清理（LOW）
+
+**什么**: ChromaDB 迁移过程（2026-06-09）创建了两个无项目前缀的中间卷：`agent_chroma_data` 和 `agent_chroma_data_longterm`。数据已迁移到正式卷（`intelligent_agent_agent_chroma_data` / `intelligent_agent_agent_chroma_data_longterm`），中间卷空间仍占用。
+
+**如何清理**:
+```bash
+docker volume rm agent_chroma_data agent_chroma_data_longterm
+```
+
+**注意**: 执行前先确认无容器正在挂载这两个卷：
+```bash
+docker ps -a --filter volume=agent_chroma_data
+```
+
+**代价**: Human ~5min / CC ~2min

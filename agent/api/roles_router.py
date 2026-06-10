@@ -6,12 +6,15 @@
   长期记忆   → ChromaDB  role_{id}_memory
   日记       → ChromaDB  role_{id}_journal
   知识库     → ChromaDB  role_{id}_knowledge
+  激活状态   → data/user_active_roles.json（重启后自动恢复）
 
-/api/roles/{role_id}/activate  — 设置用户当前激活角色（per-user，重启清空）
+/api/roles/{role_id}/activate  — 设置用户当前激活角色（per-user，持久化）
 /api/roles/activate            — GET 当前激活角色，DELETE 取消激活
 """
 from __future__ import annotations
 
+import json as _json
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -27,8 +30,30 @@ router = APIRouter(prefix="/api/roles", tags=["roles"])
 
 _role_manager: Optional[RoleManager] = None
 
-# user_id → role_id（运行时，重启后清空）
+# user_id → role_id（运行时；由 fastapi_app.py lifespan 从文件恢复）
 _user_active_roles: dict = {}
+
+_USER_ACTIVE_ROLES_FILE = Path(__file__).parent.parent / "data" / "user_active_roles.json"
+
+
+def _load_user_active_roles() -> dict:
+    try:
+        if _USER_ACTIVE_ROLES_FILE.exists():
+            return _json.loads(_USER_ACTIVE_ROLES_FILE.read_text(encoding="utf-8"))
+    except Exception as _e:
+        logger.warning(f"读取用户激活角色文件失败: {_e}")
+    return {}
+
+
+def _save_user_active_roles() -> None:
+    try:
+        _USER_ACTIVE_ROLES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _USER_ACTIVE_ROLES_FILE.write_text(
+            _json.dumps(_user_active_roles, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as _e:
+        logger.warning(f"保存用户激活角色失败: {_e}")
 
 
 def get_role_manager() -> RoleManager:
@@ -60,6 +85,7 @@ async def activate_role(body: ActivateRequest, req: Request):
     if not rm.load_role(body.role_id):
         raise HTTPException(404, f"角色不存在: {body.role_id}")
     _user_active_roles[user_id] = body.role_id
+    _save_user_active_roles()
     logger.info(f"用户 {user_id} 激活角色: {body.role_id}")
     return {"success": True, "role_id": body.role_id}
 
@@ -68,6 +94,7 @@ async def activate_role(body: ActivateRequest, req: Request):
 async def deactivate_role(req: Request):
     user_id = getattr(req.state, "user_id", "default")
     old = _user_active_roles.pop(user_id, None)
+    _save_user_active_roles()
     logger.info(f"用户 {user_id} 取消激活角色: {old}")
     return {"success": True, "deactivated": old}
 
@@ -171,6 +198,7 @@ async def delete_role_endpoint(role_id: str):
         raise HTTPException(404, f"角色不存在: {role_id}")
     for uid in [u for u, r in _user_active_roles.items() if r == role_id]:
         del _user_active_roles[uid]
+    _save_user_active_roles()
     return {"success": True}
 
 

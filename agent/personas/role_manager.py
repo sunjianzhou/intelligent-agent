@@ -12,6 +12,7 @@ import json
 import os
 import uuid
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Deque, Dict, List, Literal, Optional
 
@@ -261,29 +262,23 @@ class RoleManager:
         # 短期记忆（内存 deque，重启后空）
         short_term = list(self._short_term_cache.get(role_id, []))
 
-        # 长期记忆语义召回
-        long_term = self._semantic_search(
-            collection_name=f"role_{role_id}_memory",
-            query=query,
-            top_k=rule.top_k,
-            threshold=rule.similarity_threshold,
-        )
-
-        # 日记语义召回
-        journal = self._semantic_search(
-            collection_name=f"role_{role_id}_journal",
-            query=query,
-            top_k=3,
-            threshold=rule.similarity_threshold,
-        )
-
-        # 知识库语义召回
-        knowledge = self._semantic_search(
-            collection_name=f"role_{role_id}_knowledge",
-            query=query,
-            top_k=3,
-            threshold=rule.similarity_threshold,
-        )
+        # 长期记忆 / 日记 / 知识库：三路 ChromaDB 查询并行执行
+        with ThreadPoolExecutor(max_workers=3) as _exe:
+            _f_lt = _exe.submit(
+                self._semantic_search,
+                f"role_{role_id}_memory", query, rule.top_k, rule.similarity_threshold,
+            )
+            _f_j = _exe.submit(
+                self._semantic_search,
+                f"role_{role_id}_journal", query, 3, rule.similarity_threshold,
+            )
+            _f_k = _exe.submit(
+                self._semantic_search,
+                f"role_{role_id}_knowledge", query, 3, rule.similarity_threshold,
+            )
+        long_term = _f_lt.result()
+        journal   = _f_j.result()
+        knowledge = _f_k.result()
 
         return {
             "role_config": role,

@@ -34,7 +34,11 @@ from api.roles_router import (
     router as roles_router,
     _user_active_roles as _user_active_roles_state,
     get_role_manager as _get_role_manager,
+    _load_user_active_roles as _load_active_roles,
 )
+from personas.prompt_builder import PromptBuilder as _PromptBuilder
+
+_prompt_builder = _PromptBuilder()
 from api.metrics import (
     metrics_router, metrics_middleware,
     llm_inference_total, llm_inference_duration_seconds,
@@ -116,13 +120,12 @@ async def _get_user_role_persona_content(user_id: str, query: str) -> str | None
     if not role_id:
         return None
     try:
-        from personas.prompt_builder import PromptBuilder
         rm = _get_role_manager()
         loop = asyncio.get_event_loop()
         ctx = await loop.run_in_executor(None, rm.get_role_context, role_id, query)
         if not ctx:
             return None
-        return PromptBuilder().build_system_prompt(ctx)
+        return _prompt_builder.build_system_prompt(ctx)
     except Exception as _e:
         logger.warning(f"构建角色提示失败 [user={user_id}, role={role_id}]: {_e}")
         return None
@@ -344,11 +347,17 @@ async def lifespan(app: FastAPI):
         except Exception as _restore_err:
             logger.warning(f"恢复用户 {_uid} 模型偏好失败: {_restore_err}")
 
-    # 恢复用户角色偏好
+    # 恢复用户角色偏好（.md persona）
     _saved_persona_prefs = _load_user_persona_prefs()
     for _uid, _persona_name in _saved_persona_prefs.items():
         _personas_state[_uid] = _persona_name
         logger.info(f"恢复用户 {_uid} 的角色偏好: {_persona_name}")
+
+    # 恢复用户激活的 JSON 角色配置
+    _saved_active_roles = _load_active_roles()
+    for _uid, _role_id in _saved_active_roles.items():
+        _user_active_roles_state[_uid] = _role_id
+        logger.info(f"恢复用户 {_uid} 的激活角色: {_role_id}")
 
     # 启动时预热 embedding 模型
     try:
