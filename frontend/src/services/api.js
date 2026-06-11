@@ -204,3 +204,13 @@ export const listConversations   = () => request(`${BASE}/conversations`)
 export const getConversation     = (id) => request(`${BASE}/conversations/${encodeURIComponent(id)}`)
 export const deleteConversation  = (id) => request(`${BASE}/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' })
 export const clearConversations  = () => request(`${BASE}/conversations`, { method: 'DELETE' })
+
+// ── Roles ─────────────────────────────────────────────────────────────────────
+
+export const listRolesApi      = () => request(`${BASE}/roles`)
+export const getActiveRoleApi  = () => request(`${BASE}/roles/activate`)
+export const activateRoleApi   = (roleId) =>
+  request(`${BASE}/roles/activate`, { method: 'POST', body: JSON.stringify({ role_id: roleId }) })
+export const deactivateRoleApi = () => request(`${BASE}/roles/activate`, { method: 'DELETE' })
+export const syncRoleToServer  = (roleId, data) =>
+  request(`${BASE}/roles/${encodeURIComponent(roleId)}`, { method: 'PUT', body: JSON.stringify(data) })

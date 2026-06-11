@@ -277,6 +277,14 @@
         </div>
       </el-tab-pane>
 
+      <!-- ── Tab 6：提示预览 ── -->
+      <el-tab-pane label="提示预览" name="preview">
+        <div class="preview-hint">
+          <i class="fas fa-eye" /> 以下是根据当前表单编译的系统提示预览（实时更新）
+        </div>
+        <div class="md-preview" v-html="previewHtml" />
+      </el-tab-pane>
+
     </el-tabs>
   </div>
 </template>
@@ -285,6 +293,8 @@
 import { ref, reactive, computed, defineComponent, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { saveRole, loadRole, listRoles, deleteRole, newRoleConfig } from '@/services/roleStorage'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 // ── TagInput 内联局部组件 ─────────────────────────────────────────────────
 const TagInput = defineComponent({
@@ -473,6 +483,44 @@ function onKnowledgeFileChange(file) {
     form.knowledgeJournal.knowledgeSources.push(file.name)
   }
 }
+
+// ── 提示预览 ─────────────────────────────────────────────────────────────
+const _MD_ALLOWED = {
+  ALLOWED_TAGS: ['p','br','strong','em','code','pre','blockquote','ul','ol','li',
+                 'h1','h2','h3','h4','h5','h6','hr','span','table','thead','tbody','tr','th','td'],
+  ALLOWED_ATTR: ['class'],
+}
+
+const previewHtml = computed(() => {
+  const c  = form.roleCard
+  const id = form.coreIdentity
+  const up = form.userProfile
+
+  const lines = []
+  lines.push(`# ${c.name || '（未命名角色）'}`)
+  if (c.signature) lines.push(`\n> ${c.signature}`)
+  if (c.tags?.length) lines.push(`\n**标签**: ${c.tags.join('、')}`)
+
+  lines.push(`\n---\n\n## 核心身份`)
+  if (id.personality?.length) lines.push(`\n**性格**: ${id.personality.join('、')}`)
+  if (id.languageStyle) lines.push(`\n**语言风格**: ${id.languageStyle}`)
+  if (id.principles?.length) {
+    lines.push(`\n**行为原则**:\n`)
+    id.principles.forEach((p, i) => lines.push(`${i + 1}. ${p}`))
+  }
+  if (id.redlines?.length) {
+    lines.push(`\n**绝对底线** ⚠️:\n`)
+    id.redlines.forEach(r => lines.push(`- ${r}`))
+  }
+
+  lines.push(`\n---\n\n## 用户画像`)
+  lines.push(`- **昵称**: ${up.nickname || '（未设置）'}`)
+  lines.push(`- **关系**: ${up.relationship || '朋友'}`)
+  if (up.background) lines.push(`- **背景**: ${up.background}`)
+
+  const raw = lines.join('\n')
+  return DOMPurify.sanitize(marked.parse(raw), _MD_ALLOWED)
+})
 </script>
 
 <style scoped>
@@ -536,4 +584,32 @@ function onKnowledgeFileChange(file) {
   flex-wrap: wrap;
   align-items: center;
 }
+
+.preview-hint {
+  font-size: 0.8rem;
+  color: #aaa;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.md-preview {
+  background: #fafbfc;
+  border: 1px solid #eef0f4;
+  border-radius: 10px;
+  padding: 20px 24px;
+  font-size: 0.92rem;
+  line-height: 1.7;
+  color: #333;
+  min-height: 200px;
+}
+.md-preview :deep(h1) { font-size: 1.3rem; font-weight: 600; margin: 0 0 10px; color: #222; }
+.md-preview :deep(h2) { font-size: 1.05rem; font-weight: 600; margin: 16px 0 8px; color: #333; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+.md-preview :deep(h3) { font-size: 0.95rem; font-weight: 600; margin: 12px 0 6px; }
+.md-preview :deep(blockquote) { border-left: 3px solid #667eea; padding: 4px 12px; margin: 8px 0; color: #666; background: #f8f8ff; border-radius: 0 6px 6px 0; }
+.md-preview :deep(ul), .md-preview :deep(ol) { padding-left: 20px; margin: 6px 0; }
+.md-preview :deep(li) { margin-bottom: 3px; }
+.md-preview :deep(hr) { border: none; border-top: 1px solid #eee; margin: 14px 0; }
+.md-preview :deep(strong) { color: #444; }
+.md-preview :deep(p) { margin: 0 0 8px; }
 </style>

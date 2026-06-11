@@ -87,82 +87,36 @@ docker ps -a --filter volume=agent_chroma_data
 
 ---
 
-## TODO-24: Header 信息密度优化（P0 布局，待确认）
+## ~~TODO-24: Header 信息密度优化~~ ✅ 已完成（2026-06-12）
 
-**什么**: 当前 Header 右侧堆叠了「角色选择器 + 模型选择器 + 管理齿轮 + 连接状态 + 主题切换 + 清空按钮」，移动端折叠后完全不可用。
-
-**为什么**: Header 是固定导航栏，放置操作性控件（角色/模型切换）会挤占状态展示空间，且与"发送消息"操作在空间上割裂。
-
-**建议方案**: 将角色和模型选择器移至输入框上方的「配置条」（inline config bar），Header 只保留连接状态 + 主题切换 + 清空。
-
-**涉及文件**:
-- `frontend/src/components/layout/Header.vue` — 删除两个 `.model-switcher` div
-- `frontend/src/views/ChatView.vue` — 在 `.chat-input-wrapper` 上方新增 `.config-bar`，包含角色下拉 + 模型下拉
-
-**注意**: Docker 镜像是 4 天前构建的旧版本，本地 Header.vue 与已部署版本不同步，改前需重建前端镜像确认基线。
-
-**代价**: Human ~10min / CC ~20min
+模型切换器从 Header 移至 ChatView 输入框上方 config-bar；同行新增角色选择器（调用 `/api/roles/activate`）；Header 只保留连接状态/主题/清空/管理齿轮。
 
 ---
 
-## TODO-25: MemoryView 清空全部按钮视觉分离（P1 UX）
+## ~~TODO-25: MemoryView 清空全部按钮视觉分离~~ ✅ 已完成（2026-06-12）
 
-**什么**: 「清空全部」红色破坏性按钮目前紧靠记忆统计数字（短期 N 条 / 长期 N 条），快速扫视时极易误点。
-
-**当前位置**: `MemoryView.vue` 第 18 行，在 `.stats-row` 内最右侧。
-
-**建议方案**: 从 stats-row 中移出，改为独立的 `danger-zone` div，与 stats 之间加 `border-top: 1px solid #fecaca; margin-top: 12px; padding-top: 10px`，或直接加 `margin-left: auto` + 视觉告警色背景条。
-
-**代价**: Human ~5min / CC ~10min
+「清空全部」按钮从 `stats-row` 移出，独立为 `danger-zone` div，用 `border-top: 1px solid #fecaca` 分隔。
 
 ---
 
-## TODO-26: SystemView 信息展示优化（P2 信息架构）
+## ~~TODO-26: SystemView 信息展示优化~~ ✅ 已完成（2026-06-12）
 
-**什么**: SystemView 当前将「模型信息/Ollama 状态/系统内存/工具列表」平铺为等权重卡片，没有视觉层级区分。工具列表尤其冗长但优先级低。
-
-**建议**:
-1. 工具列表改为折叠面板（默认收起），减少首屏噪音
-2. 关键状态（连接/模型/内存）用大数字 + 颜色编码突出
-3. 模型切换按钮移至此视图（与 TODO-24 配合）
-
-**涉及文件**: `frontend/src/views/SystemView.vue`
-
-**代价**: Human ~15min / CC ~30min
+「可用模型」和「内存优化建议」两张冗长卡片改为可折叠（点标题展开/收起），默认建议折叠、模型展开。
 
 ---
 
-## TODO-27: 历史对话侧边栏 UX 完善（P2）
+## ~~TODO-27: 历史对话侧边栏 UX 完善~~ ✅ 已完成（2026-06-12）
 
-**什么**: 历史对话浮动面板（T4 已实现）目前缺少以下细节：
-1. 会话无标题时显示「新对话」占位文字而非空白
-2. 删除会话后若是当前会话，应自动切换到最新的其他会话而非保留断开状态
-3. 面板宽度在移动端超出视口
-
-**涉及文件**: `frontend/src/views/ChatView.vue`（历史面板部分）
-
-**代价**: Human ~10min / CC ~20min
+1. 无 preview 时显示「新对话」占位；2. 删除当前会话后自动加载下一条；3. 移动端面板宽度改 `min(240px, 85vw)`。
 
 ---
 
-## TODO-28: 角色编辑器 Markdown 预览优化（P3）
+## ~~TODO-28: 角色编辑器 Markdown 预览~~ ✅ 已完成（2026-06-12）
 
-**什么**: 角色编辑页（RoleEditorView）目前右侧预览区是纯文本，Markdown 标题/列表/加粗无渲染。
-
-**建议**: 引入 `marked` 或 `markdown-it`（项目已有依赖可复用），将预览区改为 `v-html="rendered"`。
-
-**注意**: 需做 XSS sanitize（DOMPurify），角色 MD 内容来自用户输入。
-
-**涉及文件**: `frontend/src/views/RoleEditorView.vue`
-
-**代价**: Human ~5min / CC ~15min
+RoleEditorView 新增第六个 Tab「提示预览」，用 `marked` + `DOMPurify` 实时渲染角色表单为 Markdown 系统提示预览。
 
 ---
 
-## TODO-29: 移动端汉堡菜单完整性核查（P2）
+## ~~TODO-29: 移动端汉堡菜单完整性~~ ✅ 已完成（2026-06-12）
 
-**什么**: 侧边栏汉堡菜单在移动端目前已有 chat / 角色编辑 / memory / project / admin-tasks 五项，但缺少「系统」入口（SystemView），且历史对话快速入口也未在移动端暴露。
-
-**涉及文件**: `frontend/src/components/layout/Sidebar.vue`
-
-**代价**: Human ~5min / CC ~10min
+Header.vue navItems 补「系统」(`/admin/system`)；聊天页抽屉新增「历史会话」项，点击触发 `store.triggerOpenHistory()`，ChatView watch 信号自动打开面板。

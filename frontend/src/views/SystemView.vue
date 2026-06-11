@@ -441,13 +441,14 @@
       </div>
     </div>
 
-    <!-- 内存优化建议 -->
+    <!-- 内存优化建议（可折叠，默认收起） -->
     <div class="detail-card mem-tips-card">
-      <div class="detail-title">
+      <div class="detail-title collapsible-title" @click="showMemTips = !showMemTips" style="cursor:pointer;user-select:none">
         <i class="fas fa-lightbulb" /> 内存优化建议
         <span class="rc-tip">可操作的降内存手段</span>
+        <i :class="showMemTips ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" style="margin-left:auto;font-size:0.75rem;color:#bbb" />
       </div>
-      <div class="tips-grid">
+      <div v-if="showMemTips" class="tips-grid">
 
         <div class="tip-group">
           <div class="tip-group-title"><i class="fab fa-node-js" style="color:#68a063"/> 前端 (当前 ~{{ frontendMemMb }} MB)</div>
@@ -494,12 +495,14 @@
       </div>
     </div>
 
-    <!-- 已安装/可用模型 -->
+    <!-- 已安装/可用模型（可折叠） -->
     <div class="detail-card model-card">
-      <div class="detail-title">
+      <div class="detail-title collapsible-title" @click="showModelList = !showModelList" style="cursor:pointer;user-select:none">
         <i class="fas fa-cube" /> 可用模型
+        <span class="rc-tip">{{ models.length }} 个</span>
+        <i :class="showModelList ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" style="margin-left:auto;font-size:0.75rem;color:#bbb" />
       </div>
-      <div class="model-list">
+      <div v-if="showModelList" class="model-list">
         <!-- 当前是云端模型时，顶部高亮显示 -->
         <div v-if="cloudMode" class="model-item active cloud-model-item">
           <i class="fas fa-cloud" />
@@ -581,6 +584,8 @@ const responseTimes = computed(() => wsStore.responseTimes || [])
 // ── 状态 ─────────────────────────────────────────────────
 const loading      = ref(false)
 const showOthers   = ref(false)
+const showMemTips  = ref(false)
+const showModelList = ref(true)
 const topOthers    = ref([])
 const javaOk       = ref(null)
 const pythonOk     = ref(null)

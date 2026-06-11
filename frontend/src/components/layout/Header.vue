@@ -26,6 +26,18 @@
           {{ item.label }}
         </router-link>
 
+        <!-- 聊天页：历史会话快捷入口 -->
+        <template v-if="route.name === 'chat'">
+          <div class="mobile-nav-divider" />
+          <div
+            class="mobile-nav-item mobile-nav-option"
+            @click="store.triggerOpenHistory(); showMobileMenu = false"
+          >
+            <i class="fas fa-history" />
+            历史会话
+          </div>
+        </template>
+
         <!-- 管理后台 -->
         <div class="mobile-nav-divider" />
         <div class="mobile-nav-section-title">管理后台</div>
@@ -40,60 +52,10 @@
           {{ item.label }}
         </router-link>
 
-        <!-- 仅在聊天页显示模型快速切换 -->
-        <template v-if="showModelSwitch">
-          <div class="mobile-nav-divider" />
-          <!-- 模型切换 -->
-          <div class="mobile-nav-section-title">当前模型</div>
-          <div
-            v-for="m in availableModels"
-            :key="m"
-            class="mobile-nav-item mobile-nav-option"
-            :class="{ 'mobile-active': m === currentModel }"
-            @click="handleSwitch(m); showMobileMenu = false"
-          >
-            <i class="fas fa-brain" />
-            {{ m }}
-            <i v-if="m === currentModel" class="fas fa-check mobile-check" />
-          </div>
-        </template>
       </div>
     </div>
 
     <div class="header-right">
-      <!-- 模型切换下拉（仅在聊天页显示） -->
-      <div v-if="showModelSwitch" class="model-switcher" ref="switcherRef">
-        <button
-          class="model-btn"
-          :class="{ open: dropdownOpen }"
-          @click="toggleDropdown"
-        >
-          <i class="fas fa-brain" />
-          <span class="model-name-text">{{ modelStatus }}</span>
-          <i class="fas fa-chevron-down chevron" />
-        </button>
-
-        <!-- 下拉列表 -->
-        <div v-if="dropdownOpen" class="model-dropdown">
-          <div class="dropdown-title">切换模型</div>
-          <div
-            v-for="m in availableModels"
-            :key="m"
-            class="dropdown-item"
-            :class="{ active: m === currentModel, switching: switchingModel === m }"
-            @click="handleSwitch(m)"
-          >
-            <i class="fas fa-cube item-icon" />
-            <span class="item-name">{{ m }}</span>
-            <i v-if="m === currentModel" class="fas fa-check item-check" />
-            <i v-if="switchingModel === m" class="fas fa-circle-notch fa-spin item-check" />
-          </div>
-          <div v-if="availableModels.length === 0" class="dropdown-empty">
-            暂无可用模型
-          </div>
-        </div>
-      </div>
-
       <!-- 管理后台入口 -->
       <div class="admin-entry" ref="adminMenuRef">
         <button class="admin-btn" :class="{ open: adminMenuOpen }" @click="adminMenuOpen = !adminMenuOpen" title="管理后台">
@@ -158,6 +120,7 @@ const navItems = [
   { name: 'role-editor', label: '角色配置', icon: 'fas fa-id-card',    path: '/roles/editor' },
   { name: 'memory',      label: '记忆',   icon: 'fas fa-brain',        path: '/memory' },
   { name: 'project',     label: '项目',   icon: 'fas fa-folder-open',  path: '/project' },
+  { name: 'admin-system', label: '系统',  icon: 'fas fa-info-circle',  path: '/admin/system' },
 ]
 
 const adminNavItems = [
@@ -187,19 +150,8 @@ const pageIcon    = computed(() => pageConfig.value.icon)
 // ── Store 数据 ────────────────────────────────────────────
 const isConnected      = computed(() => store.isConnected)
 const connectionStatus = computed(() => store.connectionStatus)
-const modelStatus      = computed(() => store.modelStatus)
-const currentModel     = computed(() => store.currentModel)
-const availableModels  = computed(() => store.availableModels)
 // ── 显示控制 ──────────────────────────────────────────────
 const showClearButton = computed(() => route.name === 'chat')
-const showModelSwitch = computed(() => route.name === 'chat')
-
-// ── 下拉控制（模型） ──────────────────────────────────────
-const dropdownOpen   = ref(false)
-const switchingModel = ref('')
-const switcherRef    = ref(null)
-
-const toggleDropdown = () => { dropdownOpen.value = !dropdownOpen.value }
 
 // ── 管理后台入口 ──────────────────────────────────────────
 const adminMenuOpen = ref(false)
@@ -213,22 +165,9 @@ const adminItems = [
 ]
 
 const handleClickOutside = (e) => {
-  if (switcherRef.value && !switcherRef.value.contains(e.target)) {
-    dropdownOpen.value = false
-  }
   if (adminMenuRef.value && !adminMenuRef.value.contains(e.target)) {
     adminMenuOpen.value = false
   }
-}
-
-// ── 切换模型 ──────────────────────────────────────────────
-const handleSwitch = async (modelName) => {
-  if (modelName === currentModel.value || switchingModel.value) return
-  switchingModel.value = modelName
-  const result = await store.switchModel(modelName)
-  if (!result?.success) ElMessage.error(`切换失败: ${result?.message || '未知错误'}`)
-  switchingModel.value = ''
-  dropdownOpen.value   = false
 }
 
 // ── 清空聊天 ──────────────────────────────────────────────
@@ -250,12 +189,8 @@ onMounted(() => {
   applyTheme(isDark.value)  // 初始化主题
 })
 
-// 容器刚启动时后端可能尚未就绪，首次拉取会失败且没有重试，
-// 导致下拉框一直显示"暂无可用角色/模型"。WS 重连成功后，
-// 若列表仍为空则补拉一次。
 watch(isConnected, (connected) => {
-  if (!connected) return
-  if (availableModels.value.length === 0) store.loadModels()
+  if (connected && store.availableModels.length === 0) store.loadModels()
 })
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
@@ -361,84 +296,6 @@ onUnmounted(() => {
   gap: 14px;
 }
 
-/* ── 模型切换按钮 ─────────────────────────────────────── */
-.model-switcher { position: relative; }
-
-.model-btn {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 12px;
-  border: 1px solid #e0e3e8;
-  border-radius: 8px;
-  background: white;
-  font-size: 0.88rem;
-  color: #444;
-  cursor: pointer;
-  transition: all 0.2s;
-  max-width: 200px;
-}
-.model-btn:hover, .model-btn.open {
-  border-color: #667eea;
-  color: #667eea;
-}
-.model-btn i:first-child { color: #667eea; flex-shrink: 0; }
-.model-name-text {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.chevron {
-  font-size: 0.7rem;
-  transition: transform 0.2s;
-  flex-shrink: 0;
-}
-.model-btn.open .chevron { transform: rotate(180deg); }
-
-/* ── 下拉列表 ────────────────────────────────────────── */
-.model-dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  min-width: 220px;
-  background: white;
-  border: 1px solid #e0e3e8;
-  border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-  z-index: 100;
-  overflow: hidden;
-}
-.dropdown-title {
-  padding: 10px 14px 6px;
-  font-size: 0.78rem;
-  color: #aaa;
-  font-weight: 500;
-  letter-spacing: 0.03em;
-}
-.dropdown-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 14px;
-  font-size: 0.88rem;
-  color: #444;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.dropdown-item:hover     { background: #f5f6ff; }
-.dropdown-item.active    { color: #667eea; background: #f0f2ff; }
-.dropdown-item.switching { opacity: 0.6; cursor: not-allowed; }
-.item-icon  { color: #bbb; font-size: 0.8rem; flex-shrink: 0; }
-.item-name  { flex: 1; }
-.item-check { color: #667eea; font-size: 0.8rem; flex-shrink: 0; }
-.dropdown-empty {
-  padding: 14px;
-  font-size: 0.85rem;
-  color: #aaa;
-  text-align: center;
-}
-
 /* ── 连接状态 ────────────────────────────────────────── */
 .connection-status {
   display: flex;
@@ -521,7 +378,6 @@ onUnmounted(() => {
 .admin-item:hover i { color: #667eea; }
 
 @media (max-width: 768px) {
-  .model-switcher { display: none; }
   .admin-entry { display: none; }
   .header { padding: 0 12px; }
   .page-title { font-size: 1rem; }

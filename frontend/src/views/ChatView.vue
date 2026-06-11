@@ -262,7 +262,7 @@
                 <i class="fas fa-trash-alt" />
               </button>
             </div>
-            <div class="history-item-preview">{{ sess.preview || '(无消息)' }}</div>
+            <div class="history-item-preview">{{ sess.preview || '新对话' }}</div>
             <div class="history-item-count">{{ sess.message_count }} 条消息</div>
           </div>
         </div>
@@ -271,6 +271,52 @@
         </div>
       </div>
     </transition>
+
+    <!-- 配置条：角色 + 模型 -->
+    <div class="config-bar">
+      <div class="config-role">
+        <i class="fas fa-id-card config-icon" />
+        <select
+          :value="activeRoleId"
+          class="config-select"
+          :disabled="roleActivating"
+          @change="onRoleChange"
+        >
+          <option value="">默认助手</option>
+          <option v-for="r in availableRoles" :key="r.roleId" :value="r.roleId">
+            {{ r.roleCard?.name || r.roleId }}
+          </option>
+        </select>
+      </div>
+
+      <div class="config-model" ref="configSwitcherRef">
+        <i class="fas fa-brain config-icon" />
+        <button
+          class="config-model-btn"
+          :class="{ open: configDropdownOpen }"
+          @click.stop="configDropdownOpen = !configDropdownOpen"
+        >
+          <span class="config-model-text">{{ modelStatus }}</span>
+          <i class="fas fa-chevron-down config-chevron" />
+        </button>
+        <div v-if="configDropdownOpen" class="config-model-dropdown">
+          <div class="config-dropdown-title">切换模型</div>
+          <div
+            v-for="m in availableModels"
+            :key="m"
+            class="config-dropdown-item"
+            :class="{ active: m === currentModel, switching: configSwitchingModel === m }"
+            @click="handleConfigSwitch(m)"
+          >
+            <i class="fas fa-cube" />
+            <span>{{ m }}</span>
+            <i v-if="m === currentModel" class="fas fa-check" style="color:#667eea;margin-left:auto" />
+            <i v-if="configSwitchingModel === m" class="fas fa-circle-notch fa-spin" style="margin-left:auto" />
+          </div>
+          <div v-if="availableModels.length === 0" class="config-dropdown-empty">暂无可用模型</div>
+        </div>
+      </div>
+    </div>
 
     <!-- 输入区 -->
     <div class="input-area">
@@ -374,6 +420,10 @@ import {
 } from '@/services/api'
 import { formatTime, formatForFilename } from '@/utils/date'
 import { genId } from '@/utils/string'
+import { listRoles } from '@/services/roleStorage'
+import {
+  getActiveRoleApi, activateRoleApi, deactivateRoleApi, syncRoleToServer,
+} from '@/services/api'
 
 // ── marked 配置 ────────────────────────────────────────────
 marked.setOptions({
@@ -401,6 +451,60 @@ const isCloudMode  = computed(() => modelStatus.value?.includes?.('☁') ?? fals
 const isStreaming      = computed(() => store.isStreaming)
 const activeToolSteps  = computed(() => store.activeToolSteps)
 const cancelStreaming   = () => store.cancelStreaming()
+const availableModels  = computed(() => store.availableModels)
+const currentModel     = computed(() => store.currentModel)
+
+// ── 配置条：角色 + 模型 ────────────────────────────────────
+const availableRoles       = ref([])
+const activeRoleId         = ref('')
+const roleActivating       = ref(false)
+const configDropdownOpen   = ref(false)
+const configSwitchingModel = ref('')
+const configSwitcherRef    = ref(null)
+
+const loadRoleConfig = async () => {
+  availableRoles.value = await listRoles()
+  const data = await getActiveRoleApi()
+  if (data?.role_id) activeRoleId.value = data.role_id
+}
+
+const onRoleChange = async (e) => {
+  const roleId = e.target ? e.target.value : e
+  roleActivating.value = true
+  try {
+    if (!roleId) {
+      await deactivateRoleApi()
+      activeRoleId.value = ''
+      ElMessage({ message: '已切换回默认助手', type: 'success', duration: 1500 })
+    } else {
+      const role = availableRoles.value.find(r => r.roleId === roleId)
+      if (role) await syncRoleToServer(roleId, role)
+      await activateRoleApi(roleId)
+      activeRoleId.value = roleId
+      const name = role?.roleCard?.name || roleId
+      ElMessage({ message: `已激活角色「${name}」`, type: 'success', duration: 1500 })
+    }
+  } catch {
+    ElMessage.error('角色切换失败')
+  } finally {
+    roleActivating.value = false
+  }
+}
+
+const handleConfigSwitch = async (modelName) => {
+  if (modelName === currentModel.value || configSwitchingModel.value) return
+  configSwitchingModel.value = modelName
+  const result = await store.switchModel(modelName)
+  if (!result?.success) ElMessage.error(`切换失败: ${result?.message || '未知错误'}`)
+  configSwitchingModel.value = ''
+  configDropdownOpen.value = false
+}
+
+const closeConfigDropdown = (e) => {
+  if (configSwitcherRef.value && !configSwitcherRef.value.contains(e.target)) {
+    configDropdownOpen.value = false
+  }
+}
 
 // ── 本地状态 ───────────────────────────────────────────────
 const inputText      = ref('')
@@ -775,6 +879,9 @@ const closeExportMenu = (e) => {
 // ── 历史会话面板 ──────────────────────────────────────────
 const showHistory    = ref(false)
 const sessions       = ref([])
+
+// 响应移动端汉堡菜单里的「历史会话」快捷入口
+watch(() => store.openHistorySignal, () => toggleHistory())
 const historyLoading = ref(false)
 
 const toggleHistory = async () => {
@@ -821,9 +928,18 @@ const deleteSession = async (sessionId) => {
     { title: '删除会话', confirmText: '删除', danger: true }
   )
   if (!ok) return
+  const wasCurrent = store.currentSessionId === sessionId
   await deleteConversation(sessionId)
   sessions.value = sessions.value.filter(s => s.session_id !== sessionId)
   ElMessage({ message: '会话已删除', type: 'success', duration: 1500 })
+  if (wasCurrent) {
+    const next = sessions.value[0]
+    if (next) {
+      await loadSession(next.session_id)
+    } else {
+      handleNewConversation()
+    }
+  }
 }
 
 const formatHistoryDate = (iso) => {
@@ -894,11 +1010,14 @@ onMounted(async () => {
   scrollToBottom()
   inputRef.value?.focus()
   document.addEventListener('click', closeExportMenu)
+  document.addEventListener('click', closeConfigDropdown)
   document.addEventListener('keydown', handleGlobalKey)
+  loadRoleConfig()
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', closeExportMenu)
+  document.removeEventListener('click', closeConfigDropdown)
   document.removeEventListener('keydown', handleGlobalKey)
   stopThinkingTimer()
   clearTimeout(_searchTimer)
@@ -1597,6 +1716,107 @@ onUnmounted(() => {
 }
 .notif-task-link:hover { opacity: 1; text-decoration: underline; }
 
+/* ── 配置条 ───────────────────────────────────────────────── */
+.config-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 14px;
+  border-top: 1px solid #eef0f4;
+  background: #fafbfc;
+  flex-shrink: 0;
+  gap: 10px;
+}
+.config-role, .config-model {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  position: relative;
+}
+.config-icon { color: #bbb; font-size: 0.78rem; flex-shrink: 0; }
+.config-select {
+  border: 1px solid #e0e3e8;
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 0.8rem;
+  color: #555;
+  background: white;
+  outline: none;
+  cursor: pointer;
+  max-width: 150px;
+}
+.config-select:focus { border-color: #667eea; }
+.config-select:disabled { opacity: 0.6; cursor: not-allowed; }
+.config-model-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border: 1px solid #e0e3e8;
+  border-radius: 6px;
+  background: white;
+  font-size: 0.8rem;
+  color: #555;
+  cursor: pointer;
+  max-width: 180px;
+  transition: all 0.15s;
+}
+.config-model-btn:hover, .config-model-btn.open {
+  border-color: #667eea;
+  color: #667eea;
+}
+.config-model-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+.config-chevron {
+  font-size: 0.62rem;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.config-model-btn.open .config-chevron { transform: rotate(180deg); }
+.config-model-dropdown {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: white;
+  border: 1px solid #e0e3e8;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  z-index: 50;
+  overflow: hidden;
+}
+.config-dropdown-title {
+  padding: 8px 12px 4px;
+  font-size: 0.74rem;
+  color: #aaa;
+  font-weight: 500;
+}
+.config-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  color: #444;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.config-dropdown-item:hover     { background: #f5f6ff; }
+.config-dropdown-item.active    { color: #667eea; background: #f0f2ff; }
+.config-dropdown-item.switching { opacity: 0.6; cursor: not-allowed; }
+.config-dropdown-item i:first-child { color: #bbb; font-size: 0.78rem; }
+.config-dropdown-empty {
+  padding: 12px;
+  font-size: 0.8rem;
+  color: #aaa;
+  text-align: center;
+}
+
 /* ── 移动端（WANT-012）──────────────────────────── */
 @media (max-width: 768px) {
   .chat-view         { padding: 0; }
@@ -1608,7 +1828,7 @@ onUnmounted(() => {
   .export-float      { bottom: 70px; right: 10px; }
   .clear-float       { bottom: 26px; right: 10px; }
   .history-float     { bottom: 114px; right: 10px; }
-  .history-panel     { width: 240px; }
+  .history-panel     { width: min(240px, 85vw); }
   .tool-calls-card,
   .tool-running-card { max-width: 95% !important; }
   .search-bar-input  { font-size: 16px !important; }

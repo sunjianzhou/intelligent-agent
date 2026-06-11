@@ -14,7 +14,10 @@
         <div class="stat-num">{{ avgImportance }}</div>
         <div class="stat-label">平均重要性</div>
       </div>
-      <!-- 危险操作与统计信息分离，避免误点 -->
+    </div>
+
+    <!-- 危险操作区：与统计数字保持视觉距离，防止误点 -->
+    <div class="danger-zone">
       <button class="clear-all-btn" @click="confirmClearAll" title="清空全部记忆（不可恢复）">
         <i class="fas fa-trash-alt" /> 清空全部
       </button>
@@ -530,13 +533,19 @@ onUnmounted(() => {
 /* ── 统计卡片 ─────────────────────────────────────────────── */
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr) auto;
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-  align-items: center;
+}
+.danger-zone {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 10px;
+  border-top: 1px solid #fecaca;
+  margin-top: 4px;
 }
 .clear-all-btn {
-  height: 48px;
-  padding: 0 16px;
+  height: 36px;
+  padding: 0 14px;
   border: 1px solid #fca5a5;
   border-radius: 10px;
   background: #fff5f5;
