@@ -63,17 +63,13 @@ docker ps -a --filter volume=agent_chroma_data
 
 ---
 
-## TODO-22: agent/core/agent.py God Class 拆构（HIGH，先测试再动）
+## ~~TODO-22: agent/core/agent.py God Class 拆构~~ ✅ 已完成（2026-06-11）
 
-**什么**: 将 `agent/core/agent.py`（2318 行）拆分为三个单一职责类：
-- `ConversationFlow` — 对话主流程（prompt 组装、消息发送、回应流）
-- `ToolDispatcher` — 工具解析、规划、执行
-- `MemoryWriter` — 记忆写入、提炼、上下文拼接
+**结果**: 2318 行 God Class 已拆分为四个文件（commit `528b787`）：
+- `core/_context_vars.py`    — 共享 ContextVar（避免循环导入）
+- `core/memory_writer.py`    — MemoryWriterMixin（预热/MCP/蒸馏/清理，~310行）
+- `core/tool_dispatcher.py`  — ToolDispatcherMixin（工具注册/意图/LLM调用，~1130行）
+- `core/conversation_flow.py` — ConversationFlowMixin（消息构建/chat/stream，~460行）
+- `core/agent.py`            — 薄门面 IntelligentAgent（__init__/provider/token/cache，~320行）
 
-**为什么**: 该文件是历史上所有崩溃性 bug 的集中地（Semaphore 绑定错误、内容字段 key、指滞器等）。单一文件承载过多职责，每次修改都是全量风险。
-
-**如何实现**: 按类边界抽取方法，保持 `IntelligentAgent` 作为门面类（Facade），各子类独立可测试。
-
-**先决条件**: **必须先完成 agent.py 核心测试覆盖（CEO Review T5）**，确保有安全网后再拆构。在无测试保护的情况下拆构等同于在生产上盲目重构。
-
-**代价**: Human ~1天 / CC ~1h
+152 passed，1 个预存 flaky（cron 时序竞争），无新增失败。
