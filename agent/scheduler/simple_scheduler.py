@@ -68,7 +68,6 @@ class SimpleTaskScheduler:
         # H-7: 可注入依赖，解除对 api.fastapi_app 的循环 import
         # 由 fastapi_app.py 在 agent 创建后注入；CLI/测试环境保持 None
         self._provider_getter = None   # callable(user_id) -> provider | None
-        self._persona_getter = None    # callable(user_id) -> str | None
         self._inference_slot = None    # async context manager
 
         # 动作注册表
@@ -186,22 +185,16 @@ class SimpleTaskScheduler:
                 _push_notification(f"[llm_generate] agent 未初始化: {prompt[:60]}", role="system")
                 return {"success": False, "error": "agent not initialized"}
             try:
-                # 还原用户的 provider（模型）和 persona（角色内容）
+                # 还原用户的 provider（模型）
                 provider_override = None
-                persona_override = None
-                if self._provider_getter or self._persona_getter:
+                if self._provider_getter:
                     try:
                         _uid = user_id or "java-service"
-                        if self._provider_getter:
-                            provider_override = self._provider_getter(_uid)
-                        if self._persona_getter:
-                            persona_override = self._persona_getter(_uid)
+                        provider_override = self._provider_getter(_uid)
                         if provider_override:
                             logger.debug(f"[llm_generate] 还原用户 {_uid} 的 provider: {provider_override.current_model}")
-                        if persona_override:
-                            logger.debug(f"[llm_generate] 还原用户 {_uid} 的 persona (前30字): {persona_override[:30]}")
                     except Exception as _prov_err:
-                        logger.warning(f"[llm_generate] 还原用户 provider/persona 失败（使用默认）: {_prov_err}")
+                        logger.warning(f"[llm_generate] 还原用户 provider 失败（使用默认）: {_prov_err}")
 
                 # 限制并发 LLM 调用：
                 #   _llm_sem(1) 防止多个 llm_generate 任务互相碰撞；
@@ -222,7 +215,6 @@ class SimpleTaskScheduler:
                     use_tools=False,
                     use_memory=False,
                     provider_override=provider_override,
-                    persona_override=persona_override,
                     skip_cache=True,
                 )
                 async with SimpleTaskScheduler._llm_sem:

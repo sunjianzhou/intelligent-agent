@@ -144,7 +144,7 @@ class Settings(BaseSettings):
     image_gen_sd_user: str = ""           # SD WebUI --api-auth 用户名（可选）
     image_gen_sd_pass: str = ""           # SD WebUI --api-auth 密码（可选）
 
-    model_config = ConfigDict(env_file=".env", case_sensitive=False)
+    model_config = ConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
 
 # 创建全局配置实例

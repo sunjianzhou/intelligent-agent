@@ -247,7 +247,8 @@ async def test_agent_with_memory():
         print(f"\n{i}. 用户: {message}")
 
         response = await agent.chat(message, use_memory=True, use_tools=True)
-        print(f"   助手: {response[:150]}...")
+        content = response.get("content", str(response)) if isinstance(response, dict) else str(response)
+        print(f"   助手: {content[:150]}...")
 
         # 稍微等待
         await asyncio.sleep(1)

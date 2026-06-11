@@ -25,11 +25,8 @@ from services.ollama_provider import OllamaProvider
 from services.base_provider import LLMConfig, ChatMessage
 from skills.router import router as skills_router
 from analytics.router import router as analytics_router
-from api.personas_router import (
-    router as personas_router,
-    _user_personas as _personas_state,
-    _read_persona_content as _read_persona_content,
-)
+from api.projects_router import router as projects_router
+from api.conversations_router import router as conversations_router, append_messages as _append_messages
 from api.roles_router import (
     router as roles_router,
     _user_active_roles as _user_active_roles_state,
@@ -77,38 +74,7 @@ _user_providers: dict = {}
 
 _USER_PREFS_FILE = Path(__file__).parent.parent / "data" / "user_model_prefs.json"
 
-# ── Per-user persona preferences ──────────────────────────────────────────
-# Maps user_id → persona_name (string); persona content loaded on demand from .md files
-_USER_PERSONA_PREFS_FILE = Path(__file__).parent.parent / "data" / "user_persona_prefs.json"
 _RUNTIME_CONFIG_FILE = Path(__file__).parent.parent / "data" / "runtime_config.json"
-
-
-def _load_user_persona_prefs() -> dict:
-    try:
-        if _USER_PERSONA_PREFS_FILE.exists():
-            return _json.loads(_USER_PERSONA_PREFS_FILE.read_text(encoding="utf-8"))
-    except Exception as _e:
-        logger.warning(f"读取用户角色偏好文件失败: {_e}")
-    return {}
-
-
-def _save_user_persona_prefs(prefs: dict) -> None:
-    try:
-        _USER_PERSONA_PREFS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _USER_PERSONA_PREFS_FILE.write_text(
-            _json.dumps(prefs, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-    except Exception as _e:
-        logger.warning(f"保存用户角色偏好失败: {_e}")
-
-
-def _get_user_persona_content(user_id: str) -> str | None:
-    """Return the Markdown content for user's active persona, or None for default template."""
-    persona_name = _personas_state.get(user_id)
-    if not persona_name or persona_name == "default":
-        return None
-    return _read_persona_content(persona_name)
 
 
 async def _get_user_role_persona_content(user_id: str, query: str) -> str | None:
@@ -254,8 +220,9 @@ class _RateLimiter:
         return self._buckets[ip].consume()
 
 
-# 推理接口限流：默认每 IP 10 req/s，突发 20（本地开发一般不触发）
-_rate_limiter = _RateLimiter(rate=10.0, burst=20)
+# 推理接口限流：IP 级（防穿透）10 req/s；用户级（公平分配）5 req/s
+_rate_limiter      = _RateLimiter(rate=10.0, burst=20)
+_user_rate_limiter = _RateLimiter(rate=5.0,  burst=10)
 
 # ── 推理并发控制 ──────────────────────────────────────────────
 # 在 lifespan 中初始化（确保绑定到正确的事件循环）
@@ -347,12 +314,6 @@ async def lifespan(app: FastAPI):
         except Exception as _restore_err:
             logger.warning(f"恢复用户 {_uid} 模型偏好失败: {_restore_err}")
 
-    # 恢复用户角色偏好（.md persona）
-    _saved_persona_prefs = _load_user_persona_prefs()
-    for _uid, _persona_name in _saved_persona_prefs.items():
-        _personas_state[_uid] = _persona_name
-        logger.info(f"恢复用户 {_uid} 的角色偏好: {_persona_name}")
-
     # 恢复用户激活的 JSON 角色配置
     _saved_active_roles = _load_active_roles()
     for _uid, _role_id in _saved_active_roles.items():
@@ -401,7 +362,8 @@ app.add_middleware(
 
 app.include_router(skills_router)
 app.include_router(analytics_router)
-app.include_router(personas_router)
+app.include_router(projects_router)
+app.include_router(conversations_router)
 app.include_router(roles_router)
 app.include_router(metrics_router)
 app.middleware("http")(metrics_middleware)
@@ -497,7 +459,6 @@ if OLLAMA_AVAILABLE and provider:
         if agent.task_manager:
             sch = agent.task_manager.scheduler
             sch._provider_getter = _get_user_provider
-            sch._persona_getter = _get_user_persona_content
             sch._inference_slot = _inference_slot
         logger.info("IntelligentAgent 初始化成功")
     except Exception as e:
@@ -757,14 +718,13 @@ async def list_tools():
 @app.post("/api/chat")
 async def chat(request: ChatRequest, http_req: Request):
     user_id = getattr(http_req.state, "user_id", "default")
+    if not _user_rate_limiter.is_allowed(user_id):
+        return JSONResponse(status_code=429,
+                            content={"success": False, "message": "请求过于频繁，请稍后重试"})
     logger.info(f"收到聊天请求 [user={user_id}, len={len(request.message)}]")
 
     user_provider = _get_user_provider(user_id)
-    # 优先使用结构化角色配置，降级到 .md persona，再降级到默认模板
-    user_persona_content = (
-        await _get_user_role_persona_content(user_id, request.message)
-        or _get_user_persona_content(user_id)
-    )
+    user_persona_content = await _get_user_role_persona_content(user_id, request.message)
     async with _inference_slot():
         if agent and OLLAMA_AVAILABLE:
             try:
@@ -778,6 +738,12 @@ async def chat(request: ChatRequest, http_req: Request):
                     project_id=request.project_id,
                     pending_tasks=request.pending_tasks,
                 )
+                _now = datetime.now().isoformat()
+                _sid = getattr(request, "session_id", None) or user_id
+                _append_messages(user_id, _sid, [
+                    {"role": "user",      "content": request.message, "timestamp": _now},
+                    {"role": "assistant", "content": result["content"], "timestamp": _now},
+                ])
                 return {
                     "response": result["content"],
                     "tool_calls": result["tool_calls"],
@@ -829,11 +795,11 @@ async def chat_stream_endpoint(request: ChatRequest, http_req: Request):
     Agent 可用时走完整 ReAct 循环；降级时走 Provider 直连流式输出。
     """
     user_id = getattr(http_req.state, "user_id", "default")
+    if not _user_rate_limiter.is_allowed(user_id):
+        return JSONResponse(status_code=429,
+                            content={"success": False, "message": "请求过于频繁，请稍后重试"})
     user_provider = _get_user_provider(user_id)
-    user_persona_content = (
-        await _get_user_role_persona_content(user_id, request.message)
-        or _get_user_persona_content(user_id)
-    )
+    user_persona_content = await _get_user_role_persona_content(user_id, request.message)
 
     if not OLLAMA_AVAILABLE:
         async def err():

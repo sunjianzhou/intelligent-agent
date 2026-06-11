@@ -1,17 +1,16 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import {
-  makeProject, saveProject, getProject,
-  listProjects, deleteProject,
-} from '@/services/localDB'
-import { putProjectSpec } from '@/services/api'
+  listProjects, createProject as apiCreateProject,
+  getProjectById, updateProject as apiUpdateProject,
+  deleteProjectApi,
+  putProjectSpec,
+} from '@/services/api'
 
 const ACTIVE_PROJECT_KEY = 'agent_active_project_id'
 
 export const useProjectStore = defineStore('project', () => {
   const projects        = ref([])
-  // 不在 store 初始化时读 localStorage，防止用户切换时上一个用户的项目 ID 污染新用户
-  // 在登录确认后由 App.vue 调用 restoreActiveProject() 读取
   const activeProjectId = ref(null)
 
   const activeProject = computed(() =>
@@ -21,26 +20,25 @@ export const useProjectStore = defineStore('project', () => {
   // ── CRUD ────────────────────────────────────────────────────────────────────
 
   async function loadProjects() {
-    projects.value = await listProjects()
+    const data = await listProjects()
+    if (data?.projects) projects.value = data.projects
   }
 
   async function createProject(title) {
-    const project = makeProject(title)
-    await saveProject(project)
-    projects.value.unshift(project)
-    return project
+    const data = await apiCreateProject({ title })
+    if (!data?.project) throw new Error(data?.message || '创建项目失败')
+    projects.value.unshift(data.project)
+    return data.project
   }
 
   async function activateProject(id) {
     activeProjectId.value = id
     localStorage.setItem(ACTIVE_PROJECT_KEY, id)
-    const p = await getProject(id)
-    if (!p) return
-    // 更新内存列表中的数据
-    const idx = projects.value.findIndex(x => x.id === id)
-    if (idx !== -1) projects.value[idx] = p
-    else projects.value.unshift(p)
+    const data = await getProjectById(id)
+    if (!data?.project) return
+    _patchLocal(data.project)
     // 若有未同步的 spec，重试一次
+    const p = data.project
     if (!p.synced && p.spec?.content) {
       await _syncSpec(p).catch(() => {})
     }
@@ -52,7 +50,7 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function removeProject(id) {
-    await deleteProject(id)
+    await deleteProjectApi(id)
     projects.value = projects.value.filter(p => p.id !== id)
     if (activeProjectId.value === id) {
       activeProjectId.value = null
@@ -63,41 +61,35 @@ export const useProjectStore = defineStore('project', () => {
   // ── 关联 session ─────────────────────────────────────────────────────────────
 
   async function addSessionToProject(projectId, sessionId) {
-    const p = await getProject(projectId)
+    const p = _getLocal(projectId)
     if (!p) return
-    if (!p.session_ids.includes(sessionId)) {
-      p.session_ids.push(sessionId)
-      p.updated_at = new Date().toISOString()
-      await saveProject(p)
-      _patchLocal(p)
-    }
+    if (p.session_ids.includes(sessionId)) return
+    const updated = { ...p, session_ids: [...p.session_ids, sessionId] }
+    await _update(updated)
   }
 
   // ── Context summary ─────────────────────────────────────────────────────────
 
   async function updateContextSummary(id, summary, version) {
-    const p = await getProject(id)
+    const p = _getLocal(id)
     if (!p) return
-    p.context_summary = summary
-    p.context_version = version
-    p.updated_at = new Date().toISOString()
-    await saveProject(p)
-    _patchLocal(p)
+    await _update({ ...p, context_summary: summary, context_version: version })
   }
 
   // ── Spec ─────────────────────────────────────────────────────────────────────
 
   async function updateSpec(projectId, content) {
-    const p = await getProject(projectId)
+    const p = _getLocal(projectId)
     if (!p) return
-    p.spec.content      = content
-    p.spec.version      = (p.spec.version ?? 0) + 1
-    p.spec.last_updated = new Date().toISOString()
-    p.updated_at        = new Date().toISOString()
-    p.synced            = false
-    await saveProject(p)
-    _patchLocal(p)
-    await _syncSpec(p)
+    const spec = {
+      ...p.spec,
+      content,
+      version:      (p.spec?.version ?? 0) + 1,
+      last_updated: new Date().toISOString(),
+    }
+    const updated = { ...p, spec, synced: false }
+    await _update(updated)
+    await _syncSpec(updated)
   }
 
   async function _syncSpec(p) {
@@ -107,9 +99,7 @@ export const useProjectStore = defineStore('project', () => {
         content:    p.spec.content,
         version:    p.spec.version,
       })
-      p.synced = true
-      await saveProject(p)
-      _patchLocal(p)
+      await _update({ ...p, synced: true })
     } catch {
       // 保持 synced:false，下次 activateProject 时重试
     }
@@ -118,7 +108,7 @@ export const useProjectStore = defineStore('project', () => {
   // ── Task tree ────────────────────────────────────────────────────────────────
 
   async function addManualTask(projectId, title) {
-    const p = await getProject(projectId)
+    const p = _getLocal(projectId)
     if (!p) return null
     const task = {
       id:         `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -127,54 +117,61 @@ export const useProjectStore = defineStore('project', () => {
       subtasks:   [],
       created_at: new Date().toISOString(),
     }
-    if (!p.task_tree)             p.task_tree = { root_tasks: [], auto_decompose: false }
-    if (!p.task_tree.root_tasks)  p.task_tree.root_tasks = []
-    p.task_tree.root_tasks.push(task)
-    p.task_tree.last_updated = new Date().toISOString()
-    p.updated_at             = new Date().toISOString()
-    await saveProject(p)
-    _patchLocal(p)
+    const taskTree = p.task_tree ?? { root_tasks: [], auto_decompose: false }
+    const updated = {
+      ...p,
+      task_tree: {
+        ...taskTree,
+        root_tasks:   [...(taskTree.root_tasks ?? []), task],
+        last_updated: new Date().toISOString(),
+      },
+    }
+    await _update(updated)
     return task
   }
 
   async function updateTaskTree(projectId, taskTree) {
-    const p = await getProject(projectId)
+    const p = _getLocal(projectId)
     if (!p) return
-    p.task_tree           = { ...taskTree, last_updated: new Date().toISOString() }
-    p.updated_at          = new Date().toISOString()
-    await saveProject(p)
-    _patchLocal(p)
+    await _update({ ...p, task_tree: { ...taskTree, last_updated: new Date().toISOString() } })
   }
 
   async function markTaskDone(taskData) {
     const pid = taskData?.project_id
     if (!pid) return
-    const p = await getProject(pid)
+    const p = _getLocal(pid)
     if (!p) return
-    _setTaskStatus(p.task_tree.root_tasks, taskData.task_id, 'done')
-    p.task_tree.last_updated = new Date().toISOString()
-    p.updated_at             = new Date().toISOString()
-    await saveProject(p)
-    _patchLocal(p)
+    const cloned = JSON.parse(JSON.stringify(p))
+    _setTaskStatus(cloned.task_tree?.root_tasks, taskData.task_id, 'done')
+    await _update(cloned)
   }
 
   async function markTaskBlocked(taskData) {
     const pid = taskData?.project_id
     if (!pid) return
-    const p = await getProject(pid)
+    const p = _getLocal(pid)
     if (!p) return
-    _setTaskStatus(p.task_tree.root_tasks, taskData.task_id, 'blocked')
-    p.task_tree.last_updated = new Date().toISOString()
-    p.updated_at             = new Date().toISOString()
-    await saveProject(p)
-    _patchLocal(p)
+    const cloned = JSON.parse(JSON.stringify(p))
+    _setTaskStatus(cloned.task_tree?.root_tasks, taskData.task_id, 'blocked')
+    await _update(cloned)
   }
 
   // ── 工具方法 ─────────────────────────────────────────────────────────────────
 
+  function _getLocal(id) {
+    return projects.value.find(p => p.id === id) ?? null
+  }
+
   function _patchLocal(updated) {
     const idx = projects.value.findIndex(p => p.id === updated.id)
     if (idx !== -1) projects.value[idx] = { ...updated }
+    else projects.value.unshift({ ...updated })
+  }
+
+  async function _update(p) {
+    const data = await apiUpdateProject(p.id, p)
+    if (data?.project) _patchLocal(data.project)
+    else _patchLocal(p)
   }
 
   function _setTaskStatus(tasks, taskId, status) {

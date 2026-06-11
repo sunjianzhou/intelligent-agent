@@ -92,7 +92,7 @@ const route = useRoute()
 // 客户端导航项
 const navItems = [
   { name: 'chat',        label: '聊天',   icon: 'fas fa-comment',      path: '/chat' },
-  { name: 'personas',    label: '角色',   icon: 'fas fa-user-circle',  path: '/personas' },
+  { name: 'role-editor', label: '角色配置', icon: 'fas fa-id-card',    path: '/roles/editor' },
   { name: 'memory',      label: '记忆',   icon: 'fas fa-brain',        path: '/memory' },
   { name: 'project',     label: '项目',   icon: 'fas fa-folder-open',  path: '/project' },
   { name: 'admin-tasks', label: '任务',   icon: 'fas fa-tasks',        path: '/admin/tasks' },

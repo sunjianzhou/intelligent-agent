@@ -91,22 +91,6 @@ export const switchModel = (modelName) =>
     body: JSON.stringify({ model: modelName })
   })
 
-export const getPersonas        = () => request(`${BASE}/personas`)
-export const getCurrentPersona  = () => request(`${BASE}/personas/current`)
-export const getPersonaContent  = (name) => request(`${BASE}/personas/${encodeURIComponent(name)}/content`)
-export const switchPersona      = (persona) =>
-  request(`${BASE}/personas/switch`, {
-    method: 'POST',
-    body: JSON.stringify({ persona })
-  })
-export const upsertPersona      = (name, content, display_name = '') =>
-  request(`${BASE}/personas/upsert`, {
-    method: 'POST',
-    body: JSON.stringify({ name, content, display_name })
-  })
-export const deletePersona      = (name) =>
-  request(`${BASE}/personas/${encodeURIComponent(name)}`, { method: 'DELETE' })
-
 export const getRuntimeConfig  = () => request(`${BASE}/config/runtime`)
 export const updateRuntimeConfig = (data) =>
   request(`${BASE}/config/runtime`, { method: 'PATCH', body: JSON.stringify(data) })
@@ -179,6 +163,14 @@ export const getToolCalls  = (limit = 50, toolName = null) => {
   return request(`${BASE}/analytics/tool-calls?${params}`)
 }
 export const getToolStats = () => request(`${BASE}/analytics/tool-stats`)
+
+// ── Projects CRUD ─────────────────────────────────────────────────────────────
+
+export const listProjects    = () => request(`${BASE}/projects`)
+export const createProject   = (data) => request(`${BASE}/projects`, { method: 'POST', body: JSON.stringify(data) })
+export const getProjectById  = (id) => request(`${BASE}/projects/${encodeURIComponent(id)}`)
+export const updateProject   = (id, data) => request(`${BASE}/projects/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) })
+export const deleteProjectApi = (id) => request(`${BASE}/projects/${encodeURIComponent(id)}`, { method: 'DELETE' })
 
 // ── Project API ───────────────────────────────────────────────────────────────
 

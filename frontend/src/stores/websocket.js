@@ -6,9 +6,6 @@ import { genId } from '@/utils/string'
 import {
   switchModel as apiSwitchModel,
   getModels as apiGetModels,
-  switchPersona as apiSwitchPersona,
-  getPersonas as apiGetPersonas,
-  getCurrentPersona as apiGetCurrentPersona,
   clearAllMemory as apiClearAllMemory,
 } from '@/services/api'
 import { useProjectStore } from '@/stores/project'
@@ -33,9 +30,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const cloudMode        = ref(false)
   const cloudModel       = ref('')
   const responseTimes = ref([])   // 最近20次响应时间
-  const currentPersona   = ref('default')
-  const availablePersonas = ref([])  // [{name, title}]
-
   let ws = null
   let heartbeatTimer = null       // 定期 REST 心跳，触发 X-New-Token 续期
   let _historyLoaded = false      // 每次登录只加载一次历史，重连时不覆盖内存消息
@@ -436,21 +430,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
   }
 
-  // ── 角色管理 ──────────────────────────────────────────────
-  const switchPersona = async (personaName) => {
-    const result = await apiSwitchPersona(personaName)
-    if (result?.success) {
-      currentPersona.value = personaName
-    }
-    return result
-  }
-
-  const loadPersonas = async () => {
-    const [listData, currentData] = await Promise.all([apiGetPersonas(), apiGetCurrentPersona()])
-    if (listData) availablePersonas.value = listData.personas || []
-    if (currentData) currentPersona.value = currentData.persona || 'default'
-  }
-
   // ── 聊天记录 localStorage 持久化 ─────────────────────────
   const CHAT_STORAGE_KEY = 'ia_chat_history'
   const CHAT_MAX_PERSIST = 50   // 最多保留最近 50 条
@@ -523,7 +502,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     isConnected, messages, systemInfo, lastResponseTime,
     error, isMockMode, currentModel, availableModels,
     isStreaming, streamingIndex, activeToolSteps, chatEndSignal,
-    currentPersona, availablePersonas,
     // 计算属性
     connectionStatus, modelStatus,
     // 方法
@@ -531,6 +509,5 @@ export const useWebSocketStore = defineStore('websocket', () => {
     addMessage, clearMessages,
     startStreamMessage, appendToken, finalizeStream, responseTimes,
     switchModel, loadModels,
-    switchPersona, loadPersonas,
   }
 })

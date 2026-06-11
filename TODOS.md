@@ -44,3 +44,36 @@ docker ps -a --filter volume=agent_chroma_data
 ```
 
 **代价**: Human ~5min / CC ~2min
+
+---
+
+## TODO-21: Feishu/微信 Bot 接入（MEDIUM，待公网环境）
+
+**什么**: 实现飞书 / 微信 Bot Webhook 接入点，让用户在已有工作流中直接与 AI 对话，无需打开 Web UI。
+
+**为什么**: 将产品从"个人工具"变为"可分享的 AI 助手"，使用频率可能显著提升。
+
+**如何实现**: 在 Python FastAPI 新增 `POST /api/webhook/feishu`，验证飞书 AppSecret 签名，将消息正文转发给现有 `POST /api/chat`，返回结果。飞书/微信两者独立实现，代码可复用同一适配层。
+
+**当前状态**: 需要公网 IP 和 Bot 平台审核，本地开发环境无法验证。待部署到可公网访问的服务器后再做。
+
+**先决条件**: TODO-1（HTTPS/TLS）完成后方可上线（Bot 平台要求 HTTPS 回调）。
+
+**代价**: Human ~1天 / CC ~45min
+
+---
+
+## TODO-22: agent/core/agent.py God Class 拆构（HIGH，先测试再动）
+
+**什么**: 将 `agent/core/agent.py`（2318 行）拆分为三个单一职责类：
+- `ConversationFlow` — 对话主流程（prompt 组装、消息发送、回应流）
+- `ToolDispatcher` — 工具解析、规划、执行
+- `MemoryWriter` — 记忆写入、提炼、上下文拼接
+
+**为什么**: 该文件是历史上所有崩溃性 bug 的集中地（Semaphore 绑定错误、内容字段 key、指滞器等）。单一文件承载过多职责，每次修改都是全量风险。
+
+**如何实现**: 按类边界抽取方法，保持 `IntelligentAgent` 作为门面类（Facade），各子类独立可测试。
+
+**先决条件**: **必须先完成 agent.py 核心测试覆盖（CEO Review T5）**，确保有安全网后再拆构。在无测试保护的情况下拆构等同于在生产上盲目重构。
+
+**代价**: Human ~1天 / CC ~1h

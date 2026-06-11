@@ -40,22 +40,8 @@
           {{ item.label }}
         </router-link>
 
-        <!-- 仅在聊天页显示模型/角色快速切换 -->
+        <!-- 仅在聊天页显示模型快速切换 -->
         <template v-if="showModelSwitch">
-          <div class="mobile-nav-divider" />
-          <!-- 角色切换 -->
-          <div class="mobile-nav-section-title">当前角色</div>
-          <div
-            v-for="p in availablePersonas"
-            :key="p.name"
-            class="mobile-nav-item mobile-nav-option"
-            :class="{ 'mobile-active': p.name === currentPersona }"
-            @click="handlePersonaSwitch(p.name); showMobileMenu = false"
-          >
-            <i class="fas fa-user-circle" />
-            {{ p.title }}
-            <i v-if="p.name === currentPersona" class="fas fa-check mobile-check" />
-          </div>
           <div class="mobile-nav-divider" />
           <!-- 模型切换 -->
           <div class="mobile-nav-section-title">当前模型</div>
@@ -75,38 +61,6 @@
     </div>
 
     <div class="header-right">
-      <!-- 角色切换下拉（仅在聊天页显示） -->
-      <div v-if="showModelSwitch" class="model-switcher" ref="personaSwitcherRef">
-        <button
-          class="model-btn"
-          :class="{ open: personaDropdownOpen }"
-          @click="togglePersonaDropdown"
-        >
-          <i class="fas fa-user-circle" />
-          <span class="model-name-text">{{ currentPersonaTitle }}</span>
-          <i class="fas fa-chevron-down chevron" />
-        </button>
-
-        <div v-if="personaDropdownOpen" class="model-dropdown">
-          <div class="dropdown-title">切换角色</div>
-          <div
-            v-for="p in availablePersonas"
-            :key="p.name"
-            class="dropdown-item"
-            :class="{ active: p.name === currentPersona, switching: switchingPersona === p.name }"
-            @click="handlePersonaSwitch(p.name)"
-          >
-            <i class="fas fa-user item-icon" />
-            <span class="item-name">{{ p.title }}</span>
-            <i v-if="p.name === currentPersona" class="fas fa-check item-check" />
-            <i v-if="switchingPersona === p.name" class="fas fa-circle-notch fa-spin item-check" />
-          </div>
-          <div v-if="availablePersonas.length === 0" class="dropdown-empty">
-            暂无可用角色
-          </div>
-        </div>
-      </div>
-
       <!-- 模型切换下拉（仅在聊天页显示） -->
       <div v-if="showModelSwitch" class="model-switcher" ref="switcherRef">
         <button
@@ -201,7 +155,6 @@ const showMobileMenu = ref(false)
 
 const navItems = [
   { name: 'chat',        label: '聊天',   icon: 'fas fa-comment',      path: '/chat' },
-  { name: 'personas',    label: '角色',   icon: 'fas fa-user-circle',  path: '/personas' },
   { name: 'role-editor', label: '角色配置', icon: 'fas fa-id-card',    path: '/roles/editor' },
   { name: 'memory',      label: '记忆',   icon: 'fas fa-brain',        path: '/memory' },
   { name: 'project',     label: '项目',   icon: 'fas fa-folder-open',  path: '/project' },
@@ -218,7 +171,6 @@ const adminNavItems = [
 // ── 页面配置 ──────────────────────────────────────────────
 const pageConfigs = {
   chat:          { title: '与智能体对话', icon: 'fas fa-comment' },
-  personas:      { title: '角色管理',     icon: 'fas fa-user-circle' },
   'role-editor': { title: '角色配置',     icon: 'fas fa-id-card' },
   memory:        { title: '我的记忆',     icon: 'fas fa-brain' },
   project:       { title: '项目文件',     icon: 'fas fa-folder-open' },
@@ -238,13 +190,6 @@ const connectionStatus = computed(() => store.connectionStatus)
 const modelStatus      = computed(() => store.modelStatus)
 const currentModel     = computed(() => store.currentModel)
 const availableModels  = computed(() => store.availableModels)
-const currentPersona   = computed(() => store.currentPersona)
-const availablePersonas = computed(() => store.availablePersonas)
-const currentPersonaTitle = computed(() => {
-  const p = availablePersonas.value.find(p => p.name === currentPersona.value)
-  return p?.title || currentPersona.value
-})
-
 // ── 显示控制 ──────────────────────────────────────────────
 const showClearButton = computed(() => route.name === 'chat')
 const showModelSwitch = computed(() => route.name === 'chat')
@@ -267,19 +212,9 @@ const adminItems = [
   { name: 'admin-stats',  label: '统计分析', icon: 'fas fa-chart-bar',   path: '/admin/stats' },
 ]
 
-// ── 下拉控制（角色） ──────────────────────────────────────
-const personaDropdownOpen = ref(false)
-const switchingPersona    = ref('')
-const personaSwitcherRef  = ref(null)
-
-const togglePersonaDropdown = () => { personaDropdownOpen.value = !personaDropdownOpen.value }
-
 const handleClickOutside = (e) => {
   if (switcherRef.value && !switcherRef.value.contains(e.target)) {
     dropdownOpen.value = false
-  }
-  if (personaSwitcherRef.value && !personaSwitcherRef.value.contains(e.target)) {
-    personaDropdownOpen.value = false
   }
   if (adminMenuRef.value && !adminMenuRef.value.contains(e.target)) {
     adminMenuOpen.value = false
@@ -294,16 +229,6 @@ const handleSwitch = async (modelName) => {
   if (!result?.success) ElMessage.error(`切换失败: ${result?.message || '未知错误'}`)
   switchingModel.value = ''
   dropdownOpen.value   = false
-}
-
-// ── 切换角色 ──────────────────────────────────────────────
-const handlePersonaSwitch = async (personaName) => {
-  if (personaName === currentPersona.value || switchingPersona.value) return
-  switchingPersona.value = personaName
-  const result = await store.switchPersona(personaName)
-  if (!result?.success) ElMessage.error(`切换角色失败: ${result?.message || '未知错误'}`)
-  switchingPersona.value    = ''
-  personaDropdownOpen.value = false
 }
 
 // ── 清空聊天 ──────────────────────────────────────────────
@@ -322,7 +247,6 @@ const clearChat = async () => {
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   store.loadModels()
-  store.loadPersonas()
   applyTheme(isDark.value)  // 初始化主题
 })
 
@@ -332,7 +256,6 @@ onMounted(() => {
 watch(isConnected, (connected) => {
   if (!connected) return
   if (availableModels.value.length === 0) store.loadModels()
-  if (availablePersonas.value.length === 0) store.loadPersonas()
 })
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)

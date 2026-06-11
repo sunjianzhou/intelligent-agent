@@ -17,8 +17,8 @@ const routes = [
   { path: '/',      redirect: '/chat' },
 
   // ── 客户端路由 ──────────────────────────────────────────
-  { path: '/chat',         name: 'chat',        component: ChatView,   meta: { title: '聊天' } },
-  { path: '/personas',     name: 'personas',    component: () => import('@/views/PersonasView.vue'), meta: { title: '角色管理' } },
+  { path: '/chat',         name: 'chat',        component: ChatView,       meta: { title: '聊天' } },
+  { path: '/personas',     redirect: '/roles/editor' },
   { path: '/roles/editor', name: 'role-editor', component: RoleEditorView, meta: { title: '角色配置' } },
   { path: '/memory',   name: 'memory',   component: MemoryView, meta: { title: '我的记忆' } },
   { path: '/project',  name: 'project',  component: ProjectView, meta: { title: '项目文件' } },
