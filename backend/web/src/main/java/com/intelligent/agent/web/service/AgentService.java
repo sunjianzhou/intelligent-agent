@@ -131,6 +131,9 @@ public class AgentService {
             if (request.getProjectId() != null) {
                 body.put("project_id", request.getProjectId());
             }
+            if (request.getSessionId() != null) {
+                body.put("session_id", request.getSessionId());
+            }
             if (request.getPendingTasks() != null && !request.getPendingTasks().isEmpty()) {
                 body.put("pending_tasks", request.getPendingTasks());
             }
@@ -180,6 +183,9 @@ public class AgentService {
             body.put("use_memory", request.getUseMemory());
             if (request.getProjectId() != null) {
                 body.put("project_id", request.getProjectId());
+            }
+            if (request.getSessionId() != null) {
+                body.put("session_id", request.getSessionId());
             }
             if (request.getPendingTasks() != null && !request.getPendingTasks().isEmpty()) {
                 body.put("pending_tasks", request.getPendingTasks());

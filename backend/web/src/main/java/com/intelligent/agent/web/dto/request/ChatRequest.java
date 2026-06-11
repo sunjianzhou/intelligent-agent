@@ -34,6 +34,9 @@ public class ChatRequest {
     @JsonProperty("pending_tasks")
     private List<Map<String, Object>> pendingTasks;
 
+    @JsonProperty("session_id")
+    private String sessionId;
+
     /** 前端真实用户 ID（从 WebSocket session 属性中提取，不序列化到 JSON body）*/
     private transient String userId;
 

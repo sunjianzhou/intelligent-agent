@@ -197,3 +197,10 @@ export const decomposeProjectTasks = (projectId, taskDescription) =>
 
 export const getProjectTasks = (projectId) =>
   request(`${BASE}/project/tasks?project_id=${encodeURIComponent(projectId)}`)
+
+// ── Conversations history ─────────────────────────────────────────────────────
+
+export const listConversations   = () => request(`${BASE}/conversations`)
+export const getConversation     = (id) => request(`${BASE}/conversations/${encodeURIComponent(id)}`)
+export const deleteConversation  = (id) => request(`${BASE}/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' })
+export const clearConversations  = () => request(`${BASE}/conversations`, { method: 'DELETE' })

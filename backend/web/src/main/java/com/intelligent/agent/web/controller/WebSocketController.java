@@ -143,7 +143,8 @@ public class WebSocketController extends TextWebSocketHandler {
         Boolean useTools    = (Boolean) request.get("use_tools");
         Boolean useMemory   = (Boolean) request.get("use_memory");
         String  requestId   = (String)  request.get("request_id");
-        String  projectId    = (String)  request.get("project_id");
+        String  projectId   = (String)  request.get("project_id");
+        String  sessionId   = (String)  request.get("session_id");
         @SuppressWarnings("unchecked")
         java.util.List<java.util.Map<String, Object>> pendingTasks =
             (java.util.List<java.util.Map<String, Object>>) request.get("pending_tasks");
@@ -153,8 +154,8 @@ public class WebSocketController extends TextWebSocketHandler {
 
         // 从握手时存入的 session 属性中提取真实用户 ID
         String userId = (String) session.getAttributes().get("userId");
-        log.info("处理流式聊天消息: {}, requestId: {}, userId: {}, projectId: {}",
-                 userMessage, requestId, userId, projectId);
+        log.info("处理流式聊天消息: {}, requestId: {}, userId: {}, projectId: {}, sessionId: {}",
+                 userMessage, requestId, userId, projectId, sessionId);
 
         // 发送 thinking 状态
         Map<String, Object> thinking = new HashMap<>();
@@ -170,6 +171,7 @@ public class WebSocketController extends TextWebSocketHandler {
         chatRequest.setUseTools(useTools  != null ? useTools  : true);
         chatRequest.setUseMemory(useMemory != null ? useMemory : true);
         chatRequest.setProjectId(projectId);
+        chatRequest.setSessionId(sessionId);
         chatRequest.setPendingTasks(pendingTasks);
         chatRequest.setUserId(userId);  // 透传真实用户 ID
 

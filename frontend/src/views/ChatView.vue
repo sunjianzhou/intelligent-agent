@@ -214,6 +214,13 @@
       </button>
     </div>
 
+    <!-- 悬浮历史会话按钮 -->
+    <div class="history-float">
+      <button class="history-float-btn" :class="{ active: showHistory }" title="查看历史会话" @click="toggleHistory">
+        <i class="fas fa-history" />
+      </button>
+    </div>
+
     <!-- Token 超限警告横幅 -->
     <transition name="banner-slide">
       <div v-if="tokenWarning && !ctxBannerDismissed" class="ctx-warn-banner">
@@ -227,6 +234,43 @@
         <button class="ctx-warn-close" @click="ctxBannerDismissed = true" title="忽略">
           <i class="fas fa-times" />
         </button>
+      </div>
+    </transition>
+
+    <!-- 历史会话面板遮罩 -->
+    <div v-if="showHistory" class="history-backdrop" @click="showHistory = false" />
+
+    <!-- 历史会话侧边栏 -->
+    <transition name="history-slide">
+      <div v-if="showHistory" class="history-panel">
+        <div class="history-header">
+          <span class="history-title"><i class="fas fa-history" /> 历史会话</span>
+          <button class="history-close" @click="showHistory = false"><i class="fas fa-times" /></button>
+        </div>
+        <button class="new-chat-btn" @click="showHistory = false; handleNewConversation()">
+          <i class="fas fa-plus" /> 新开对话
+        </button>
+        <div class="history-list" v-if="!historyLoading">
+          <div v-if="!sessions.length" class="history-empty">暂无历史会话记录</div>
+          <div
+            v-for="sess in sessions"
+            :key="sess.session_id"
+            class="history-item"
+            @click="loadSession(sess.session_id)"
+          >
+            <div class="history-item-top">
+              <span class="history-item-date">{{ formatHistoryDate(sess.updated_at) }}</span>
+              <button class="history-item-del" title="删除" @click.stop="deleteSession(sess.session_id)">
+                <i class="fas fa-trash-alt" />
+              </button>
+            </div>
+            <div class="history-item-preview">{{ sess.preview || '(无消息)' }}</div>
+            <div class="history-item-count">{{ sess.message_count }} 条消息</div>
+          </div>
+        </div>
+        <div v-else class="history-loading">
+          <i class="fas fa-circle-notch fa-spin" /> 加载中...
+        </div>
       </div>
     </transition>
 
@@ -326,7 +370,10 @@ import { useAuthStore }         from '@/stores/auth'
 import { useLocalSessionStore } from '@/stores/localSession'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useProjectStore }      from '@/stores/project'
-import { submitFeedback as apiFeedback } from '@/services/api'
+import {
+  submitFeedback as apiFeedback,
+  listConversations, getConversation, deleteConversation,
+} from '@/services/api'
 import { formatTime, formatForFilename } from '@/utils/date'
 import { genId } from '@/utils/string'
 
@@ -725,6 +772,73 @@ const closeExportMenu = (e) => {
   if (!e.target.closest('.export-float') && !e.target.closest('.export-menu')) {
     showExportMenu.value = false
   }
+}
+
+// ── 历史会话面板 ──────────────────────────────────────────
+const showHistory    = ref(false)
+const sessions       = ref([])
+const historyLoading = ref(false)
+
+const toggleHistory = async () => {
+  showHistory.value = !showHistory.value
+  if (showHistory.value) await loadHistory()
+}
+
+const loadHistory = async () => {
+  historyLoading.value = true
+  try {
+    const res = await listConversations()
+    sessions.value = res?.sessions || []
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+const loadSession = async (sessionId) => {
+  const res = await getConversation(sessionId)
+  const msgs = res?.session?.messages || res?.messages
+  if (!msgs?.length) {
+    ElMessage({ message: '该会话暂无消息', type: 'warning', duration: 2000 })
+    return
+  }
+  store.messages.splice(0)
+  store.currentSessionId = sessionId
+  localStorage.setItem('ia_session_id', sessionId)
+  msgs.forEach(m => {
+    store.messages.push({
+      id: genId(),
+      role: m.role,
+      content: m.content,
+      timestamp: m.timestamp || new Date().toISOString(),
+    })
+  })
+  showHistory.value = false
+  nextTick(scrollToBottom)
+  ElMessage({ message: '已加载历史会话', type: 'success', duration: 1500 })
+}
+
+const deleteSession = async (sessionId) => {
+  const ok = await confirmDialog.confirm(
+    '确认删除该会话记录？删除后不可恢复。',
+    { title: '删除会话', confirmText: '删除', danger: true }
+  )
+  if (!ok) return
+  await deleteConversation(sessionId)
+  sessions.value = sessions.value.filter(s => s.session_id !== sessionId)
+  ElMessage({ message: '会话已删除', type: 'success', duration: 1500 })
+}
+
+const formatHistoryDate = (iso) => {
+  if (!iso) return ''
+  try {
+    const d = new Date(iso)
+    const diff = Date.now() - d.getTime()
+    if (diff < 60000)     return '刚刚'
+    if (diff < 3600000)   return `${Math.floor(diff / 60000)} 分钟前`
+    if (diff < 86400000)  return `${Math.floor(diff / 3600000)} 小时前`
+    if (diff < 604800000) return `${Math.floor(diff / 86400000)} 天前`
+    return d.toLocaleDateString('zh-CN')
+  } catch { return iso }
 }
 
 // ── 监听消息列表变化 ───────────────────────────────────────
@@ -1338,6 +1452,111 @@ onUnmounted(() => {
   right: 20px;
   z-index: 10;
 }
+
+/* ── 历史会话面板 ─────────────────────────────────────────── */
+.history-float {
+  position: absolute;
+  bottom: 134px;
+  right: 20px;
+  z-index: 10;
+}
+.history-float-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: 1px solid #e0e3e8;
+  background: white;
+  color: #888;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.85rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transition: all 0.2s;
+}
+.history-float-btn:hover { border-color: #667eea; color: #667eea; box-shadow: 0 3px 12px rgba(102,126,234,0.3); }
+.history-float-btn.active { background: #667eea; color: white; border-color: #667eea; }
+.history-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.18);
+  z-index: 19;
+}
+.history-panel {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 280px;
+  background: white;
+  border-right: 1px solid #e0e3e8;
+  box-shadow: 2px 0 16px rgba(0,0,0,0.12);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.history-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
+}
+.history-title {
+  font-size: 0.92rem; font-weight: 600; color: #333;
+  display: flex; align-items: center; gap: 7px;
+}
+.history-title i { color: #667eea; }
+.history-close {
+  background: none; border: none; color: #aaa;
+  cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 0.9rem;
+  transition: background 0.15s, color 0.15s;
+}
+.history-close:hover { background: #f5f5f5; color: #333; }
+.new-chat-btn {
+  margin: 10px 14px;
+  padding: 8px 14px;
+  background: #667eea; color: white;
+  border: none; border-radius: 8px;
+  font-size: 0.88rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.new-chat-btn:hover { background: #5a6fd6; }
+.history-list {
+  flex: 1; overflow-y: auto; padding: 4px 10px 10px;
+}
+.history-list::-webkit-scrollbar       { width: 3px; }
+.history-list::-webkit-scrollbar-thumb { background: #e0e0e0; border-radius: 2px; }
+.history-empty, .history-loading {
+  text-align: center; color: #bbb; font-size: 0.85rem; padding: 32px 0;
+}
+.history-item {
+  padding: 10px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-bottom: 2px;
+  border: 1px solid transparent;
+}
+.history-item:hover { background: #f5f7ff; border-color: #e8ecff; }
+.history-item-top {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 4px;
+}
+.history-item-date { font-size: 0.74rem; color: #bbb; }
+.history-item-del {
+  background: none; border: none; color: #ddd;
+  cursor: pointer; padding: 2px 5px; font-size: 0.72rem; border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  line-height: 1;
+}
+.history-item-del:hover { color: #e53935; background: #fce4e4; }
+.history-item-preview {
+  font-size: 0.84rem; color: #555;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-bottom: 3px;
+}
+.history-item-count { font-size: 0.74rem; color: #bbb; }
+.history-slide-enter-active, .history-slide-leave-active { transition: transform 0.25s ease; }
+.history-slide-enter-from, .history-slide-leave-to { transform: translateX(-100%); }
 .clear-float-btn {
   width: 36px; height: 36px;
   border-radius: 50%;
@@ -1377,6 +1596,8 @@ onUnmounted(() => {
   .message-row.user  { justify-content: flex-end; }
   .export-float      { bottom: 70px; right: 10px; }
   .clear-float       { bottom: 26px; right: 10px; }
+  .history-float     { bottom: 114px; right: 10px; }
+  .history-panel     { width: 240px; }
   .tool-calls-card,
   .tool-running-card { max-width: 95% !important; }
   .search-bar-input  { font-size: 16px !important; }

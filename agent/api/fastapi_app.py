@@ -476,6 +476,7 @@ class ChatRequest(BaseModel):
     top_p: Optional[float] = None
     project_id: Optional[str] = None
     pending_tasks: Optional[List[Dict[str, Any]]] = None
+    session_id: Optional[str] = None
 
 
 class ModelSwitchRequest(BaseModel):
@@ -739,7 +740,7 @@ async def chat(request: ChatRequest, http_req: Request):
                     pending_tasks=request.pending_tasks,
                 )
                 _now = datetime.now().isoformat()
-                _sid = getattr(request, "session_id", None) or user_id
+                _sid = request.session_id or user_id
                 _append_messages(user_id, _sid, [
                     {"role": "user",      "content": request.message, "timestamp": _now},
                     {"role": "assistant", "content": result["content"], "timestamp": _now},
@@ -807,12 +808,14 @@ async def chat_stream_endpoint(request: ChatRequest, http_req: Request):
         return _StreamingResponse(err(), media_type="text/event-stream")
 
     cancel_ev = asyncio.Event()
+    _session_id = request.session_id or user_id
 
     async def generate():
         try:
             async with _inference_slot():
                 if agent:
                     # ── 完整 Agent 模式（ReAct + 工具 + 记忆）────────
+                    _full_reply = []
                     async for event_type, data in agent.chat_stream(
                             message=request.message,
                             use_tools=request.use_tools,
@@ -825,6 +828,17 @@ async def chat_stream_endpoint(request: ChatRequest, http_req: Request):
                             pending_tasks=request.pending_tasks,
                     ):
                         yield f"data: {_json.dumps({'type': event_type, 'data': data}, ensure_ascii=False)}\n\n"
+                        if event_type == "done" and isinstance(data, dict):
+                            _full_reply.append(data.get("content", ""))
+                        elif event_type == "token":
+                            pass  # tokens already accumulated by agent internally
+                    # 流结束后写入对话历史
+                    if _full_reply:
+                        _now = datetime.now().isoformat()
+                        _append_messages(user_id, _session_id, [
+                            {"role": "user",      "content": request.message, "timestamp": _now},
+                            {"role": "assistant", "content": _full_reply[0],  "timestamp": _now},
+                        ])
 
                 elif user_provider:
                     # ── 降级：Provider 直连流式输出（无工具/记忆）──────

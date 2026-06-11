@@ -12,6 +12,10 @@ import { useProjectStore } from '@/stores/project'
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
+function _newSessionId() {
+  return 'sess_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
+}
+
 export const useWebSocketStore = defineStore('websocket', () => {
   // ── 状态 ────────────────────────────────────────────────
   const isConnected      = ref(false)
@@ -30,6 +34,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const cloudMode        = ref(false)
   const cloudModel       = ref('')
   const responseTimes = ref([])   // 最近20次响应时间
+  const currentSessionId = ref(localStorage.getItem('ia_session_id') || _newSessionId())
   let ws = null
   let heartbeatTimer = null       // 定期 REST 心跳，触发 X-New-Token 续期
   let _historyLoaded = false      // 每次登录只加载一次历史，重连时不覆盖内存消息
@@ -367,10 +372,22 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   const sendChatMessage = (message, useTools = true, useMemory = true, projectId = null, pendingTasks = null) => {
-    const payload = { type: 'chat_message', message, use_tools: useTools, use_memory: useMemory }
+    const payload = {
+      type: 'chat_message', message,
+      use_tools: useTools, use_memory: useMemory,
+      session_id: currentSessionId.value,
+    }
     if (projectId) payload.project_id = projectId
     if (pendingTasks && pendingTasks.length) payload.pending_tasks = pendingTasks
     return send(payload)
+  }
+
+  /** 开始新会话：生成新 session_id，清空当前消息 */
+  const startNewSession = () => {
+    const id = _newSessionId()
+    currentSessionId.value = id
+    localStorage.setItem('ia_session_id', id)
+    clearMessages()
   }
 
   /** 取消当前正在生成的响应：断开并重连 WebSocket，Java 侧 SSE 流随之终止 */
@@ -494,7 +511,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
     // 退出时清空消息和持久化，防止下一个用户看到本次会话数据
     messages.value = []
     localStorage.removeItem(CHAT_STORAGE_KEY)
+    localStorage.removeItem('ia_session_id')
     _historyLoaded = false           // 重置，下次登录重新加载属于新用户的历史
+    currentSessionId.value = _newSessionId()
   }
 
   return {
@@ -502,12 +521,13 @@ export const useWebSocketStore = defineStore('websocket', () => {
     isConnected, messages, systemInfo, lastResponseTime,
     error, isMockMode, currentModel, availableModels,
     isStreaming, streamingIndex, activeToolSteps, chatEndSignal,
+    currentSessionId,
     // 计算属性
     connectionStatus, modelStatus,
     // 方法
     connect, disconnect, send, sendChatMessage, cancelStreaming,
     addMessage, clearMessages,
     startStreamMessage, appendToken, finalizeStream, responseTimes,
-    switchModel, loadModels,
+    switchModel, loadModels, startNewSession,
   }
 })
