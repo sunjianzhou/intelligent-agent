@@ -259,6 +259,7 @@ async function createProject() {
   padding: 12px;
   overflow: hidden;
   min-width: 0;
+  border-right: 1px solid #e8eaed;
 }
 
 .task-panel {

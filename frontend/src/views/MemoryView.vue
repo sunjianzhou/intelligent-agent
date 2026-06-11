@@ -45,11 +45,11 @@
         >{{ t.label }}</button>
       </div>
       <button class="refresh-btn" :class="{ spinning: loading }" @click="load">
-        <i class="fas fa-sync-alt" />
+        <i class="fas fa-sync-alt" /><span class="btn-label">刷新</span>
       </button>
       <!-- 批量导入 -->
       <label class="import-btn" title="批量导入记忆（TXT/JSON）">
-        <i class="fas fa-file-import" />
+        <i class="fas fa-file-import" /><span class="btn-label">导入</span>
         <input type="file" accept=".txt,.json" style="display:none" @change="importFile" />
       </label>
       <!-- 知识提炼 -->
@@ -79,7 +79,7 @@
       </div>
       <!-- 导入迁移包 -->
       <label class="import-btn" title="导入迁移包恢复数据">
-        <i class="fas fa-upload" />
+        <i class="fas fa-upload" /><span class="btn-label">恢复</span>
         <input type="file" accept=".json" style="display:none" @change="importMigration" />
       </label>
     </div>
@@ -608,6 +608,7 @@ onUnmounted(() => {
   padding: 8px 10px; border-radius: 8px;
   border: 1px solid #e0e3e8; background: white;
   color: #555; cursor: pointer; transition: all 0.2s;
+  display: flex; align-items: center; gap: 5px;
 }
 .refresh-btn:hover { border-color: #667eea; color: #667eea; }
 .refresh-btn.spinning i { animation: spin 0.8s linear infinite; }
@@ -616,9 +617,10 @@ onUnmounted(() => {
   padding: 8px 10px; border-radius: 8px;
   border: 1px solid #e0e3e8; background: white;
   color: #555; cursor: pointer; transition: all 0.2s;
-  display: flex; align-items: center;
+  display: flex; align-items: center; gap: 5px;
 }
 .import-btn:hover { border-color: #43a047; color: #43a047; }
+.btn-label { font-size: 0.82rem; }
 .distill-btn {
   padding: 8px 12px; border-radius: 8px; display: flex; align-items: center; gap: 6px;
   border: 1px solid #e0e3e8; background: white;

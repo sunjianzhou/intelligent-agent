@@ -921,7 +921,11 @@ onUnmounted(() => {
 .status-badge.failed    { background: #fce4e4; color: #c62828; }
 .status-badge.cancelled { background: #f5f5f5; color: #888; }
 
-.task-desc { font-size: 0.83rem; color: #888; }
+.task-desc {
+  font-size: 0.83rem; color: #888;
+  overflow: hidden; display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
 .task-prompt { color: #666; white-space: pre-wrap; word-break: break-word;
   max-height: 3.6em; overflow: hidden; display: -webkit-box;
   -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

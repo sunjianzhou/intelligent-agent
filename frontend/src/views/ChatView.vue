@@ -29,12 +29,10 @@
         <div class="empty-hero">
           <i class="fas fa-robot empty-icon"></i>
           <h2 class="empty-title">你好，我是智能助手</h2>
-          <p class="empty-sub">
-            本地 AI · 私有部署 · 支持工具调用
-            <span v-if="modelStatus?.includes('dolphin')" class="uncensored-badge">
-              🐬 无限制模式
-            </span>
-          </p>
+          <p class="empty-sub">本地 AI · 私有部署 · 支持工具调用</p>
+          <div v-if="modelStatus?.includes('dolphin')" class="uncensored-badge-row">
+            <span class="uncensored-badge">🐬 无限制模式</span>
+          </div>
         </div>
 
         <!-- 示例提示词卡片 -->
@@ -1074,7 +1072,8 @@ onUnmounted(() => {
 }
 .empty-icon  { font-size: 2.8rem; color: #c5c8f0; }
 .empty-title { font-size: 1.25rem; font-weight: 600; color: #444; margin: 0; }
-.empty-sub   { font-size: 0.88rem; color: #999; display: flex; align-items: center; gap: 8px; }
+.empty-sub   { font-size: 0.88rem; color: #999; margin: 0; }
+.uncensored-badge-row { margin-top: 6px; display: flex; justify-content: center; }
 .uncensored-badge {
   background: linear-gradient(135deg, #f6d365, #fda085);
   color: white;
@@ -1094,28 +1093,40 @@ onUnmounted(() => {
 .suggestion-card {
   display: grid;
   grid-template-areas: "icon label" "icon text";
-  grid-template-columns: 32px 1fr;
-  gap: 2px 8px;
-  padding: 12px 14px;
+  grid-template-columns: 36px 1fr;
+  gap: 2px 10px;
+  padding: 14px 16px;
   border: 1px solid #e8eaf0;
   border-radius: 12px;
   background: white;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.18s;
   align-items: center;
 }
+/* 4 张卡片各自颜色主题 */
+.suggestion-card:nth-child(1) { background: #eff6ff; border-color: #bfdbfe; }
+.suggestion-card:nth-child(2) { background: #fff7ed; border-color: #fed7aa; }
+.suggestion-card:nth-child(3) { background: #f0fdf4; border-color: #bbf7d0; }
+.suggestion-card:nth-child(4) { background: #faf5ff; border-color: #e9d5ff; }
+
 .suggestion-card:hover {
-  border-color: #667eea;
-  background: #f8f9ff;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(102,126,234,0.12);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
+.suggestion-card:nth-child(1):hover { border-color: #3b82f6; }
+.suggestion-card:nth-child(2):hover { border-color: #f97316; }
+.suggestion-card:nth-child(3):hover { border-color: #22c55e; }
+.suggestion-card:nth-child(4):hover { border-color: #a855f7; }
+
 .suggestion-icon {
   grid-area: icon;
-  font-size: 1.1rem;
-  color: #667eea;
+  font-size: 1.15rem;
   justify-self: center;
 }
+.suggestion-card:nth-child(1) .suggestion-icon { color: #3b82f6; }
+.suggestion-card:nth-child(2) .suggestion-icon { color: #f97316; }
+.suggestion-card:nth-child(3) .suggestion-icon { color: #22c55e; }
+.suggestion-card:nth-child(4) .suggestion-icon { color: #a855f7; }
 .suggestion-label {
   grid-area: label;
   font-size: 0.72rem;
