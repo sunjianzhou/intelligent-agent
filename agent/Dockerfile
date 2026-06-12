@@ -2,8 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 基础依赖：仅安装 curl/build-essential/tzdata，不再默认安装 Node.js
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# 切换 apt 镜像为清华源（Debian Bookworm，sources.list.d/debian.sources）
+RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y --no-install-recommends \
         curl build-essential tzdata \
     && rm -rf /var/lib/apt/lists/*
 
