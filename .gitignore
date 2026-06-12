@@ -30,8 +30,7 @@ backend/web/*.iml
 frontend/node_modules/
 frontend/dist/
 
-# Docker
-**/.dockerignore
+# Docker（.dockerignore 文件应入库，不在此排除）
 
 # IDE / 工具
 .idea/
