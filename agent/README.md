@@ -10,117 +10,200 @@
 agent/
 ├── api/
 │   ├── fastapi_app.py          入口：全部 REST/SSE 端点 + 中间件
-│   ├── personas_router.py      /api/personas/* 角色 CRUD
+│   ├── roles_router.py         /api/roles/* 角色 CRUD（含激活状态持久化）
+│   ├── conversations_router.py /api/conversations/* 历史会话 CRUD（T4）
+│   ├── projects_router.py      /api/project/* 项目规格/任务树/上下文
 │   └── metrics.py              Prometheus 指标 (/metrics)
-├── core/
-│   └── agent.py                IntelligentAgent 核心（ReAct 循环）
+│
+├── core/                       ReAct 推理核心（God Class 已拆分，commit 528b787）
+│   ├── agent.py                IntelligentAgent 门面（__init__ / provider / token / cache，~320 行）
+│   ├── conversation_flow.py    ConversationFlowMixin（消息构建 / chat / stream，~460 行）
+│   ├── tool_dispatcher.py      ToolDispatcherMixin（工具注册 / 意图识别 / LLM 调用，~1130 行）
+│   ├── memory_writer.py        MemoryWriterMixin（记忆预热 / MCP / 蒸馏 / 清理，~310 行）
+│   └── _context_vars.py        共享 ContextVar（per-request 隔离，避免循环导入）
+│
 ├── memory/
 │   ├── manager.py              MemoryManager（路由 → 短/长期）
-│   ├── short_term.py           ShortTermMemory（进程内双端队列）
-│   ├── long_term.py            LongTermMemory（ChromaDB 向量）
-│   ├── distiller.py            MemoryDistiller（自动事实提炼）
-│   ├── context_extractor.py    ContextExtractor（项目 nugget 提取）
-│   └── semantic_cache.py       L2 语义响应缓存
+│   ├── base.py                 MemoryEntry 基础数据模型
+│   ├── short_term.py           ShortTermMemory（进程内双端队列，TTL 24h，max 100）
+│   ├── long_term.py            LongTermMemory（ChromaDB 向量库）
+│   ├── distiller.py            MemoryDistiller（自动事实提炼 + 阶段摘要）
+│   ├── context_extractor.py    ContextExtractor（项目 nugget 提取，每 8 轮）
+│   ├── lightweight_embedding.py 无 sentence-transformers 时的降级向量化
+│   └── semantic_cache.py       L2 语义响应缓存（余弦相似度 ≥ 0.92 命中）
+│
 ├── scheduler/
 │   ├── simple_scheduler.py     SimpleTaskScheduler（后台线程，2s 轮询）
-│   └── simple_manager.py       TaskManager（对 Agent 暴露的封装）
+│   ├── simple_manager.py       TaskManager（向 Agent 暴露的封装 API）
+│   ├── simple_models.py        Task / Schedule 数据模型（Pydantic）
+│   └── task_scheduler.py       初始化入口函数
+│
 ├── tools/
 │   ├── tool_manager.py         ToolManager（per-agent 独立实例）
-│   ├── function_tool.py        FunctionTool / AsyncFunctionTool（签名自推导）
+│   ├── base_tool.py            BaseTool / AsyncBaseTool 抽象基类
+│   ├── function_tool.py        FunctionTool / AsyncFunctionTool（签名自推导 schema）
+│   ├── migrate_chromadb.py     ChromaDB schema 迁移脚本（--dry-run 支持）
 │   └── builtin_tools/
 │       ├── calculator.py       数学计算（eval 沙箱）
 │       ├── time_tool.py        时间查询
 │       ├── file_tool.py        文件读写
 │       ├── web_search.py       DuckDuckGo 搜索
 │       ├── shell_tool.py       Shell 命令（受目录白名单限制）
-│       ├── database/           MySQL 查询工具
-│       └── reminder_tool.py    定时提醒
+│       ├── image_tool.py       图片生成（SiliconFlow API / 本地 SD WebUI）
+│       └── database/           MySQL 查询工具
+│
+├── personas/                   角色系统 Python 模块
+│   ├── role_manager.py         RoleManager（角色 CRUD + 激活状态持久化）
+│   ├── role_models.py          Pydantic 角色数据模型（RoleCard / CoreIdentity 等）
+│   ├── prompt_builder.py       PromptBuilder 单例（根据激活角色构建 system prompt）
+│   └── _backup/                旧版 *.md 角色文件存档（已迁移到新角色体系）
+│
+├── skills/
+│   ├── manager.py              SkillManager（技能注册与查找）
+│   ├── router.py               技能意图路由（触发词匹配）
+│   ├── applicator.py           技能应用（注入工具约束到 LLM 调用）
+│   └── templates.py            技能 Markdown 模板解析
+│
 ├── services/
 │   ├── base_provider.py        LLMProvider 抽象基类
-│   ├── ollama_provider.py      Ollama 推理（原生 Function Calling + text-tool 模式）
-│   ├── openai_provider.py      OpenAI-compatible 云端接口
-│   └── mcp_client.py           MCP 工具客户端（GitHub / FileSystem）
-├── skills/                     技能路由（意图 → 最优工具集）
-├── analytics/                  使用统计路由
+│   ├── ollama_provider.py      Ollama 推理（原生 Function Calling + Text-tool 模式）
+│   ├── ollama_service.py       Ollama HTTP 客户端封装
+│   ├── openai_provider.py      OpenAI-compatible 云端接口（DashScope/DeepSeek 等）
+│   ├── mcp_client.py           MCP 工具客户端（GitHub / FileSystem）
+│   └── image/                  图片生成服务封装
+│
 ├── prompts/
+│   ├── prompt_manager.py       PromptManager（加载 YAML + 角色注入）
 │   ├── system_default.yaml     默认 system prompt 模板
-│   └── system_dolphin.yaml     dolphin 专用模板（含 persona_template）
-├── personas/                   *.md 角色文件（可热加载）
+│   └── system_dolphin.yaml     dolphin 专用模板（含双语无限制声明）
+│
+├── analytics/                  使用统计接口（满意度/响应时间/工具排名）
 ├── config/
 │   └── settings.py             Pydantic-settings 全量配置（含 .env 读取）
-└── tests/                      pytest 测试套件
+├── data/                       运行时数据目录（runtime_config.json、user 偏好等）
+└── tests/                      pytest 测试套件（152 个测试，含角色、记忆、调度等）
 ```
 
 ---
 
 ## 核心组件详解
 
-### IntelligentAgent（core/agent.py）
+### IntelligentAgent（core/ 五文件架构）
 
-ReAct 循环实现，每轮对话流程：
+`IntelligentAgent` 继承三个 Mixin，职责分离后清晰：
 
 ```
-_build_messages_async()          构建消息列表（注入记忆 + 项目上下文 + 任务列表）
+IntelligentAgent (agent.py)
+    ├── ConversationFlowMixin  (conversation_flow.py)
+    │     ├── _build_messages_async()    构建消息列表（注入记忆/项目/任务/Spec）
+    │     ├── chat()                     非流式聊天入口
+    │     └── stream_chat()              流式聊天入口（SSE token 逐发）
+    │
+    ├── ToolDispatcherMixin    (tool_dispatcher.py)
+    │     ├── _call_model_with_tools()   第一次 LLM 调用（决策：回答 or 工具）
+    │     ├── _execute_tool_round()      单轮工具执行 + 结果追加（最多 5 轮）
+    │     └── _stream_tokens_async()     流式输出最终回答
+    │
+    └── MemoryWriterMixin      (memory_writer.py)
+          ├── _warmup_memory()           启动时预热长期记忆
+          ├── _maybe_distill()           每 N 轮触发记忆提炼
+          └── _cleanup_expired()         清理过期短期记忆
+```
+
+**ReAct 推理流程**：
+
+```
+_build_messages_async()
+    注入：短期记忆 + 长期语义检索 + 项目上下文 + 任务列表 + Spec（每5轮）
     │
     ▼
-_call_model_with_tools()         第一次 LLM 调用（决策：直接回答 or 调用工具）
+_call_model_with_tools()     ← 第一次 LLM 调用
     │
-    ├── 有工具调用 ──► _execute_tool_round() ──► 追加工具结果
-    │                      │
-    │                      └── 重复至 max_iterations=5
+    ├── 有工具调用 ──► _execute_tool_round() ──► 追加结果 ──► 重复（≤5次）
     │
-    └── 无工具调用 ──► _stream_tokens_async()   流式输出最终回答
+    └── 无工具调用 ──► _stream_tokens_async()   SSE 逐 token 流式输出
 ```
 
 **关键设计决策**：
-- `contextvars.ContextVar` 隔离 provider 和 persona，per-asyncio-Task 不串台
-- `_TEXT_TOOL_CALLING_PATTERNS = ["dolphin", "phi2", "orca-mini", "orca2"]`：这些模型不支持 Ollama 原生 Function Calling（Ollama 会用自身模板覆盖 system prompt），改用文本解析模式
+- `_context_vars.py` 中的 `contextvars.ContextVar` 实现 per-asyncio-Task 隔离，同一进程内多用户 provider/persona 不串台
+- `_TEXT_TOOL_CALLING_PATTERNS = ["dolphin", "phi2", "orca-mini", "orca2"]`：这些模型不支持 Ollama 原生 Function Calling（Ollama 内部模板覆盖 system prompt），自动切换文本解析模式
 - 上下文压缩：超 `max_context_tokens` 时异步压缩最旧 60% 对话为摘要
 - L1 精确缓存（OrderedDict LRU）+ L2 语义缓存（ChromaDB 余弦相似度 ≥ 0.92）
 
-### 记忆系统
+---
+
+### 记忆系统（memory/）
 
 ```
 用户消息 ──► ShortTermMemory（进程内双端队列，TTL 24h，max 100）
-                  │ 每 5 轮 → MemoryDistiller → LLM JSON 提取 → LongTermMemory
-                  │ 每 10 轮 → SessionSummarizer → LongTermMemory
-                  │ 有 project_id → ContextExtractor（每 8 轮）
-每次聊天：LongTermMemory 语义检索 top-K → 注入 system 消息
+                │
+                │ 每 5 轮 → MemoryDistiller → LLM 提取 JSON → LongTermMemory (facts/preferences)
+                │ 每 10 轮 → SessionSummarizer → LongTermMemory (type=session_summary)
+                │ 有 project_id → ContextExtractor（每 8 轮）→ ChromaDB project_{id}_context
+                │
+每次聊天：LongTermMemory 语义检索 top-K → 注入 system 消息 [MEMORY CONTEXT]
+          project 上下文语义检索     → 注入 system 消息 [PROJECT CONTEXT]
 ```
 
-**ChromaDB 防御**：
+**ChromaDB 防御性设计**：
 - `count()` 和 `query()` 均包裹 `try/except TypeError`，防 schema mismatch 崩溃
-- semantic_cache 初始化失败时自动 delete + recreate collection
+- `semantic_cache` 初始化失败时自动 delete + recreate collection
 - 迁移脚本：`python tools/migrate_chromadb.py [--dry-run]`（修复 seq_id 类型不匹配）
+- Docker 具名卷：`intelligent_agent_agent_chroma_data` / `intelligent_agent_agent_chroma_data_longterm`
 
-### 工具系统
+---
 
-注册两种工具：
-- `BaseTool` / `AsyncBaseTool`：手写工具类，有完整参数校验
-- `FunctionTool(callable)`：自动从函数签名推导参数 schema
+### 角色（Persona）系统（personas/）
 
-`ToolManager` 是 per-agent 实例（非全局单例），避免多 agent 工具注册表串台。
+**新角色体系**（commit b562259，2026-06-09 完成）：
 
-工具同时注册为调度器 action，定时任务可按名字调用任意工具。
+- `role_models.py`：Pydantic 数据模型，包含 `RoleCard`（元信息）、`CoreIdentity`（身份定义）、`UserProfile`（用户画像）、`RoleData`（完整角色）
+- `role_manager.py`：`RoleManager` 单例，负责角色增删改查；激活状态持久化至 `data/user_active_roles.json`
+- `prompt_builder.py`：`PromptBuilder` 单例，根据当前激活角色将多字段组合成 system prompt；dolphin 模型使用双语无限制声明包裹，防止安全微调回退
 
-### 角色（Persona）系统
+**热加载**：Docker 模式下 `personas/` 目录挂载为卷，修改后仅需重启容器（无需重建镜像）。
 
-- `agent/personas/*.md` → 角色文件，第一行 `# 标题` 作为展示名
-- `agent/prompts/system_dolphin.yaml` 中的 `persona_template`：dolphin 使用时包裹中英双语无限制声明，防止中文角色内容触发安全微调回退
-- per-user 角色持久化到 `data/user_persona_prefs.json`，重启后恢复
-- Docker 下 `personas/` 和 `prompts/` 均为卷挂载，修改后无需重建镜像，**但需重启 ia-agent 让 PromptManager 重新加载**
+---
+
+### 工具系统（tools/）
+
+注册两种工具类型：
+- `BaseTool` / `AsyncBaseTool`：手写工具类，完整参数校验和错误处理
+- `FunctionTool(callable)`：从函数签名自动推导参数 schema
+
+`ToolManager` 是 per-agent 实例（非全局单例），多 agent 实例工具表不串台。
+
+工具自动注册为调度器 action，定时任务可按名字调用任意工具。
+
+---
+
+### 任务调度系统（scheduler/）
+
+后台线程每 2 秒轮询待执行任务。支持五种调度类型：
+
+| 类型 | 说明 |
+|------|------|
+| `immediate` | 立即执行一次 |
+| `delay` | N 秒后执行一次 |
+| `interval` | 按固定间隔循环执行 |
+| `datetime` | 指定 ISO 时间点执行一次 |
+| `cron` | Cron 表达式（如 `0 8 * * *`） |
+
+**并发控制**：调度器持有 asyncio Semaphore，绑定到正确的事件循环（启动时显式传入），避免将 Semaphore 绑定到临时 loop 导致 chat 永久阻塞（历史 bug 根因）。
+
+---
 
 ### 多用户隔离
 
 | 层 | 手段 |
 |----|------|
 | Provider（模型） | `_request_provider_ctx` ContextVar；持久化到 `data/user_model_prefs.json` |
-| Persona（角色） | `_request_persona_ctx` ContextVar；持久化到 `data/user_persona_prefs.json` |
+| Persona（角色） | `_request_persona_ctx` ContextVar；持久化到 `data/user_active_roles.json` |
 | ToolManager | per-IntelligentAgent 独立实例 |
 | TaskManager | per-IntelligentAgent 独立实例 |
 | 项目上下文 | turn counter 键为 `{user_id}:{project_id}` |
 
-**P0 已完成**：Java 后端通过 `X-User-Id` 头透传真实用户 ID，Python middleware 优先读取此头，多用户模型/角色偏好完全隔离。
+Java 后端通过 `X-User-Id` 头透传真实用户 ID，Python middleware 优先读取此头。
 
 ---
 
@@ -136,7 +219,7 @@ _call_model_with_tools()         第一次 LLM 调用（决策：直接回答 or
 | `ollama_num_gpu` | `-1` | GPU 层数（-1=自动）|
 | `chat_timeout` | `300` | 单次推理超时（秒） |
 | `max_context_tokens` | `7000` | 上下文 token 预算 |
-| `inference_concurrency` | `1`（docker-compose 设置）| 并发推理上限；CPU 跑 dolphin 必须为 1 |
+| `inference_concurrency` | `1`（docker-compose 默认）| 并发推理上限；CPU 跑大模型必须为 1 |
 | `inference_queue_size` | `20` | 等待队列深度（超出返回 503）|
 | `response_cache_max_size` | `500` | L1 缓存条数（LRU）|
 | `response_cache_ttl_secs` | `3600` | L1 缓存 TTL |
@@ -145,9 +228,11 @@ _call_model_with_tools()         第一次 LLM 调用（决策：直接回答 or
 | `memory_summary_interval` | `10` | 每 N 轮生成阶段摘要 |
 | `short_term_max_size` | `100` | 短期记忆最大条数 |
 | `short_term_ttl_hours` | `24` | 短期记忆 TTL |
-| `github_mcp_enabled` | `false` | MCP GitHub 工具（需安装 mcp 包，未安装保持 false 否则启动卡 30s）|
-| `jwt_secret` | **必填** | 与 Java 保持一致 |
-| `cloud_provider` / `cloud_model` | 空 | 云端 LLM 配置（已知 provider：openai/dashscope/deepseek/zhipu/moonshot/baidu/siliconflow，`cloud_base_url` 留空时自动解析）|
+| `github_mcp_enabled` | `false` | MCP GitHub 工具（未安装 mcp 包时必须保持 false，否则启动卡 30s）|
+| `jwt_secret` | **必填** | 与 Java 保持一致，≥32 字符 |
+| `cloud_provider` | 空 | 云端 LLM（`openai`/`dashscope`/`deepseek`/`zhipu`/`moonshot`/`baidu`/`siliconflow`）|
+| `cloud_api_key` | 空 | 云端 LLM API Key |
+| `cloud_base_url` | 空（自动推断）| 云端 base URL，留空则按 provider 自动设置 |
 | `scheduler_max_concurrent_tasks` | `5` | 调度器最大并发任务数 |
 
 ---
@@ -157,15 +242,15 @@ _call_model_with_tools()         第一次 LLM 调用（决策：直接回答 or
 ```bash
 cd agent
 
-# 安装
+# 安装依赖
 pip install -r requirements.txt        # 生产
-pip install -e ".[dev]"               # 开发工具
+pip install -e ".[dev]"               # 含 black/isort/pylint/mypy
 
 # 启动（本地开发，使用 conda python310 环境）
 conda activate python310
 python -m uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000 --reload
 
-# 测试
+# 运行测试（152 个测试，< 30s）
 pytest tests/ -v
 
 # 代码质量
@@ -173,9 +258,42 @@ black . && isort . && pylint . && mypy .
 ```
 
 **Docker 热更新规则**：
-- 修改 `prompts/*.yaml` 或 `personas/*.md` → `docker restart ia-agent`（卷挂载，无需重建）
-- 修改 Python 代码（`core/`、`memory/`、`services/` 等）→ `docker compose build agent && docker compose up -d agent`
-- 修改 `requirements-docker.txt` → 同上，但会重新安装依赖（耗时）
+
+| 修改内容 | 操作 |
+|----------|------|
+| `personas/` 下的 Python 文件 | `docker restart ia-agent`（卷挂载，无需重建）|
+| `prompts/*.yaml` | `docker restart ia-agent` |
+| `core/`、`memory/`、`services/` 等 Python 代码 | `docker compose build agent && docker compose up -d agent` |
+| `requirements-docker.txt` 依赖变更 | 同上（会重新安装，耗时较长）|
+
+---
+
+## REST API 端点速查
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/health` | 健康检查 |
+| POST | `/api/chat` | 非流式聊天 |
+| POST | `/api/chat/stream` | SSE 流式聊天（Java 消费）|
+| GET | `/api/models` | 列出可用模型 |
+| POST | `/api/model/switch` | 切换模型（per-user）|
+| GET | `/api/roles` | 列出角色 |
+| GET | `/api/roles/activate` | 查询当前激活角色 |
+| POST | `/api/roles/activate` | 激活角色（per-user 持久化）|
+| DELETE | `/api/roles/activate` | 取消激活角色 |
+| GET | `/api/conversations` | 列出历史会话 |
+| POST | `/api/conversations` | 新建会话记录 |
+| GET | `/api/memory/list` | 列出记忆条目 |
+| GET | `/api/memory/search?q=关键词` | 语义搜索 |
+| GET | `/api/tasks/list` | 列出调度任务 |
+| POST | `/api/tasks/create` | 创建调度任务 |
+| GET | `/api/project/list` | 项目列表 |
+| GET | `/api/project/spec` | 读取规格文档 |
+| PUT | `/api/project/spec` | 写入规格文档 |
+| POST | `/api/project/tasks/decompose` | AI 任务分解 |
+| GET | `/api/tools/list` | 工具列表 |
+| GET | `/metrics` | Prometheus 指标 |
+| GET | `/api/notifications/poll` | 通知轮询（Java 每 5s 调用）|
 
 ---
 
@@ -183,15 +301,8 @@ black . && isort . && pylint . && mypy .
 
 | 编号 | 问题 | 状态 |
 |------|------|------|
-| D-01 | Java 用 `java-service` 固定 token，Python 无法区分真实用户 | ✅ 已完成（2026-06-02）：Java 所有 Controller 加 X-User-Id 头，Python middleware 优先读取 |
-| D-02 | ChromaDB `seq_id` INTEGER/BLOB schema mismatch | 已防御（try/except），根本修复需迁移数据 |
+| D-01 | Java 用 `java-service` 固定 token，Python 无法区分真实用户 | ✅ 已修复（2026-06-02）：X-User-Id 头透传 |
+| D-02 | ChromaDB `seq_id` INTEGER/BLOB schema mismatch | ✅ 已防御（try/except）；`migrate_chromadb.py` 可彻底修复 |
 | D-03 | `_TEXT_TOOL_CALLING_PATTERNS` 硬编码，新模型需改源码 | 低优先级 |
 | D-04 | L1 缓存 key 未包含 persona 维度，不同角色可能命中同一缓存 | 低优先级 |
-| D-05 | `asyncio.ensure_future` 在模块级别调用（lifespan 前），依赖 uvicorn 复用事件循环 | 运行正常，但不规范 |
-
-## 近期修复（2026-06-01）
-
-| 项 | 文件 | 说明 |
-|----|------|------|
-| memory category fallback | `api/fastapi_app.py` | 短期记忆条目的 category 字段优先读 `metadata["category"]`，fallback 到 `metadata["type"]`，避免显示"unknown" |
-| cleanup_expired 方法名 | `core/agent.py` | 记忆提炼（知识蒸馏）调用 `_cleanup_expired()` 而非不存在的 `cleanup_expired()`，修复点击"知识提炼"按钮报 AttributeError |
+| D-05 | `asyncio.ensure_future` 在模块级别调用，依赖 uvicorn 复用事件循环 | 运行正常，不规范 |

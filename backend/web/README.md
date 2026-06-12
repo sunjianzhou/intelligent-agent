@@ -22,19 +22,20 @@
 ```
 backend/web/src/main/java/.../
 ├── controller/
-│   ├── WebSocketController.java     WS 消息路由（chat_message / ping / get_system_info）
-│   ├── ChatController.java          /api/chat（非 WS 同步聊天，供飞书/直接 REST 调用）
-│   ├── HealthController.java        /api/health、/api/models、/api/model/switch、/api/config/*
-│   ├── PersonaProxyController.java  /api/personas/* → Python
-│   ├── MemoryProxyController.java   /api/memory/* → Python
-│   ├── TaskProxyController.java     /api/tasks/* → Python
-│   ├── ToolProxyController.java     /api/tools/* → Python
-│   ├── SkillProxyController.java    /api/skills/* → Python
-│   ├── AnalyticsProxyController.java /api/analytics/* → Python
-│   ├── ImageProxyController.java    /api/images/* → Python
-│   ├── ProjectProxyController.java  /api/project/* → Python（spec CRUD、context 查询）
-│   ├── AuthController.java          /api/auth/login、/api/auth/refresh
-│   └── SpaController.java           兜底路由（Vue Router history mode）
+│   ├── WebSocketController.java           WS 消息路由（chat_message / ping / get_system_info）
+│   ├── ChatController.java                /api/chat（非 WS 同步聊天，供飞书/直接 REST 调用）
+│   ├── HealthController.java              /api/health、/api/models、/api/model/switch、/api/config/*
+│   ├── AuthController.java                /api/auth/login、/api/auth/refresh
+│   ├── RoleController.java                /api/roles/* → Python（角色 CRUD + 激活状态）
+│   ├── ConversationsProxyController.java  /api/conversations/* → Python（历史会话）
+│   ├── MemoryProxyController.java         /api/memory/* → Python
+│   ├── TaskProxyController.java           /api/tasks/* → Python
+│   ├── ToolProxyController.java           /api/tools/* → Python
+│   ├── SkillProxyController.java          /api/skills/* → Python
+│   ├── AnalyticsProxyController.java      /api/analytics/* → Python
+│   ├── ImageProxyController.java          /api/images/* → Python
+│   ├── ProjectProxyController.java        /api/project/* → Python（spec CRUD、context 查询）
+│   └── SpaController.java                 兜底路由（Vue Router history mode）
 ├── service/
 │   ├── AgentService.java            Python SSE 流读取 + WS 推送（线程池）
 │   └── PythonProxyService.java      通用 HTTP 代理（GET/POST/PUT/PATCH/DELETE）
@@ -172,7 +173,7 @@ $env:PYTHON_SERVICE_BASE_URL = "http://localhost:8000"   # 或 8001
 
 | 编号 | 问题 | 状态 |
 |------|------|------|
-| J-01 | `java-service` 固定 token，无法向 Python 透传真实用户 | ✅ 已完成（2026-06-02）：所有 Controller 提取并透传 X-User-Id |
-| J-02 | `PythonProxyService` 和 `AgentService` 各维护独立 serviceToken，重复逻辑 | 可合并为单一 Token 管理 bean |
-| J-03 | `CloseableHttpClient.createDefault()` 无连接池配置，高并发场景可能连接耗尽 | 低优先级（当前单用户） |
-| J-04 | WebSocket 握手无 JWT 验证（仅 query string token，未在 HandshakeInterceptor 校验）| 安全隐患，低优先级 |
+| J-01 | `java-service` 固定 token，无法向 Python 透传真实用户 | ✅ 已修复（2026-06-02）：所有 Controller 提取并透传 X-User-Id |
+| J-02 | `PythonProxyService` 和 `AgentService` 各维护独立 serviceToken，重复逻辑 | ✅ 已合并：`PythonProxyService.getServiceToken()` 为单一来源，临近过期自动刷新 |
+| J-03 | 流式 `CloseableHttpClient` 无连接池配置，高并发可能连接耗尽 | 已配置 `PoolingHttpClientConnectionManager`（max-per-route=20），低优先级 |
+| J-04 | WebSocket 握手无 JWT 验证 | ✅ 已修复：`JwtHandshakeInterceptor` 在握手阶段校验 token，提取 userId 存入 session attributes |

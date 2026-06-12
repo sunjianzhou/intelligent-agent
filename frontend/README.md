@@ -32,16 +32,18 @@
 
 ---
 
-### 角色管理（PersonasView）
+### 角色编辑器（RoleEditorView）
+
+路由：`/roles/editor`
 
 | 功能 | 说明 |
 |------|------|
-| **角色卡片列表** | 展示全部角色，当前使用中角色显示"当前"标签 |
-| **新建角色** | 弹窗填写 emoji 图标、展示名称、内部 ID、系统提示词（大文本框）|
-| **编辑角色** | 修改任意字段，系统提示词支持 Markdown 预览 |
-| **删除角色** | 默认角色不可删除 |
-| **切换角色** | 点击"使用"立即切换，同步到 AI 后端并更新 Header 下拉 |
-| **内容预览** | 卡片中截取系统提示词前 120 字预览 |
+| **角色卡片列表** | 展示全部角色，当前激活角色显示"当前"标签 |
+| **新建/编辑角色** | 六标签表单：基本信息 / 核心身份 / 用户画像 / 场景知识 / 限制条件 / 提示预览 |
+| **提示预览 Tab** | 实时将表单字段编译为 system prompt Markdown，`marked + DOMPurify` 渲染 |
+| **切换角色** | 点击"使用"立即激活，POST `/api/roles/activate`，同步到 AI 后端 |
+| **删除角色** | 单条删除（内置系统角色不可删）|
+| **内容预览** | 卡片中截取描述前 120 字预览 |
 
 ---
 
@@ -147,10 +149,10 @@
 |------|------|
 | **JWT 鉴权** | 登录后颁发 JWT，所有受保护路由均校验 token；过期自动跳转登录页 |
 | **深色模式** | Header 右上角切换，持久化至 localStorage |
-| **角色切换下拉** | Header 顶部快速切换当前 AI 角色 |
-| **模型切换下拉** | Header 顶部切换 Ollama 模型（列表从后端拉取）|
-| **侧边栏会话历史** | 左侧列出最近会话，点击恢复历史记录（IndexedDB 持久化）|
-| **移动端响应** | 768px 以下侧边栏折叠为汉堡菜单抽屉，含完整导航 + 角色/模型快捷入口 |
+| **Config-bar** | 聊天输入框上方常驻条：左侧角色选择器 + 右侧模型切换下拉（原来在 Header，TODO-24 移入）|
+| **侧边栏会话历史** | 左侧列出最近会话，点击恢复历史记录；无预览时显"新对话"；删除当前会话自动切到下一条 |
+| **移动端响应** | 768px 以下折叠为汉堡菜单抽屉；含完整主导航 + 管理后台 + 聊天页历史会话快捷入口 |
+| **ConfirmDialog** | 危险操作（删除/清空）使用自研纯 Vue 弹窗，不使用 `window.confirm`（在 PWA/WebView 下会被静默拦截）|
 | **PWA 安装** | 支持浏览器"添加到主屏幕"，离线可访问静态资源 |
 | **全局错误通知** | API 异常统一通过 Element Plus toast 提示，401 自动退出 |
 
@@ -180,30 +182,33 @@
 ```
 frontend/src/
 ├── views/
-│   ├── ChatView.vue            主聊天界面（思考计时、工具卡片、会话历史）
+│   ├── ChatView.vue            主聊天界面（思考计时、工具卡片、会话历史、config-bar）
 │   ├── LoginView.vue           登录页
+│   ├── RoleEditorView.vue      角色编辑器（六标签表单 + 提示词实时预览，路由 /roles/editor）
 │   ├── ProjectView.vue         项目管理（三栏：列表 / 规格 / 任务树）
 │   ├── MemoryView.vue          记忆管理（搜索、长期、短期、摘要、导入导出）
-│   ├── PersonasView.vue        角色管理（卡片列表、新建、编辑）
 │   ├── SkillView.vue           Skill 管理
 │   ├── TasksView.vue           调度任务管理
-│   └── admin/
-│       ├── SystemView.vue      系统监控 + 运行时配置（滑块调参）
-│       ├── ToolsView.vue       工具列表 + API Key 配置
-│       └── StatsView.vue       统计分析
+│   ├── SystemView.vue          系统监控 + 运行时配置（可折叠卡片、滑块调参）
+│   ├── ToolsView.vue           工具列表 + API Key 配置
+│   └── StatsView.vue           统计分析
 ├── components/
 │   ├── layout/
-│   │   ├── Header.vue          顶部（角色下拉、模型下拉、深色模式、清空按钮）
-│   │   └── Sidebar.vue         左侧导航（聊天/角色/记忆/项目 + 历史会话列表）
+│   │   ├── Header.vue          顶部（连接状态、深色模式、清空按钮、管理后台入口）
+│   │   ├── Sidebar.vue         左侧导航（聊天/角色/记忆/项目 + 历史会话列表）
+│   │   └── StatusBar.vue       状态栏
+│   ├── ConfirmDialog.vue       自研危险操作确认弹窗（不用 window.confirm）
+│   ├── InstallPrompt.vue       PWA 安装提示
 │   └── project/
 │       ├── SpecEditor.vue      规格文档编辑器（Markdown 实时预览）
 │       ├── TaskTree.vue        任务树（AI 分解 + 手动 + 递归渲染）
 │       └── TaskNode.vue        递归任务节点（展开/折叠/状态流转）
 ├── stores/
-│   ├── websocket.js            WS 连接管理、消息处理、模型/角色切换
+│   ├── websocket.js            WS 连接管理、消息处理、模型/角色切换 + openHistorySignal 跨组件总线
 │   ├── auth.js                 登录状态、token 刷新
 │   ├── localSession.js         会话持久化到 IndexedDB（历史侧边栏）
 │   ├── project.js              项目 CRUD + localStorage 轻量缓存
+│   ├── confirmDialog.js        全局确认弹窗状态（useConfirmDialogStore）
 │   └── errorBus.js             全局错误通知总线
 ├── services/
 │   ├── api.js                  REST 调用封装（自动附 JWT、401 跳登录、错误 toast）
@@ -230,8 +235,12 @@ connect() → ws = new WebSocket(`ws://host/ws?token=...`)
         tool_calls_done  → 构造工具卡片 message
         chat_done        → isThinking = false，记录响应时间
         task_update      → useProjectStore.markTaskDone(task_id)
+        notification     → 聊天区推送通知气泡
         system_info      → 更新 systemInfo（模型、健康状态）
 ```
+
+**跨组件信号总线**：
+- `openHistorySignal`（ref）+ `triggerOpenHistory()`：Header 汉堡菜单 → ChatView 打开历史侧边栏，解决跨层级通信问题（无父子关系时不能用 emit）
 
 **持久化**：
 - `currentPersona` / `currentModel`：内存状态（通过 API 与服务端同步）
@@ -270,10 +279,11 @@ loadSessions()    → sessions = listSessions(IndexedDB)
 ### 移动端适配
 
 768px 以下：
-- 侧边栏收起为汉堡菜单（抽屉式）
-- 汉堡菜单中包含完整导航：主页（聊天/角色/记忆/项目）+ 管理后台（任务/工具/技能/系统/统计）
-- 当前在聊天页时，汉堡菜单额外显示角色切换和模型切换快速入口
-- Header 中的模型 / 角色切换按钮在移动端隐藏（由汉堡菜单覆盖）
+- 侧边栏收起为汉堡菜单（抽屉式），宽度 `min(240px, 85vw)` 适配小屏
+- 汉堡菜单主导航：聊天 / 角色配置 / 记忆 / 项目 / 系统
+- 汉堡菜单管理后台：任务 / 工具 / Skill / 系统 / 统计
+- 聊天页额外显示「历史会话」快捷入口，点击通过 Pinia 信号触发 ChatView 打开历史面板
+- 模型/角色选择器位于 ChatView config-bar，移动端同样可用
 
 ### 深色模式
 
@@ -288,7 +298,7 @@ loadSessions()    → sessions = listSessions(IndexedDB)
 | `/` | → `/chat` redirect | |
 | `/login` | LoginView | 公开路由 |
 | `/chat` | ChatView | 需登录 |
-| `/personas` | PersonasView | 需登录 |
+| `/roles/editor` | RoleEditorView | 需登录（角色编辑器）|
 | `/memory` | MemoryView | 需登录 |
 | `/project` | ProjectView | 需登录 |
 | `/skills` | SkillView | 需登录 |
@@ -297,7 +307,7 @@ loadSessions()    → sessions = listSessions(IndexedDB)
 | `/admin/system` | SystemView | 需登录 |
 | `/admin/stats` | StatsView | 需登录 |
 
-所有 `/admin/*` 通过导航守卫统一鉴权，token 过期自动跳 `/login`。
+所有非 `/login` 路由通过导航守卫统一鉴权，token 过期自动跳 `/login`。
 
 ---
 
@@ -350,8 +360,9 @@ npm run preview  # 预览 dist/
 
 | 编号 | 问题 | 状态 |
 |------|------|------|
-| F-01 | 移动端汉堡菜单缺少"项目"和"角色"入口 | ✅ 已修复（2026-06-02） |
-| F-02 | 角色名"角色设定"是文件标题，与页面功能名重名（歧义）| ✅ 已修复（新增"展示名"字段，2026-06-02）|
-| F-03 | clearMessages() 只清前端，不清 Python 短期记忆 | ✅ 已修复（2026-05-30，同步调用 clearAllMemory）|
-| F-04 | 会话历史标题更新依赖 `_persist()` 异步，sidebar 可能延迟刷新 | 低优先级 |
-| F-05 | api.js 中 `switchModel` 动态 import 导致代码分割警告（与静态 import 混用）| 低优先级 |
+| F-01 | 移动端汉堡菜单缺少"项目"和"角色"入口 | ✅ 已修复（2026-06-02）|
+| F-02 | 角色名歧义（文件标题 vs 功能名）| ✅ 已修复（展示名字段，2026-06-02）|
+| F-03 | clearMessages() 只清前端，不清 Python 短期记忆 | ✅ 已修复（2026-05-30）|
+| F-04 | 删除/清空使用 window.confirm，PWA/WebView 下被静默拦截 | ✅ 已修复（ConfirmDialog 组件，2026-06-07）|
+| F-05 | 会话历史标题更新依赖 `_persist()` 异步，sidebar 可能延迟刷新 | 低优先级 |
+| F-06 | api.js 中 `switchModel` 动态 import 导致代码分割警告 | 低优先级 |

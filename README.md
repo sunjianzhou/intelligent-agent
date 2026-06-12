@@ -112,8 +112,8 @@
 
 | 路由 | 功能 |
 |------|------|
-| `/chat` | 流式聊天，Markdown 渲染，工具进度卡片，历史会话侧边栏，模型/角色切换 |
-| `/personas` | 角色卡片，新建/编辑/Markdown 预览 |
+| `/chat` | 流式聊天，Markdown 渲染，工具进度卡片，历史会话侧边栏；config-bar 内嵌角色选择器 + 模型切换 |
+| `/roles/editor` | 角色编辑器：六标签表单（基本信息/核心身份/用户画像/场景知识/限制条件/提示预览）|
 | `/memory` | 短期/长期记忆查看，语义搜索（500ms 防抖），导出 |
 | `/project` | 项目列表 · Spec 编辑器 · 任务树（`[TASK_DONE]` 自动勾选） |
 | `/admin/tasks` | 定时任务 CRUD，cron 支持，running/pending 状态区分 |
@@ -435,28 +435,37 @@ Web 界面 → 系统页（⚙ 图标 → 系统）可在线调节温度、最�
 intelligent_agent/
 ├── agent/                          Python FastAPI AI 核心服务
 │   ├── api/fastapi_app.py          入口：所有 REST/SSE 端点
-│   ├── core/agent.py               IntelligentAgent：ReAct 主循环
+│   ├── api/roles_router.py         /api/roles/* 角色 CRUD
+│   ├── api/conversations_router.py /api/conversations/* 历史会话
+│   ├── api/projects_router.py      /api/project/* 规格/任务/上下文
+│   ├── core/agent.py               IntelligentAgent 门面（继承三个 Mixin）
+│   ├── core/conversation_flow.py   ConversationFlowMixin（消息构建/chat/stream）
+│   ├── core/tool_dispatcher.py     ToolDispatcherMixin（工具注册/意图/LLM调用）
+│   ├── core/memory_writer.py       MemoryWriterMixin（预热/蒸馏/清理）
+│   ├── core/_context_vars.py       共享 ContextVar（per-request 隔离）
 │   ├── memory/                     记忆系统（短期/长期/提炼/缓存/项目上下文）
-│   ├── tools/                      ToolManager + 内置工具
+│   ├── tools/                      ToolManager + 内置工具（计算/时间/文件/搜索/Shell/图片）
 │   ├── scheduler/                  SimpleTaskScheduler + TaskManager
-│   ├── personas/                   角色 Markdown 文件（热加载）
+│   ├── personas/                   角色系统 Python 模块（role_manager/role_models/prompt_builder）
 │   ├── skills/                     技能意图路由
-│   ├── prompts/                    System prompt YAML
-│   ├── services/                   OllamaProvider / OpenAIProvider
+│   ├── prompts/                    System prompt YAML（default + dolphin）
+│   ├── services/                   OllamaProvider / OpenAIProvider / MCPClient
 │   ├── config/settings.py          Pydantic 配置（.env 驱动）
-│   └── tests/                      pytest 测试套件
+│   └── tests/                      pytest 测试套件（152 个）
 │
 ├── backend/web/                    Java Spring Boot 网关
 │   └── src/main/java/…/
 │       ├── WebSocketController     WS 消息路由
-│       ├── AgentService            SSE 流式代理 + 事件转发
-│       └── controller/             HTTP 代理控制器（记忆/工具/角色/项目等）
+│       ├── AgentService            SSE 流式代理 + 事件转发（@Scheduled 5s 通知推送）
+│       ├── RoleController          /api/roles/* 代理（角色 CRUD + 激活）
+│       ├── ConversationsProxyController /api/conversations/* 代理（历史会话）
+│       └── controller/             其余 HTTP 代理（记忆/工具/项目/分析/图片等）
 │
 ├── frontend/                       Vue 3 SPA
 │   └── src/
-│       ├── views/                  页面组件（Chat/Personas/Memory/Project/Tasks/System/Stats）
-│       ├── stores/                 Pinia 状态（WebSocket/Auth/LocalSession/Project）
-│       └── services/               WebSocket 客户端 + REST 封装
+│       ├── views/                  页面组件（Chat/RoleEditor/Memory/Project/Tasks/System/Stats）
+│       ├── stores/                 Pinia 状态（WebSocket/Auth/LocalSession/Project/ConfirmDialog）
+│       └── services/               WebSocket 客户端 + REST 封装（api.js/localDB.js）
 │
 ├── client/                         Python CLI 客户端（直连 Agent）
 │   ├── main.py                     CLI 入口（argparse，单次/REPL 两种模式）
@@ -605,7 +614,7 @@ intelligent_agent/
 
 ### 新增角色
 
-在 `agent/personas/` 放 `my_role.md`，第一行 `# 标题` 作为展示名，立即在前端角色选择器中出现（热加载）。
+在前端 Web 界面 `/roles/editor` 创建角色（推荐，表单化），或直接调用 `POST /api/roles`（JSON body）。角色持久化到 `agent/data/`，无需重建镜像。
 
 ### 开发命令速查
 
