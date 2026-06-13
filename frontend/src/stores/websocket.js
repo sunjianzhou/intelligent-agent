@@ -19,6 +19,7 @@ function _newSessionId() {
 export const useWebSocketStore = defineStore('websocket', () => {
   // ── 状态 ────────────────────────────────────────────────
   const isConnected      = ref(false)
+  const wasEverConnected = ref(false)   // 曾经成功连接过（区分首次断开 vs 意外断开）
   const messages         = ref([])
   const systemInfo       = ref(null)
   const lastResponseTime = ref(null)
@@ -105,6 +106,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
     ws.onopen = () => {
       isConnected.value = true
+      wasEverConnected.value = true
       error.value = null
       console.log('[WS] 连接成功')
       // 每 10 分钟 REST 心跳，确保长时间 WS 会话的 Token 自动续期
@@ -522,7 +524,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
   return {
     // 状态
-    isConnected, messages, systemInfo, lastResponseTime,
+    isConnected, wasEverConnected, messages, systemInfo, lastResponseTime,
     error, isMockMode, currentModel, availableModels,
     isStreaming, streamingIndex, activeToolSteps, chatEndSignal,
     currentSessionId,

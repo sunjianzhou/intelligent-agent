@@ -6,6 +6,9 @@ import App from '@/App.vue'
 // Font Awesome 图标（本地打包，无需 CDN，避免境内代理拦截）
 import '@fortawesome/fontawesome-free/css/all.min.css'
 
+// Element Plus 样式（仅角色配置页使用 El 组件，需全局注册 CSS）
+import 'element-plus/dist/index.css'
+
 // 创建Pinia实例
 const pinia = createPinia()
 

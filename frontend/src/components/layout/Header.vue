@@ -72,8 +72,8 @@
 
       <!-- 连接状态 -->
       <div class="connection-status">
-        <span class="status-dot" :class="isConnected ? 'connected' : 'disconnected'" />
-        <span class="status-text" :class="isConnected ? 'connected' : 'disconnected'">
+        <span class="status-dot" :class="isConnected ? 'connected' : wasEverConnected ? 'disconnected-sudden' : 'disconnected-init'" />
+        <span class="status-text" :class="isConnected ? 'connected' : wasEverConnected ? 'disconnected-sudden' : 'disconnected-init'">
           {{ connectionStatus }}
         </span>
       </div>
@@ -83,11 +83,6 @@
         <i :class="isDark ? 'fas fa-sun' : 'fas fa-moon'" />
       </button>
 
-      <!-- 清空聊天 -->
-      <button v-if="showClearButton" class="btn btn-secondary" @click="clearChat">
-        <i class="fas fa-trash" />
-        清空
-      </button>
     </div>
   </div>
 </template>
@@ -95,7 +90,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+
 import { useWebSocketStore } from '@/stores/websocket'
 
 // ── 暗色主题（WANT-011）──────────────────────────────────
@@ -149,10 +144,8 @@ const pageIcon    = computed(() => pageConfig.value.icon)
 
 // ── Store 数据 ────────────────────────────────────────────
 const isConnected      = computed(() => store.isConnected)
+const wasEverConnected = computed(() => store.wasEverConnected)
 const connectionStatus = computed(() => store.connectionStatus)
-// ── 显示控制 ──────────────────────────────────────────────
-const showClearButton = computed(() => route.name === 'chat')
-
 // ── 管理后台入口 ──────────────────────────────────────────
 const adminMenuOpen = ref(false)
 const adminMenuRef  = ref(null)
@@ -168,18 +161,6 @@ const handleClickOutside = (e) => {
   if (adminMenuRef.value && !adminMenuRef.value.contains(e.target)) {
     adminMenuOpen.value = false
   }
-}
-
-// ── 清空聊天 ──────────────────────────────────────────────
-const clearChat = async () => {
-  try {
-    await ElMessageBox.confirm('清空后将同时清除 AI 的对话记忆，无法恢复。', '确认清空对话', {
-      confirmButtonText: '清空', cancelButtonText: '取消', type: 'warning',
-      confirmButtonClass: 'el-button--danger',
-    })
-  } catch { return }
-  await store.clearMessages()
-  ElMessage({ message: '对话已清空', type: 'success', duration: 1500 })
 }
 
 // ── 生命周期 ──────────────────────────────────────────────
@@ -309,25 +290,16 @@ onUnmounted(() => {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.status-dot.connected    { background: #4caf50; }
-.status-dot.disconnected { background: #f44336; }
-.status-text.connected   { color: #2e7d32; }
-.status-text.disconnected { color: #c62828; }
-
-/* ── 清空按钮 ────────────────────────────────────────── */
-.btn {
-  padding: 7px 14px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.88rem;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
+.status-dot.connected           { background: #4caf50; }
+.status-dot.disconnected-sudden { background: #f44336; animation: pulse-dot 1.5s infinite; }
+.status-dot.disconnected-init   { background: #bbb; }
+.status-text.connected          { color: #2e7d32; }
+.status-text.disconnected-sudden { color: #c62828; }
+.status-text.disconnected-init   { color: #999; }
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
 }
-.btn-secondary { background: #f0f2f5; color: #555; }
-.btn-secondary:hover { background: #e4e6ea; }
 
 .theme-btn {
   width: 34px; height: 34px; border-radius: 8px;

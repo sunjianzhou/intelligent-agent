@@ -30,18 +30,18 @@
         <el-button type="primary" @click="handleSave" :loading="saving">保存</el-button>
         <el-button
           v-if="!isActiveRole"
-          type="success"
+          type="primary" plain
           :disabled="!currentRoleId || currentRoleId === '__new__'"
           :loading="activating"
           @click="handleActivate"
         >激活角色</el-button>
         <el-button
           v-else
-          type="warning" plain
+          plain
           @click="handleDeactivate"
         >停用</el-button>
         <el-button
-          type="danger" plain
+          type="danger"
           :disabled="!currentRoleId || currentRoleId === '__new__'"
           @click="handleDelete"
         >删除</el-button>
@@ -53,9 +53,20 @@
 
       <!-- ── Tab 1：角色名片 ── -->
       <el-tab-pane label="角色名片" name="card">
-        <el-form :model="form.roleCard" label-width="90px">
+        <el-alert type="info" :closable="false" class="card-guide-alert">
+          <template #title>
+            <span style="font-weight:500">快速上手</span>
+          </template>
+          <div class="card-guide-body">
+            <span><b>角色名称</b>：如「技术顾问」「写作助手」「健身教练」</span>
+            <span><b>签名</b>：一句话描述角色定位，如「帮你把想法变成清晰的文字」</span>
+            <span><b>标签</b>：打标签方便分类，如「编程」「创作」「效率」</span>
+            <span>填写名片后，前往 <b>核心身份</b> 和 <b>行为风格</b> 选项卡配置 AI 性格与回答方式。</span>
+          </div>
+        </el-alert>
+        <el-form :model="form.roleCard" label-width="90px" style="margin-top:12px">
           <el-form-item label="角色名称" required>
-            <el-input v-model="form.roleCard.name" placeholder="如：Luna" />
+            <el-input v-model="form.roleCard.name" placeholder="如：技术顾问 / 写作助手 / 健身教练" />
           </el-form-item>
           <el-form-item label="头像">
             <div class="avatar-row">
@@ -75,10 +86,10 @@
             </div>
           </el-form-item>
           <el-form-item label="签名">
-            <el-input v-model="form.roleCard.signature" placeholder="一句话签名" />
+            <el-input v-model="form.roleCard.signature" placeholder="如：帮你把想法变成清晰的文字" />
           </el-form-item>
           <el-form-item label="标签">
-            <TagInput v-model="form.roleCard.tags" placeholder="输入标签后回车" />
+            <TagInput v-model="form.roleCard.tags" placeholder="输入标签后回车，如：编程、创作、效率" />
           </el-form-item>
         </el-form>
       </el-tab-pane>
@@ -291,7 +302,27 @@
 
 <script setup>
 import { ref, reactive, computed, defineComponent, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  ElTabs, ElTabPane,
+  ElSelect, ElOption,
+  ElForm, ElFormItem,
+  ElInput,
+  ElButton,
+  ElAvatar,
+  ElSwitch,
+  ElTooltip,
+  ElTag,
+  ElAlert,
+  ElDivider,
+  ElEmpty,
+  ElTimeline, ElTimelineItem,
+  ElSlider,
+  ElInputNumber,
+  ElCard,
+  ElText,
+  ElUpload,
+  ElMessage, ElMessageBox,
+} from 'element-plus'
 import { saveRole, loadRole, listRoles, deleteRole, newRoleConfig } from '@/services/roleStorage'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -528,6 +559,69 @@ const previewHtml = computed(() => {
   padding: 16px;
   max-width: 860px;
   margin: 0 auto;
+  /* 让 El Plus 表单背景融入页面灰色背景，避免大面积白块割裂感 */
+}
+
+/* ── El Plus 主题适配：融入应用整体风格 ─────────────────────── */
+:deep(.el-tabs__header) {
+  margin-bottom: 20px;
+}
+:deep(.el-tabs__item) {
+  color: #666;
+  font-size: 0.9rem;
+}
+:deep(.el-tabs__item.is-active) {
+  color: #667eea;
+  font-weight: 600;
+}
+:deep(.el-tabs__active-bar) {
+  background-color: #667eea;
+}
+:deep(.el-form-item__label) {
+  color: #555;
+  font-size: 0.88rem;
+}
+:deep(.el-input__wrapper),
+:deep(.el-textarea__inner) {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px #e0e3e8 inset;
+}
+:deep(.el-input__wrapper:hover),
+:deep(.el-textarea__inner:hover) {
+  box-shadow: 0 0 0 1px #667eea inset;
+}
+:deep(.el-input__wrapper.is-focus),
+:deep(.el-textarea__inner:focus) {
+  box-shadow: 0 0 0 1px #667eea inset;
+}
+:deep(.el-button--primary) {
+  background: #667eea;
+  border-color: #667eea;
+}
+:deep(.el-button--primary:hover) {
+  background: #5a6fd6;
+  border-color: #5a6fd6;
+}
+:deep(.el-button--primary.is-plain) {
+  background: transparent;
+  color: #667eea;
+  border-color: #667eea;
+}
+:deep(.el-button--primary.is-plain:hover) {
+  background: #f0f1ff;
+  color: #5a6fd6;
+  border-color: #5a6fd6;
+}
+:deep(.el-button--danger) {
+  background: #ef4444;
+  border-color: #ef4444;
+}
+:deep(.el-button--danger:hover) {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+:deep(.el-select .el-input__wrapper) {
+  border-radius: 8px;
 }
 
 .editor-header {
@@ -540,6 +634,16 @@ const previewHtml = computed(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.card-guide-alert { margin-bottom: 4px; }
+.card-guide-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.82rem;
+  color: #555;
+  margin-top: 4px;
 }
 
 .avatar-row {

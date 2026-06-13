@@ -197,15 +197,15 @@ async function saveSpec() {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px;
-  background: #f0f4ff;
-  border-top: 1px solid #dce4ff;
-  font-size: 0.72rem;
-  color: #555;
+  padding: 7px 14px;
+  background: #eff6ff;
+  border-top: 1px solid #bfdbfe;
+  font-size: 0.8rem;
+  color: #1e40af;
   flex-shrink: 0;
 }
-.hint-icon { color: #667eea; }
-.hint-items strong { color: #667eea; }
+.hint-icon { color: #3b82f6; }
+.hint-items strong { color: #1d4ed8; }
 
 .preview-wrap {
   flex: 1;

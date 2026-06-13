@@ -2,29 +2,22 @@
   <div class="memory-view">
     <!-- 统计卡片 -->
     <div class="stats-row">
-      <div class="stat-card">
+      <div class="stat-card accent-primary">
         <div class="stat-num">{{ stats.long_term?.count ?? '-' }}</div>
         <div class="stat-label">长期记忆</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card accent-success">
         <div class="stat-num">{{ stats.short_term?.count ?? '-' }}</div>
         <div class="stat-label">短期记忆</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card accent-warn">
         <div class="stat-num">{{ avgImportance }}</div>
         <div class="stat-label">平均重要性</div>
       </div>
     </div>
 
-    <!-- 危险操作区：与统计数字保持视觉距离，防止误点 -->
-    <div class="danger-zone">
-      <button class="clear-all-btn" @click="confirmClearAll" title="清空全部记忆（不可恢复）">
-        <i class="fas fa-trash-alt" /> 清空全部
-      </button>
-    </div>
-
-    <!-- 搜索 + 切换 -->
-    <div class="toolbar">
+    <!-- 搜索栏 + 类型切换 -->
+    <div class="toolbar toolbar-row1">
       <div class="search-wrap">
         <i class="fas fa-search search-icon" />
         <input
@@ -47,44 +40,54 @@
           @click="switchType(t.value)"
         >{{ t.label }}</button>
       </div>
-      <button class="refresh-btn" :class="{ spinning: loading }" @click="load">
-        <i class="fas fa-sync-alt" /><span class="btn-label">刷新</span>
-      </button>
-      <!-- 批量导入 -->
-      <label class="import-btn" title="批量导入记忆（TXT/JSON）">
-        <i class="fas fa-file-import" /><span class="btn-label">导入</span>
-        <input type="file" accept=".txt,.json" style="display:none" @change="importFile" />
-      </label>
-      <!-- 知识提炼 -->
-      <button class="distill-btn" :class="{ spinning: distilling }" :disabled="distilling"
-              title="从短期对话中提炼知识写入长期记忆" @click="runDistill">
-        <i class="fas fa-flask" />
-        <span>{{ distilling ? '提炼中…' : '提炼知识' }}</span>
-      </button>
-      <!-- 导出 -->
-      <div class="export-wrap" ref="exportRef">
-        <button class="export-btn" @click="exportDropOpen = !exportDropOpen" title="导出">
-          <i class="fas fa-download" />
-          <span>导出</span>
+    </div>
+
+    <!-- 操作按钮行 -->
+    <div class="toolbar toolbar-row2">
+      <div class="action-btns">
+        <button class="refresh-btn" :class="{ spinning: loading }" @click="load" title="刷新">
+          <i class="fas fa-sync-alt" /><span class="btn-label">刷新</span>
         </button>
-        <div v-if="exportDropOpen" class="export-dropdown">
-          <a class="export-item" :href="exportUrl('markdown')" download @click="exportDropOpen=false">
-            <i class="fas fa-file-alt" /> 记忆 Markdown
-          </a>
-          <a class="export-item" :href="exportUrl('json')" download @click="exportDropOpen=false">
-            <i class="fas fa-code" /> 记忆 JSON
-          </a>
-          <div class="export-divider" />
-          <button class="export-item" @click="exportMigration">
-            <i class="fas fa-box-open" /> 迁移包（全量）
+        <!-- 批量导入 -->
+        <label class="import-btn" title="批量导入记忆（TXT/JSON）">
+          <i class="fas fa-file-import" /><span class="btn-label">导入</span>
+          <input type="file" accept=".txt,.json" style="display:none" @change="importFile" />
+        </label>
+        <!-- 知识提炼 -->
+        <button class="distill-btn" :class="{ spinning: distilling }" :disabled="distilling"
+                title="从短期对话中提炼知识写入长期记忆" @click="runDistill">
+          <i class="fas fa-flask" />
+          <span>{{ distilling ? '提炼中…' : '提炼知识' }}</span>
+        </button>
+        <!-- 导出 -->
+        <div class="export-wrap" ref="exportRef">
+          <button class="export-btn" @click="exportDropOpen = !exportDropOpen" title="导出">
+            <i class="fas fa-download" />
+            <span>导出</span>
           </button>
+          <div v-if="exportDropOpen" class="export-dropdown">
+            <a class="export-item" :href="exportUrl('markdown')" download @click="exportDropOpen=false">
+              <i class="fas fa-file-alt" /> 记忆 Markdown
+            </a>
+            <a class="export-item" :href="exportUrl('json')" download @click="exportDropOpen=false">
+              <i class="fas fa-code" /> 记忆 JSON
+            </a>
+            <div class="export-divider" />
+            <button class="export-item" @click="exportMigration">
+              <i class="fas fa-box-open" /> 迁移包（全量）
+            </button>
+          </div>
         </div>
+        <!-- 导入迁移包 -->
+        <label class="import-btn" title="导入迁移包恢复数据">
+          <i class="fas fa-upload" /><span class="btn-label">恢复</span>
+          <input type="file" accept=".json" style="display:none" @change="importMigration" />
+        </label>
       </div>
-      <!-- 导入迁移包 -->
-      <label class="import-btn" title="导入迁移包恢复数据">
-        <i class="fas fa-upload" /><span class="btn-label">恢复</span>
-        <input type="file" accept=".json" style="display:none" @change="importMigration" />
-      </label>
+      <!-- 危险操作：放在第二行右端，与其他按钮有视觉分隔 -->
+      <button class="clear-all-btn" @click="confirmClearAll" title="清空全部记忆（不可恢复）">
+        <i class="fas fa-trash-alt" /> 清空全部
+      </button>
     </div>
 
     <!-- 搜索结果标签 -->
@@ -536,18 +539,11 @@ onUnmounted(() => {
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
 }
-.danger-zone {
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 10px;
-  border-top: 1px solid #fecaca;
-  margin-top: 4px;
-}
 .clear-all-btn {
-  height: 36px;
+  height: 34px;
   padding: 0 14px;
   border: 1px solid #fca5a5;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #fff5f5;
   color: #dc2626;
   font-size: 0.82rem;
@@ -557,6 +553,7 @@ onUnmounted(() => {
   gap: 6px;
   white-space: nowrap;
   transition: all 0.2s;
+  flex-shrink: 0;
 }
 .clear-all-btn:hover { background: #fee2e2; border-color: #f87171; }
 .stat-card {
@@ -567,6 +564,9 @@ onUnmounted(() => {
   text-align: center;
   cursor: default;
 }
+.stat-card.accent-primary { border-top: 3px solid #667eea; }
+.stat-card.accent-success { border-top: 3px solid #43a047; }
+.stat-card.accent-warn    { border-top: 3px solid #f57c00; }
 .stat-num  { font-size: 22px; font-weight: 500; color: #333; }
 .stat-label { font-size: 12px; color: #888; margin-top: 4px; }
 
@@ -575,6 +575,16 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.toolbar-row1 { flex-wrap: nowrap; }
+.toolbar-row2 {
+  justify-content: space-between;
+}
+.action-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .search-wrap {
   flex: 1;

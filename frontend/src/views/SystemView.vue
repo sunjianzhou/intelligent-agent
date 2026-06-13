@@ -20,17 +20,19 @@
       </div>
       <div class="status-card">
         <div class="card-label">Java 后端</div>
-        <div class="status-badge" :class="javaOk === null ? 'checking' : javaOk ? 'ok' : 'err'">
-          <i :class="javaOk === null ? 'fas fa-spinner fa-spin' : javaOk ? 'fas fa-check-circle' : 'fas fa-times-circle'" />
-          {{ javaOk === null ? '检测中' : javaOk ? '运行中' : '未连接' }}
+        <div class="status-badge" :class="javaOk === null ? 'checking' : javaOk === 'timeout' ? 'timeout' : javaOk ? 'ok' : 'err'">
+          <i :class="javaOk === null ? 'fas fa-spinner fa-spin' : javaOk === 'timeout' ? 'fas fa-clock' : javaOk ? 'fas fa-check-circle' : 'fas fa-times-circle'" />
+          {{ javaOk === null ? '检测中' : javaOk === 'timeout' ? '检测超时' : javaOk ? '运行中' : '未连接' }}
+          <button v-if="javaOk === 'timeout'" class="retry-btn" @click="refresh"><i class="fas fa-redo" /> 重试</button>
         </div>
         <div class="card-sub">Spring Boot · localhost:8080</div>
       </div>
       <div class="status-card">
         <div class="card-label">Python Agent</div>
-        <div class="status-badge" :class="pythonOk === null ? 'checking' : pythonOk ? 'ok' : 'err'">
-          <i :class="pythonOk === null ? 'fas fa-spinner fa-spin' : pythonOk ? 'fas fa-check-circle' : 'fas fa-times-circle'" />
-          {{ pythonOk === null ? '检测中' : pythonOk ? '运行中' : '未连接' }}
+        <div class="status-badge" :class="pythonOk === null ? 'checking' : pythonOk === 'timeout' ? 'timeout' : pythonOk ? 'ok' : 'err'">
+          <i :class="pythonOk === null ? 'fas fa-spinner fa-spin' : pythonOk === 'timeout' ? 'fas fa-clock' : pythonOk ? 'fas fa-check-circle' : 'fas fa-times-circle'" />
+          {{ pythonOk === null ? '检测中' : pythonOk === 'timeout' ? '检测超时' : pythonOk ? '运行中' : '未连接' }}
+          <button v-if="pythonOk === 'timeout'" class="retry-btn" @click="refresh"><i class="fas fa-redo" /> 重试</button>
         </div>
         <div class="card-sub">FastAPI · localhost:8000</div>
       </div>
@@ -99,15 +101,20 @@
           </span>
         </div>
         <SparkLine :data="history.gpu" :color="lineColor(resources.gpu?.util_percent)" />
-        <div v-if="resources.gpu" class="chart-detail">
-          <span>{{ resources.gpu.temperature }}°C</span>
-          <span>显存 {{ resources.gpu.mem_used_mb }}/{{ resources.gpu.mem_total_mb }} MB</span>
+        <template v-if="resources.gpu">
+          <div class="chart-detail">
+            <span>{{ resources.gpu.temperature }}°C</span>
+            <span>显存 {{ resources.gpu.mem_used_mb }}/{{ resources.gpu.mem_total_mb }} MB</span>
+          </div>
+          <div class="mini-progress-wrap">
+            <div class="mini-progress-bar gpu-bar"
+                 :style="{ width: resources.gpu.mem_percent + '%' }" />
+          </div>
+          <div class="gpu-name">{{ resources.gpu.name }}</div>
+        </template>
+        <div v-else-if="resources.gpu === null || resources.gpu === undefined" class="gpu-empty">
+          未检测到独立 GPU
         </div>
-        <div v-if="resources.gpu" class="mini-progress-wrap">
-          <div class="mini-progress-bar gpu-bar"
-               :style="{ width: resources.gpu.mem_percent + '%' }" />
-        </div>
-        <div v-if="resources.gpu" class="gpu-name">{{ resources.gpu.name }}</div>
       </div>
 
       <div class="chart-card">
@@ -587,7 +594,7 @@ const showOthers   = ref(false)
 const showMemTips  = ref(false)
 const showModelList = ref(true)
 const topOthers    = ref([])
-const javaOk       = ref(null)
+const javaOk       = ref(null)   // null=检测中, true=ok, false=失败, 'timeout'=超时
 const pythonOk     = ref(null)
 const ollamaOk     = ref(false)
 const currentModel = ref('')
@@ -721,39 +728,57 @@ const lineColor = (v) => {
   return v >= 80 ? '#e53935' : v >= 60 ? '#f57c00' : '#43a047'
 }
 
+/** 给 Promise 套一个 8s 超时，超时 reject 带 {timedOut: true} 标记 */
+const withTimeout = (promise, ms = 8000) =>
+  Promise.race([
+    promise,
+    new Promise((_, rej) => setTimeout(() => rej({ timedOut: true }), ms))
+  ])
+
 // ── 数据加载 ──────────────────────────────────────────────
 const refresh = async () => {
   loading.value   = true
   countdown.value = 10
   try {
-    const [java, python, sys, modelData, res] = await Promise.all([
-      getJavaHealth(), getPythonHealth(), getSystemInfo(), getModels(), getSystemResources()
+    const [javaRes, pythonRes, sys, modelData, res] = await Promise.allSettled([
+      withTimeout(getJavaHealth()),
+      withTimeout(getPythonHealth()),
+      getSystemInfo(), getModels(), getSystemResources()
     ])
 
-    javaOk.value   = java != null ? java.status === 'UP' : false
-    pythonOk.value = python != null ? python.status === 'connected' : false
+    const java   = javaRes.status   === 'fulfilled' ? javaRes.value   : null
+    const python = pythonRes.status === 'fulfilled' ? pythonRes.value : null
 
-    if (sys) {
-      sysInfo.value      = sys
-      ollamaOk.value     = sys.ollama_available === true
-      currentModel.value = sys.agent_model || ''
-      // 云端模型信息
-      cloudMode.value    = !!sys.cloud_mode
-      cloudBaseUrl.value = sys.cloud_base_url || ''
-      cloudModel.value   = sys.cloud_model || modelData?.cloud_model || ''
+    if (javaRes.status === 'rejected' && javaRes.reason?.timedOut)     javaOk.value = 'timeout'
+    else javaOk.value   = java != null ? java.status === 'UP' : false
+
+    if (pythonRes.status === 'rejected' && pythonRes.reason?.timedOut) pythonOk.value = 'timeout'
+    else pythonOk.value = python != null ? python.status === 'connected' : false
+
+    const sysd       = sys.status      === 'fulfilled' ? sys.value       : null
+    const modelData2 = modelData.status === 'fulfilled' ? modelData.value : null
+    const resData    = res.status      === 'fulfilled' ? res.value       : null
+
+    if (sysd) {
+      sysInfo.value      = sysd
+      ollamaOk.value     = sysd.ollama_available === true
+      currentModel.value = sysd.agent_model || ''
+      cloudMode.value    = !!sysd.cloud_mode
+      cloudBaseUrl.value = sysd.cloud_base_url || ''
+      cloudModel.value   = sysd.cloud_model || modelData2?.cloud_model || ''
     }
 
-    if (modelData?.available_models) models.value = modelData.available_models
+    if (modelData2?.available_models) models.value = modelData2.available_models
 
-    if (res) {
-      resources.value    = res
-      processes.value    = res.processes            || {}
-      topOthers.value    = res.top_other_processes  || []
-      disks.value        = res.disks                || []
-      ollamaModels.value = res.ollama_models        || []
-      push('cpu',    res.cpu_percent)
-      push('memory', res.memory_percent)
-      push('gpu',    res.gpu?.util_percent ?? null)
+    if (resData) {
+      resources.value    = resData
+      processes.value    = resData.processes            || {}
+      topOthers.value    = resData.top_other_processes  || []
+      disks.value        = resData.disks                || []
+      ollamaModels.value = resData.ollama_models        || []
+      push('cpu',    resData.cpu_percent)
+      push('memory', resData.memory_percent)
+      push('gpu',    resData.gpu?.util_percent ?? null)
     }
 
     lastUpdated.value = new Date().toLocaleTimeString('zh-CN')
@@ -813,6 +838,19 @@ onUnmounted(() => { clearInterval(timer); clearInterval(clockTimer) })
 .status-badge.ok       { background: #e8f5e9; color: #2e7d32; }
 .status-badge.err      { background: #fce4e4; color: #c62828; }
 .status-badge.checking { background: #f5f5f5; color: #999; }
+.status-badge.timeout  { background: #fff3e0; color: #e65100; }
+.retry-btn {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.8;
+}
+.retry-btn:hover { opacity: 1; }
 
 .chart-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .chart-card { background: white; border-radius: 12px; border: 0.5px solid #e8eaed; padding: 14px; }
@@ -831,7 +869,8 @@ onUnmounted(() => { clearInterval(timer); clearInterval(clockTimer) })
 .mini-progress-wrap { height: 4px; background: #f0f0f0; border-radius: 2px; overflow: hidden; margin-top: 6px; }
 .mini-progress-bar  { height: 100%; border-radius: 2px; transition: width 0.4s; }
 .gpu-bar  { background: #667eea; }
-.gpu-name { font-size: 0.72rem; color: #bbb; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gpu-name  { font-size: 0.72rem; color: #bbb; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gpu-empty { font-size: 0.78rem; color: #bbb; margin-top: 8px; text-align: center; }
 
 .detail-row  { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .detail-card { background: white; border-radius: 12px; border: 0.5px solid #e8eaed; padding: 18px; }

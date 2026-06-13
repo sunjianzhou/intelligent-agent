@@ -120,3 +120,127 @@ RoleEditorView 新增第六个 Tab「提示预览」，用 `marked` + `DOMPurify
 ## ~~TODO-29: 移动端汉堡菜单完整性~~ ✅ 已完成（2026-06-12）
 
 Header.vue navItems 补「系统」(`/admin/system`)；聊天页抽屉新增「历史会话」项，点击触发 `store.triggerOpenHistory()`，ChatView watch 信号自动打开面板。
+
+---
+
+## ~~TODO-30: RoleEditorView El Plus 组件注册修复~~ ✅ 已完成（2026-06-12）
+
+**问题**: 角色编辑器页面所有 `<el-*>` 标签渲染为未知自定义 HTML 元素，表单完全不可用。
+
+**根因**: 项目无 `unplugin-vue-components`，`<script setup>` 中未显式 import El Plus 组件。
+
+**修复**: `RoleEditorView.vue` 显式导入 21 个 El Plus 组件；`main.js` 补 `import 'element-plus/dist/index.css'`；补 `:deep()` 主题覆盖（品牌色 `#667eea`）。
+
+---
+
+## ~~TODO-31: MemoryView 工具栏两行布局~~ ✅ 已完成（2026-06-12）
+
+工具栏 9 个控件挤一行改为两行：第一行搜索框 + 类型 Tab；第二行左对齐操作按钮（刷新/导入/提炼/导出/恢复）+ 右对齐「清空全部」危险按钮。
+
+---
+
+## ~~TODO-32: TasksView 操作按钮悬停动效~~ ✅ 已完成（2026-06-12）
+
+任务卡片操作按钮从右侧竖排常驻改为悬停时底部浮出的横排按钮组（`opacity` + `translateY` 动画），减少视觉干扰，点击目标更大。
+
+---
+
+## ~~TODO-33: 统计页满意率语义颜色 + 柱状图可见性~~ ✅ 已完成（2026-06-12）
+
+满意率数值改为动态颜色（≥80% 绿色 / ≥50% 橙色 / 其他红色），修复 CSS 优先级使其生效；柱状图 `min-height` 从 `4px` 提升至 `14px`，避免低值条几乎不可见。
+
+---
+
+## ~~TODO-33b: 角色编辑器按钮颜色语义化~~ ✅ 已完成（2026-06-12）
+
+工具栏三按钮颜色混乱（绿色激活/浅粉删除）改为：「保存」实心紫 / 「激活角色」紫色描边（primary plain）/ 「删除」实心红（danger）；补 `:deep()` CSS 覆盖确保一致。
+
+---
+
+## ~~TODO-34: 聊天气泡悬停操作按钮~~ ✅ 已完成（2026-06-12）
+
+点赞/踩从 meta 行常驻移至 `.bubble-actions` 悬停时淡出显示；同时新增「复制」按钮（`navigator.clipboard`），ElMessage 确认提示。
+
+---
+
+## ~~TODO-35: Token 计数器颜色分级~~ ✅ 已确认已完成
+
+`tokenColor` computed 已实现三档（<70% 灰 / ≥70% 橙 / ≥90% 红）+ 超限 blink 动画，无需再做。
+
+---
+
+## ~~TODO-36: 任务过滤 Tab 窄屏溢出~~ ✅ 已完成（2026-06-12）
+
+`.filter-tabs` 加 `overflow-x: auto; scrollbar-width: none`；`.filter-btn` 加 `white-space: nowrap; flex-shrink: 0`，窄屏横向滚动不折行。
+
+---
+
+## ~~TODO-37: 系统页 GPU 空状态~~ ✅ 已完成（2026-06-12）
+
+无 GPU 时 GPU 卡片底部显示「未检测到独立 GPU」灰色占位文字（`.gpu-empty`）。
+
+---
+
+## ~~TODO-38: 项目页底部提示栏可读性~~ ✅ 已完成（2026-06-12）
+
+`SpecEditor.vue` `.spec-hint`：背景 `#eff6ff`、边框 `#bfdbfe`、文字 `#1e40af`、字号 0.8rem，对比度和可读性明显提升。
+
+---
+
+## ~~TODO-39: 中文字体栈 + 气泡行距~~ ✅ 已完成（2026-06-13）
+
+`frontend/src/styles/main.css` body 添加 PingFang SC / Microsoft YaHei 字体栈；ChatView `.bubble.assistant` line-height 1.6 → 1.85。
+
+---
+
+## ~~TODO-40: 连接状态指示器降噪~~ ✅ 已完成（2026-06-13）
+
+websocket store 新增 `wasEverConnected`；Header 首次断开灰色无脉冲、意外断开红色+脉冲。
+
+---
+
+## ~~TODO-41: CSS 设计 Token~~ ✅ 已完成（2026-06-13）
+
+`frontend/src/styles/main.css` 添加 `:root` 变量（12个 token），供渐进迁移硬编码色值。
+
+---
+
+## ~~TODO-42: 概览卡片顶部 Accent 色条~~ ✅ 已完成（2026-06-13）
+
+TasksView / MemoryView / StatsView 各卡片顶部加 3px 语义色条（紫/绿/红/橙），三页统一实现。
+
+---
+
+## ~~TODO-43: 输入框聚焦状态增强~~ ✅ 已完成（2026-06-13）
+
+`.input-wrap:focus-within` 新增 `box-shadow: 0 0 0 3px rgba(102,126,234,0.18)` 光晕。
+
+---
+
+## ~~TODO-44: 侧边栏历史区分隔线~~ ✅ 已完成（Sidebar.vue 已有）
+
+`.history-section` 已有 `border-top: 1px solid rgba(255,255,255,0.08)`，无需额外修改。
+
+---
+
+## ~~TODO-45: 统计页响应时间颜色分级~~ ✅ 已完成（2026-06-13）
+
+StatsView 新增 `responseTimeColor` computed：<10s 绿 / <60s 橙 / ≥60s 红，应用于平均响应时间卡片。
+
+---
+
+## ~~TODO-46: 「清空」按钮移出 Header 导航区~~ ✅ 已完成（2026-06-13）
+
+Header.vue 「清空」按钮已移除（ChatView 已有悬浮清空按钮），Header 只保留齿轮/连接状态/深色三个系统级控件。
+
+---
+
+## ~~TODO-47: 角色编辑器表单引导文案~~ ✅ 已完成（2026-06-13）
+
+角色名片 Tab 顶部加 `el-alert` 引导卡，说明名称/签名/标签三字段用途及示例。
+
+---
+
+## ~~TODO-48: 系统页服务检测超时降级~~ ✅ 已完成（2026-06-13）
+
+`getJavaHealth` / `getPythonHealth` 套 8s `withTimeout` + `Promise.allSettled`；超时后显示「检测超时」橙色 badge + 重试按钮。

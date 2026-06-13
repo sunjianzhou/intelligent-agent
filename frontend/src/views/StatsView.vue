@@ -24,24 +24,24 @@
 
     <!-- 概览卡片 -->
     <div class="overview-row" v-if="stats">
-      <div class="ov-card">
+      <div class="ov-card accent-primary">
         <div class="ov-val">{{ stats.total }}</div>
         <div class="ov-label">总对话数</div>
       </div>
-      <div class="ov-card like">
+      <div class="ov-card like accent-success">
         <div class="ov-val">{{ stats.likes }}</div>
         <div class="ov-label">👍 点赞</div>
       </div>
-      <div class="ov-card dislike">
+      <div class="ov-card dislike accent-danger">
         <div class="ov-val">{{ stats.dislikes }}</div>
         <div class="ov-label">👎 点踩</div>
       </div>
-      <div class="ov-card rate">
-        <div class="ov-val">{{ stats.like_rate }}%</div>
+      <div class="ov-card rate accent-primary">
+        <div class="ov-val" :class="rateColorClass">{{ stats.like_rate }}%</div>
         <div class="ov-label">满意率</div>
       </div>
-      <div class="ov-card time">
-        <div class="ov-val">{{ stats.avg_response_time }}s</div>
+      <div class="ov-card time accent-warn">
+        <div class="ov-val" :style="{ color: responseTimeColor }">{{ stats.avg_response_time }}s</div>
         <div class="ov-label">平均响应</div>
       </div>
     </div>
@@ -275,8 +275,22 @@ const maxSkillCount = computed(() =>
   Math.max(1, ...Object.values(stats.value?.skill_usage || {0: 0}))
 )
 
-const barHeight      = (val, max) => Math.max(4, Math.round(val / max * 100))
+const barHeight      = (val, max) => Math.max(8, Math.round(val / max * 100))
 const rankBarWidth   = (val, max) => Math.max(4, Math.round(val / max * 100))
+
+const rateColorClass = computed(() => {
+  const r = stats.value?.like_rate ?? 0
+  if (r >= 80) return 'rate-good'
+  if (r >= 50) return 'rate-warn'
+  return 'rate-bad'
+})
+
+const responseTimeColor = computed(() => {
+  const t = stats.value?.avg_response_time ?? 0
+  if (t < 10) return '#43a047'
+  if (t < 60) return '#f57c00'
+  return '#e53935'
+})
 
 // ── 响应时间折线图 ────────────────────────────────────────
 const rtPointList = computed(() => {
@@ -397,11 +411,18 @@ onMounted(load)
   background: white; border-radius: 12px; border: 0.5px solid #e8eaed;
   padding: 16px; text-align: center;
 }
+.ov-card.accent-primary { border-top: 3px solid #667eea; }
+.ov-card.accent-success { border-top: 3px solid #43a047; }
+.ov-card.accent-danger  { border-top: 3px solid #ef4444; }
+.ov-card.accent-warn    { border-top: 3px solid #f57c00; }
 .ov-val   { font-size: 1.8rem; font-weight: 600; color: #333; }
 .ov-label { font-size: 0.82rem; color: #888; margin-top: 4px; }
 .ov-card.like    .ov-val { color: #43a047; }
 .ov-card.dislike .ov-val { color: #e53935; }
 .ov-card.rate    .ov-val { color: #667eea; }
+.ov-card.rate .ov-val.rate-good { color: #43a047; }
+.ov-card.rate .ov-val.rate-warn { color: #f57c00; }
+.ov-card.rate .ov-val.rate-bad  { color: #e53935; }
 .ov-card.time    .ov-val { color: #f57c00; }
 
 /* ── 图表行 ── */
@@ -419,7 +440,7 @@ onMounted(load)
 .bar-chart { display: flex; align-items: flex-end; gap: 4px; height: 100px; }
 .bar-item  { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .bar-wrap  { flex: 1; width: 100%; display: flex; align-items: flex-end; }
-.bar       { width: 100%; background: #667eea; border-radius: 3px 3px 0 0; min-height: 4px; transition: height 0.3s; }
+.bar       { width: 100%; background: #667eea; border-radius: 3px 3px 0 0; min-height: 14px; transition: height 0.3s; }
 .bar-label { font-size: 0.65rem; color: #aaa; white-space: nowrap; }
 
 /* 折线图 */

@@ -2,19 +2,19 @@
   <div class="tasks-view">
     <!-- 统计卡片 -->
     <div class="stats-row">
-      <div class="stat-card">
+      <div class="stat-card accent-primary">
         <div class="stat-num">{{ stats.total_tasks ?? '-' }}</div>
         <div class="stat-label">全部任务</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card accent-warn">
         <div class="stat-num pending-color">{{ statusCount('pending') }}</div>
         <div class="stat-label">待执行</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card accent-success">
         <div class="stat-num done-color">{{ statusCount('completed') }}</div>
         <div class="stat-label">已完成</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card accent-danger">
         <div class="stat-num fail-color">{{ statusCount('failed') }}</div>
         <div class="stat-label">失败</div>
       </div>
@@ -848,6 +848,10 @@ onUnmounted(() => {
   padding: 14px;
   text-align: center;
 }
+.stat-card.accent-primary { border-top: 3px solid #667eea; }
+.stat-card.accent-warn    { border-top: 3px solid #f57c00; }
+.stat-card.accent-success { border-top: 3px solid #43a047; }
+.stat-card.accent-danger  { border-top: 3px solid #ef4444; }
 .stat-num      { font-size: 22px; font-weight: 500; color: #333; }
 .stat-label    { font-size: 12px; color: #888; margin-top: 4px; }
 .pending-color { color: #f57c00; }
@@ -860,12 +864,13 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
 }
-.filter-tabs { display: flex; gap: 6px; }
+.filter-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex-shrink: 1; min-width: 0; }
+.filter-tabs::-webkit-scrollbar { display: none; }
 .filter-btn {
   padding: 6px 14px; border-radius: 8px;
   border: 1px solid #e0e3e8; background: white;
   font-size: 0.85rem; color: #666; cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s; white-space: nowrap; flex-shrink: 0;
 }
 .filter-btn:hover  { border-color: #667eea; color: #667eea; }
 .filter-btn.active { background: #667eea; border-color: #667eea; color: white; }
@@ -889,14 +894,17 @@ onUnmounted(() => {
 /* ── 任务卡片 ────────────────────────────────────────────── */
 .task-list { display: flex; flex-direction: column; gap: 10px; }
 .task-card {
+  position: relative;
   display: flex;
   background: white;
   border: 0.5px solid #e8eaed;
   border-radius: 12px;
   overflow: hidden;
   transition: all 0.2s;
+  /* ensure hover action buttons don't push layout */
+  padding-bottom: 8px;
 }
-.task-card:hover { border-color: #c5caf5; }
+.task-card:hover { border-color: #c5caf5; box-shadow: 0 2px 10px rgba(102,126,234,0.12); }
 
 .status-bar { width: 4px; flex-shrink: 0; }
 .status-bar.pending   { background: #f57c00; }
@@ -949,17 +957,27 @@ onUnmounted(() => {
 .task-result.success { background: #e8f5e9; color: #2e7d32; }
 
 .task-actions {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 6px;
-  padding: 12px;
-  justify-content: center;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.18s, transform 0.18s;
+  pointer-events: none;
+}
+.task-card:hover .task-actions {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 .action-btn {
-  width: 32px; height: 32px; border-radius: 8px;
+  width: 30px; height: 30px; border-radius: 7px;
   border: none; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  font-size: 0.82rem; transition: all 0.2s;
+  font-size: 0.8rem; transition: all 0.15s;
 }
 .run-btn    { background: #e8f5e9; color: #2e7d32; }
 .run-btn:hover:not(:disabled)    { background: #c8e6c9; }

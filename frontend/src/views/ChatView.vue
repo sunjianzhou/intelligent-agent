@@ -126,26 +126,31 @@
               <span v-if="msg.responseTime" class="response-time">
                 {{ msg.responseTime.toFixed(2) }}s
               </span>
-              <!-- ── 点赞/踩（只在助手消息且生成完毕后显示）── -->
-              <div v-if="msg.role === 'assistant' && !msg.isStreaming && msg.content"
-                  class="feedback-btns">
-                  <button
-                    class="feedback-btn"
-                    :class="{ active: getFeedback(msg, index) === 'like' }"
-                    :disabled="!!getFeedback(msg, index)"
-                    @click="submitFeedback(msg, index, 'like')"
-                  >
-                    <i class="fas fa-thumbs-up" />
-                  </button>
-                  <button
-                    class="feedback-btn dislike"
-                    :class="{ active: getFeedback(msg, index) === 'dislike' }"
-                    :disabled="!!getFeedback(msg, index)"
-                    @click="submitFeedback(msg, index, 'dislike')"
-                  >
-                    <i class="fas fa-thumbs-down" />
-                  </button>
-              </div>
+            </div>
+            <!-- ── 悬停操作栏（复制/点赞/踩）── -->
+            <div v-if="msg.role === 'assistant' && !msg.isStreaming && msg.content"
+                 class="bubble-actions">
+              <button class="bact-btn" title="复制" @click="copyMessage(msg.content)">
+                <i class="fas fa-copy" />
+              </button>
+              <button
+                class="bact-btn"
+                title="有帮助"
+                :class="{ active: getFeedback(msg, index) === 'like' }"
+                :disabled="!!getFeedback(msg, index)"
+                @click="submitFeedback(msg, index, 'like')"
+              >
+                <i class="fas fa-thumbs-up" />
+              </button>
+              <button
+                class="bact-btn dislike"
+                title="没帮助"
+                :class="{ active: getFeedback(msg, index) === 'dislike' }"
+                :disabled="!!getFeedback(msg, index)"
+                @click="submitFeedback(msg, index, 'dislike')"
+              >
+                <i class="fas fa-thumbs-down" />
+              </button>
             </div>
           </div>
           <div v-if="msg.role === 'user'" class="avatar user-avatar">
@@ -651,6 +656,15 @@ const feedbackMap = ref(loadFeedbackMap())
 
 const saveFeedbackMap = () => {
   localStorage.setItem(FEEDBACK_KEY, JSON.stringify(feedbackMap.value))
+}
+
+const copyMessage = async (content) => {
+  try {
+    await navigator.clipboard.writeText(content)
+    ElMessage({ message: '已复制', type: 'success', duration: 1200 })
+  } catch {
+    ElMessage.error('复制失败，请手动选择文本')
+  }
 }
 
 const submitFeedback = async (msg, index, rating) => {
@@ -1297,7 +1311,7 @@ onUnmounted(() => {
 .message-row.system .avatar { display: none; }
 
 /* ── 气泡容器 ─────────────────────────────────────────────── */
-.bubble-wrap { max-width: 68%; display: flex; flex-direction: column; gap: 3px; }
+.bubble-wrap { max-width: 68%; display: flex; flex-direction: column; gap: 3px; position: relative; }
 .message-row.user   .bubble-wrap { align-items: flex-end; }
 .message-row.system .bubble-wrap { max-width: 90%; align-items: center; }
 
@@ -1318,6 +1332,7 @@ onUnmounted(() => {
   background: white;
   color: #333;
   border: 1px solid #e8eaed;
+  line-height: 1.85;
   border-bottom-left-radius: 4px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
@@ -1399,7 +1414,7 @@ onUnmounted(() => {
   padding: 8px 10px;
   transition: border-color 0.2s;
 }
-.input-wrap:focus-within { border-color: #667eea; }
+.input-wrap:focus-within { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,0.18); }
 .input-wrap-thinking    { border-color: #667eea; background: #faf9ff; }
 .input-wrap-disconnected{ border-color: #f0a0a0; background: #fff8f8; }
 .chat-input {
@@ -1508,29 +1523,37 @@ onUnmounted(() => {
 .message-list::-webkit-scrollbar       { width: 4px; }
 .message-list::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
 
-/* ── 点赞/踩 ── */
-.feedback-btns {
-  display: inline-flex;
+/* ── 气泡悬停操作栏（复制/点赞/踩）── */
+.bubble-actions {
+  display: flex;
   align-items: center;
-  gap: 4px;
-  margin-left: 8px;
+  gap: 2px;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity 0.15s, transform 0.15s;
+  pointer-events: none;
 }
-.feedback-btn {
+.bubble-wrap:hover .bubble-actions {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.bact-btn {
   background: none;
   border: none;
   cursor: pointer;
-  color: #ccc;
-  font-size: 0.82rem;
-  padding: 2px 5px;
+  color: #bbb;
+  font-size: 0.8rem;
+  padding: 3px 6px;
   border-radius: 4px;
-  transition: color 0.2s, background 0.2s;
+  transition: color 0.15s, background 0.15s;
   line-height: 1;
 }
-.feedback-btn:hover:not(:disabled) { color: #43a047; background: #f0f9f0; }
-.feedback-btn.dislike:hover:not(:disabled) { color: #e53935; background: #fce4e4; }
-.feedback-btn.active { color: #43a047; }
-.feedback-btn.dislike.active { color: #e53935; }
-.feedback-btn:disabled { cursor: default; opacity: 0.6; }
+.bact-btn:hover:not(:disabled) { color: #667eea; background: #f0f1ff; }
+.bact-btn.dislike:hover:not(:disabled) { color: #e53935; background: #fce4e4; }
+.bact-btn.active { color: #43a047; }
+.bact-btn.dislike.active { color: #e53935; }
+.bact-btn:disabled { cursor: default; opacity: 0.5; }
 
 /* ── 悬浮导出按钮 ── */
 .export-float {
