@@ -78,10 +78,7 @@ _RUNTIME_CONFIG_FILE = Path(__file__).parent.parent / "data" / "runtime_config.j
 
 
 async def _get_user_role_persona_content(user_id: str, query: str) -> str | None:
-    """
-    若用户有激活的角色配置，通过 RoleManager + PromptBuilder 构建 system prompt。
-    优先级高于 .md persona（在 chat 端点中先尝试此路径）。
-    """
+    """若用户有激活的角色配置，通过 RoleManager + PromptBuilder 构建 system prompt。"""
     role_id = _user_active_roles_state.get(user_id)
     if not role_id:
         return None

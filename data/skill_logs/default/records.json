@@ -1,0 +1,24 @@
+[
+  {
+    "id": "sl_20260611210456_0",
+    "skill_name": "网络搜索",
+    "message": "什么是Python？",
+    "steps_count": 2,
+    "tools": [
+      "WebSearchTool"
+    ],
+    "triggered_at": "2026-06-11T21:04:56.551393",
+    "username": "default"
+  },
+  {
+    "id": "sl_20260611210639_1",
+    "skill_name": "网络搜索",
+    "message": "Python是什么？",
+    "steps_count": 2,
+    "tools": [
+      "WebSearchTool"
+    ],
+    "triggered_at": "2026-06-11T21:06:39.753154",
+    "username": "default"
+  }
+]
