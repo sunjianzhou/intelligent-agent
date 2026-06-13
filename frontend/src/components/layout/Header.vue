@@ -56,17 +56,28 @@
     </div>
 
     <div class="header-right">
-      <!-- 管理后台入口 -->
-      <div class="admin-entry" ref="adminMenuRef">
-        <button class="admin-btn" :class="{ open: adminMenuOpen }" @click="adminMenuOpen = !adminMenuOpen" title="管理后台">
-          <i class="fas fa-cog" />
+      <!-- 模型切换入口 -->
+      <div class="model-entry" ref="modelMenuRef" v-if="availableModels.length > 0 || modelStatus">
+        <button class="model-btn" :class="{ open: modelMenuOpen, cloud: isCloudMode }" @click.stop="modelMenuOpen = !modelMenuOpen" :title="modelStatus">
+          <i :class="isCloudMode ? 'fas fa-cloud' : 'fas fa-cube'" />
+          <span class="model-btn-text">{{ modelStatus }}</span>
+          <i class="fas fa-chevron-down model-chevron" />
         </button>
-        <div v-if="adminMenuOpen" class="admin-dropdown">
-          <div class="dropdown-title">管理后台</div>
-          <router-link v-for="item in adminItems" :key="item.name" :to="item.path" class="admin-item" @click="adminMenuOpen = false">
-            <i :class="item.icon" />
-            <span>{{ item.label }}</span>
-          </router-link>
+        <div v-if="modelMenuOpen" class="model-dropdown">
+          <div class="dropdown-title">切换模型</div>
+          <div
+            v-for="m in availableModels"
+            :key="m"
+            class="model-drop-item"
+            :class="{ active: m === currentModel, switching: switchingModel === m }"
+            @click="handleSwitch(m)"
+          >
+            <i :class="m === cloudModelName ? 'fas fa-cloud' : 'fas fa-cube'" />
+            <span>{{ m }}</span>
+            <i v-if="m === currentModel && !isCloudMode" class="fas fa-check model-check" />
+            <i v-if="switchingModel === m" class="fas fa-circle-notch fa-spin model-check" />
+          </div>
+          <div v-if="availableModels.length === 0" class="model-drop-empty">暂无可用模型</div>
         </div>
       </div>
 
@@ -108,6 +119,28 @@ const toggleTheme = () => {
 const route = useRoute()
 const store = useWebSocketStore()
 
+// ── 模型切换 ──────────────────────────────────────────────
+const modelMenuOpen   = ref(false)
+const modelMenuRef    = ref(null)
+const switchingModel  = ref('')
+const modelStatus     = computed(() => store.modelStatus)
+const currentModel    = computed(() => store.currentModel)
+const availableModels = computed(() => store.availableModels)
+const cloudModelName  = computed(() => store.cloudModel)
+const isCloudMode     = computed(() => modelStatus.value?.includes?.('☁') ?? false)
+
+const handleSwitch = async (m) => {
+  if (m === currentModel.value || switchingModel.value) return
+  switchingModel.value = m
+  modelMenuOpen.value  = false
+  await store.switchModel(m)
+  switchingModel.value = ''
+}
+
+const handleClickOutsideModel = (e) => {
+  if (modelMenuRef.value && !modelMenuRef.value.contains(e.target)) modelMenuOpen.value = false
+}
+
 // ── 移动端菜单 ────────────────────────────────────────────
 const showMobileMenu = ref(false)
 
@@ -126,29 +159,19 @@ const pageIcon    = computed(() => pageConfig.value.icon)
 const isConnected      = computed(() => store.isConnected)
 const wasEverConnected = computed(() => store.wasEverConnected)
 const connectionStatus = computed(() => store.connectionStatus)
-// ── 管理后台入口 ──────────────────────────────────────────
-const adminMenuOpen = ref(false)
-const adminMenuRef  = ref(null)
-const adminItems = ADMIN_ITEMS
-
-const handleClickOutside = (e) => {
-  if (adminMenuRef.value && !adminMenuRef.value.contains(e.target)) {
-    adminMenuOpen.value = false
-  }
-}
 
 // ── 生命周期 ──────────────────────────────────────────────
 onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('click', handleClickOutsideModel)
   store.loadModels()
-  applyTheme(isDark.value)  // 初始化主题
+  applyTheme(isDark.value)
 })
 
 watch(isConnected, (connected) => {
   if (connected && store.availableModels.length === 0) store.loadModels()
 })
 onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('click', handleClickOutsideModel)
 })
 </script>
 
@@ -284,24 +307,27 @@ onUnmounted(() => {
 }
 .theme-btn:hover { border-color: #667eea; color: #667eea; }
 
-/* ── 管理后台入口 ─────────────────────────────────────── */
-.admin-entry { position: relative; }
-.admin-btn {
-  width: 34px; height: 34px; border-radius: 8px;
+/* ── 模型切换入口 ─────────────────────────────────────── */
+.model-entry { position: relative; }
+.model-btn {
+  height: 34px; padding: 0 10px; border-radius: 8px;
   border: 1px solid #e0e3e8; background: white;
-  color: #888; cursor: pointer; font-size: 0.9rem;
-  display: flex; align-items: center; justify-content: center;
-  transition: all 0.2s;
+  color: #555; cursor: pointer; font-size: 0.82rem;
+  display: flex; align-items: center; gap: 6px;
+  max-width: 160px; transition: all 0.2s;
 }
-.admin-btn:hover, .admin-btn.open { border-color: #667eea; color: #667eea; }
-.admin-btn.open i { animation: spin-slow 2s linear infinite; }
-@keyframes spin-slow { to { transform: rotate(360deg); } }
+.model-btn:hover, .model-btn.open { border-color: #667eea; color: #667eea; }
+.model-btn.cloud { border-color: #c7d2fe; color: #4f46e5; background: #f0f2ff; }
+.model-btn-text {
+  max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.model-chevron { font-size: 0.68rem; opacity: 0.6; flex-shrink: 0; }
 
-.admin-dropdown {
+.model-dropdown {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  min-width: 160px;
+  min-width: 180px;
   background: white;
   border: 1px solid #e0e3e8;
   border-radius: 10px;
@@ -309,22 +335,27 @@ onUnmounted(() => {
   z-index: 100;
   overflow: hidden;
 }
-.admin-item {
+.model-drop-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 9px 14px;
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   color: #444;
-  text-decoration: none;
+  cursor: pointer;
   transition: background 0.15s;
 }
-.admin-item:hover { background: #f5f6ff; color: #667eea; }
-.admin-item i { color: #bbb; font-size: 0.8rem; width: 14px; text-align: center; }
-.admin-item:hover i { color: #667eea; }
+.model-drop-item:hover { background: #f5f6ff; color: #667eea; }
+.model-drop-item.active { background: #f0f2ff; color: #4f46e5; font-weight: 500; }
+.model-drop-item.switching { opacity: 0.7; pointer-events: none; }
+.model-drop-item i:first-child { color: #bbb; font-size: 0.78rem; width: 14px; text-align: center; flex-shrink: 0; }
+.model-drop-item.active i:first-child, .model-drop-item:hover i:first-child { color: #667eea; }
+.model-check { margin-left: auto; font-size: 0.75rem; color: #667eea; flex-shrink: 0; }
+.model-drop-empty { padding: 10px 14px; font-size: 0.82rem; color: #aaa; }
+
+@media (max-width: 768px) { .model-entry { display: none; } }
 
 @media (max-width: 768px) {
-  .admin-entry { display: none; }
   .header { padding: 0 12px; }
   .page-title { font-size: 1rem; }
 }

@@ -65,7 +65,8 @@ async def get_models(http_req: Request):
         async with httpx.AsyncClient(timeout=5) as client:
             r = await client.get(f"{ollama_url}/api/tags")
         if r.status_code == 200:
-            local_models = [m["name"] for m in r.json().get("models", [])]
+            # dict.fromkeys 保序去重，避免 Ollama 偶发返回重复条目
+            local_models = list(dict.fromkeys(m["name"] for m in r.json().get("models", [])))
     except Exception:
         pass
 

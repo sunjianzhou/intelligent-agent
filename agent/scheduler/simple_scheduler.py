@@ -144,6 +144,12 @@ class SimpleTaskScheduler:
             log_func(f"[定时任务] {message}")
             ts = datetime.now().isoformat()
             _push_notification(message, ts, role=role)
+            _ag = self._agent
+            if _ag is not None:
+                try:
+                    _ag.memory.store(message, category="task", metadata={"source": "scheduler", "role": role, "timestamp": ts})
+                except Exception as _me:
+                    logger.warning(f"[log_action] 写入短期记忆失败: {_me}")
             return {"message": message, "level": level, "timestamp": ts}
 
         # 系统信息
@@ -238,6 +244,10 @@ class SimpleTaskScheduler:
                     return {"success": False, "error": content}
                 ts = datetime.now().isoformat()
                 _push_notification(content, ts, role=role)
+                try:
+                    agent.memory.store(content, category="task", metadata={"source": "scheduler", "role": role, "timestamp": ts})
+                except Exception as _me:
+                    logger.warning(f"[llm_generate] 写入短期记忆失败: {_me}")
                 logger.info(f"[llm_generate] 生成完成，长度 {len(content)}")
                 return {"success": True, "length": len(content), "timestamp": ts}
             except Exception as e:

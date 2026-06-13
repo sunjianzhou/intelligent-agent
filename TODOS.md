@@ -244,3 +244,57 @@ Header.vue 「清空」按钮已移除（ChatView 已有悬浮清空按钮），
 ## ~~TODO-48: 系统页服务检测超时降级~~ ✅ 已完成（2026-06-13）
 
 `getJavaHealth` / `getPythonHealth` 套 8s `withTimeout` + `Promise.allSettled`；超时后显示「检测超时」橙色 badge + 重试按钮。
+
+---
+
+## ~~TODO-49: [BUG] Header 右上角缺少模型切换入口~~ ✅ 已完成（2026-06-13）
+
+Header.vue `header-right` 区域新增 `.model-entry`：显示当前模型名（云端时高亮蓝色），点击展开下拉切换模型，复用 `store.availableModels` / `store.switchModel()`；移动端隐藏（`display:none`）。
+
+---
+
+
+---
+
+## ~~TODO-50: [BUG] SystemView 模型列表重复 + "正在使用"显示错误~~ ✅ 已完成（2026-06-13）
+
+① `model_router.py` `GET /api/models` 用 `dict.fromkeys()` 保序去重；② SystemView `currentModel` 改从 `modelData2.current_model`（per-user 正确值）读取，不再依赖 `sysd.agent_model`（全局默认）；③ 前端 `[...new Set(...)]` 双重兜底。
+
+---
+
+
+---
+
+## ~~TODO-51: [BUG] 定时任务消息发到聊天窗口后未写入短期记忆~~ ✅ 已完成（2026-06-13）
+
+`log_action` / `llm_generate_action` 各在 `_push_notification()` 后追加 `agent.memory.store(category="task")`，写入短期记忆。
+
+---
+
+
+---
+
+## ~~TODO-52: [FEATURE] 云端大模型切换入口 + API KEY 管理与绑定~~ ✅ 已完成（2026-06-13，合并至 TODO-54）
+
+ModelView.vue 已集成：云端服务商 CRUD（添加/编辑/删除/激活）+ API KEY 输入框 + 「切换回本地」按钮。原 SystemView 底部 cloud 配置卡片保留不变，两处功能互补。
+
+---
+
+
+---
+
+## ~~TODO-53: [LAYOUT] 合并管理后台到左侧导航，重构导航分区~~ ✅ 已完成（2026-06-13）
+
+`routes.config.js` 新增 `CONFIG_ITEMS`（工具/Skill）+ `SYSTEM_ITEMS`（任务/统计/系统），`ADMIN_ITEMS` 合并两者保留兼容；`Sidebar.vue` 重构为三分区（常用/配置/系统）带分区标签；`Header.vue` 移除齿轮下拉（`admin-entry` 及相关 CSS 全部删除），侧边栏 width 压缩为 220px。
+
+---
+
+
+---
+
+## ~~TODO-54: [NEW PAGE] 独立模型管理页面~~ ✅ 已完成（2026-06-13）
+
+新建 `frontend/src/views/ModelView.vue`：三区布局（当前激活模型渐变卡 / 云端服务商卡片网格含添加/编辑/删除/激活 / 本地模型卡片含显存标识/激活）；路由 `/admin/models` 已注册；`SYSTEM_ITEMS` 首项追加「模型管理」；cloud CRUD 弹窗内嵌（服务商下拉自动填写 Base URL）。
+
+---
+

@@ -882,13 +882,18 @@ const refresh = async () => {
     if (sysd) {
       sysInfo.value      = sysd
       ollamaOk.value     = sysd.ollama_available === true
-      currentModel.value = sysd.agent_model || ''
       cloudMode.value    = !!sysd.cloud_mode
       cloudBaseUrl.value = sysd.cloud_base_url || ''
       cloudModel.value   = sysd.cloud_model || modelData2?.cloud_model || ''
     }
 
-    if (modelData2?.available_models) models.value = modelData2.available_models
+    if (modelData2?.available_models) {
+      models.value = [...new Set(modelData2.available_models)]
+      // 优先用 /api/models 返回的 per-user current_model（与 ChatView 保持一致）
+      currentModel.value = modelData2.current_model || sysd?.agent_model || ''
+    } else if (sysd?.agent_model) {
+      currentModel.value = sysd.agent_model
+    }
 
     if (resData) {
       resources.value    = resData
