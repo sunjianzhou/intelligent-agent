@@ -54,24 +54,12 @@ logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 _LOCAL_DEV_SECRET = "local-dev-only-change-in-production-must-be-32chars"
 
-# ── 已知云端 Provider 的默认 base_url 映射 ────────────────────────────────
-# cloud_base_url 留空时自动使用此处的默认值；填了则以填写值为准。
-CLOUD_PROVIDER_BASE_URLS: Dict[str, str] = {
-    "openai":    "https://api.openai.com/v1",
-    "dashscope": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "deepseek":  "https://api.deepseek.com/v1",
-    "zhipu":     "https://open.bigmodel.cn/api/paas/v4",
-    "moonshot":  "https://api.moonshot.cn/v1",
-    "baidu":     "https://qianfan.baidubce.com/v2",
-    "siliconflow": "https://api.siliconflow.cn/v1",
-}
-
 
 def _resolve_cloud_base_url(provider_name: str, configured_url: str) -> str:
     """返回最终使用的 base_url：优先使用配置值，其次查表，都没有则返回空。"""
     if configured_url:
         return configured_url
-    return CLOUD_PROVIDER_BASE_URLS.get(provider_name.lower(), "")
+    return _CLOUD_KNOWN_URLS.get(provider_name.lower(), "")
 
 
 # ── Per-user model preferences & provider pool ────────────────────────────
@@ -634,7 +622,7 @@ async def get_models(http_req: Request):
         "cloud_mode": user_is_cloud,
         "cloud_model": cloud_model_name if user_is_cloud else "",
         "cloud_provider": settings.cloud_provider if configured_cloud else "",
-        "known_cloud_providers": list(CLOUD_PROVIDER_BASE_URLS.keys()),
+        "known_cloud_providers": list(_CLOUD_KNOWN_URLS.keys()),
     }
 
 

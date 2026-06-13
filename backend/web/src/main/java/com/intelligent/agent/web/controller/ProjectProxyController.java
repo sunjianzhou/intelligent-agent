@@ -1,14 +1,12 @@
 package com.intelligent.agent.web.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.intelligent.agent.web.service.PythonProxyService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import javax.servlet.http.HttpServletRequest;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -17,48 +15,27 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-public class ProjectProxyController {
-
-    @Autowired private PythonProxyService proxy;
-    @Autowired private ObjectMapper objectMapper;
+public class ProjectProxyController extends AbstractProxyController {
 
     // ── 项目 CRUD (/api/projects) ──────────────────────────────────────────────
 
     @GetMapping("/api/projects")
     public ResponseEntity<Map<String, Object>> listProjects(HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            ResponseEntity<String> res = proxy.get(proxy.getBaseUrl() + "/api/projects", true, userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("获取项目列表失败", e);
-        }
-        Map<String, Object> err = new HashMap<>();
-        err.put("success", false); err.put("projects", new java.util.ArrayList<>());
-        return ResponseEntity.ok(err);
+        Map<String, Object> fallback = new HashMap<>();
+        fallback.put("success", false);
+        fallback.put("projects", Collections.emptyList());
+        return proxyGetAbsolute(proxy.getBaseUrl() + "/api/projects", req, fallback);
     }
 
     @PostMapping("/api/projects")
-    public ResponseEntity<Map<String, Object>> createProject(@RequestBody Map<String, Object> body,
-            HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            String json = objectMapper.writeValueAsString(body);
-            ResponseEntity<String> res = proxy.post("/api/projects", json, userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("创建项目失败", e);
-        }
-        Map<String, Object> err = new HashMap<>();
-        err.put("success", false); err.put("message", "创建项目失败");
-        return ResponseEntity.ok(err);
+    public ResponseEntity<Map<String, Object>> createProject(
+            @RequestBody Map<String, Object> body, HttpServletRequest req) {
+        return proxyPost("/api/projects", body, req);
     }
 
     @GetMapping("/api/projects/{projectId}")
-    public ResponseEntity<Map<String, Object>> getProject(@PathVariable String projectId,
-            HttpServletRequest req) {
+    public ResponseEntity<Map<String, Object>> getProject(
+            @PathVariable String projectId, HttpServletRequest req) {
         String userId = proxy.extractUserIdFromRequest(req);
         try {
             ResponseEntity<String> res = proxy.get(
@@ -71,101 +48,51 @@ public class ProjectProxyController {
             log.error("获取项目失败", e);
         }
         Map<String, Object> err = new HashMap<>();
-        err.put("success", false); err.put("message", "获取项目失败");
+        err.put("success", false);
+        err.put("message", "获取项目失败");
         return ResponseEntity.ok(err);
     }
 
     @PutMapping("/api/projects/{projectId}")
-    public ResponseEntity<Map<String, Object>> updateProject(@PathVariable String projectId,
-            @RequestBody Map<String, Object> body, HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            String json = objectMapper.writeValueAsString(body);
-            ResponseEntity<String> res = proxy.put("/api/projects/" + projectId, json, userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("更新项目失败", e);
-        }
-        Map<String, Object> err = new HashMap<>();
-        err.put("success", false); err.put("message", "更新项目失败");
-        return ResponseEntity.ok(err);
+    public ResponseEntity<Map<String, Object>> updateProject(
+            @PathVariable String projectId,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest req) {
+        return proxyPut("/api/projects/" + projectId, body, req);
     }
 
     @DeleteMapping("/api/projects/{projectId}")
-    public ResponseEntity<Map<String, Object>> deleteProject(@PathVariable String projectId,
-            HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            ResponseEntity<String> res = proxy.delete("/api/projects/" + projectId, userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("删除项目失败", e);
-        }
-        Map<String, Object> err = new HashMap<>();
-        err.put("success", false); err.put("message", "删除项目失败");
-        return ResponseEntity.ok(err);
+    public ResponseEntity<Map<String, Object>> deleteProject(
+            @PathVariable String projectId, HttpServletRequest req) {
+        return proxyDelete("/api/projects/" + projectId, req);
     }
 
     // ── 旧 /api/project/* 端点（规格/上下文/任务分解）─────────────────────────
 
     @PutMapping("/api/project/spec")
-    public ResponseEntity<Map<String, Object>> putProjectSpec(@RequestBody Map<String, Object> body,
-            HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            String json = objectMapper.writeValueAsString(body);
-            ResponseEntity<String> res = proxy.put("/api/project/spec", json, userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("保存项目规格失败", e);
-        }
-        Map<String, Object> err = new HashMap<>();
-        err.put("success", false);
-        err.put("message", "保存项目规格失败");
-        return ResponseEntity.ok(err);
+    public ResponseEntity<Map<String, Object>> putProjectSpec(
+            @RequestBody Map<String, Object> body, HttpServletRequest req) {
+        return proxyPut("/api/project/spec", body, req);
     }
 
     @GetMapping("/spec")
-    public ResponseEntity<Map<String, Object>> getProjectSpec(@RequestParam String project_id,
-            HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            String url = UriComponentsBuilder
-                    .fromHttpUrl(proxy.getBaseUrl() + "/api/project/spec")
-                    .queryParam("project_id", project_id)
-                    .build().toUriString();
-            ResponseEntity<String> res = proxy.get(url, true, userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("获取项目规格失败", e);
-        }
+    public ResponseEntity<Map<String, Object>> getProjectSpec(
+            @RequestParam String project_id, HttpServletRequest req) {
+        String url = UriComponentsBuilder
+                .fromHttpUrl(proxy.getBaseUrl() + "/api/project/spec")
+                .queryParam("project_id", project_id)
+                .build().toUriString();
         Map<String, Object> fallback = new HashMap<>();
         fallback.put("project_id", project_id);
         fallback.put("content", "");
         fallback.put("version", 0);
-        return ResponseEntity.ok(fallback);
+        return proxyGetAbsolute(url, req, fallback);
     }
 
     @PostMapping("/context/extract")
-    public ResponseEntity<Map<String, Object>> extractContext(@RequestBody Map<String, Object> body,
-            HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            String json = objectMapper.writeValueAsString(body);
-            ResponseEntity<String> res = proxy.post("/api/project/context/extract", json, userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("提取项目上下文失败", e);
-        }
-        Map<String, Object> err = new HashMap<>();
-        err.put("success", false);
-        err.put("message", "提取失败");
-        return ResponseEntity.ok(err);
+    public ResponseEntity<Map<String, Object>> extractContext(
+            @RequestBody Map<String, Object> body, HttpServletRequest req) {
+        return proxyPost("/api/project/context/extract", body, req);
     }
 
     @GetMapping("/context")
@@ -174,60 +101,29 @@ public class ProjectProxyController {
             @RequestParam(defaultValue = "") String query,
             @RequestParam(defaultValue = "5") int limit,
             HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            String url = UriComponentsBuilder
-                    .fromHttpUrl(proxy.getBaseUrl() + "/api/project/context")
-                    .queryParam("project_id", project_id)
-                    .queryParam("query", query)
-                    .queryParam("limit", limit)
-                    .build().toUriString();
-            ResponseEntity<String> res = proxy.get(url, true, userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("获取项目上下文失败", e);
-        }
-        Map<String, Object> fallback = new HashMap<>();
-        fallback.put("context", "");
-        return ResponseEntity.ok(fallback);
+        String url = UriComponentsBuilder
+                .fromHttpUrl(proxy.getBaseUrl() + "/api/project/context")
+                .queryParam("project_id", project_id)
+                .queryParam("query", query)
+                .queryParam("limit", limit)
+                .build().toUriString();
+        return proxyGetAbsolute(url, req, Collections.singletonMap("context", ""));
     }
 
     @PostMapping("/tasks/decompose")
-    public ResponseEntity<Map<String, Object>> decomposeTasks(@RequestBody Map<String, Object> body,
-            HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            String json = objectMapper.writeValueAsString(body);
-            ResponseEntity<String> res = proxy.post("/api/project/tasks/decompose", json, userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("任务分解失败", e);
-        }
-        Map<String, Object> err = new HashMap<>();
-        err.put("success", false);
-        err.put("message", "任务分解失败");
-        return ResponseEntity.ok(err);
+    public ResponseEntity<Map<String, Object>> decomposeTasks(
+            @RequestBody Map<String, Object> body, HttpServletRequest req) {
+        return proxyPost("/api/project/tasks/decompose", body, req);
     }
 
     @GetMapping("/tasks")
-    public ResponseEntity<Map<String, Object>> getProjectTasks(@RequestParam String project_id,
-            HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            String url = UriComponentsBuilder
-                    .fromHttpUrl(proxy.getBaseUrl() + "/api/project/tasks")
-                    .queryParam("project_id", project_id)
-                    .build().toUriString();
-            ResponseEntity<String> res = proxy.get(url, true, userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("获取项目任务失败", e);
-        }
-        Map<String, Object> fallback = new HashMap<>();
-        fallback.put("tasks", new java.util.ArrayList<>());
-        return ResponseEntity.ok(fallback);
+    public ResponseEntity<Map<String, Object>> getProjectTasks(
+            @RequestParam String project_id, HttpServletRequest req) {
+        String url = UriComponentsBuilder
+                .fromHttpUrl(proxy.getBaseUrl() + "/api/project/tasks")
+                .queryParam("project_id", project_id)
+                .build().toUriString();
+        return proxyGetAbsolute(url, req,
+                Collections.singletonMap("tasks", Collections.emptyList()));
     }
 }

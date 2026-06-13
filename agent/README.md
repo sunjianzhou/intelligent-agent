@@ -310,6 +310,6 @@ black . && isort . && pylint . && mypy .
 |------|------|------|
 | D-01 | Java 用 `java-service` 固定 token，Python 无法区分真实用户 | ✅ 已修复（2026-06-02）：X-User-Id 头透传 |
 | D-02 | ChromaDB `seq_id` INTEGER/BLOB schema mismatch | ✅ 已防御（try/except）；`migrate_chromadb.py` 可彻底修复 |
-| D-03 | `_TEXT_TOOL_CALLING_PATTERNS` 硬编码，新模型需改源码 | 低优先级 |
-| D-04 | L1 缓存 key 未包含 persona 维度，不同角色可能命中同一缓存 | 低优先级 |
+| D-03 | `_TEXT_TOOL_CALLING_PATTERNS` 硬编码，新模型需改源码 | ✅ 已修复（2026-06-13）：迁移到 `TEXT_TOOL_CALLING_PATTERNS` 环境变量，cached_property 缓存 |
+| D-04 | L1 缓存 key 未包含 persona 维度，不同角色可能命中同一缓存 | ✅ 已修复（之前版本）：key 含 persona_sig |
 | D-05 | `asyncio.ensure_future` 在模块级别调用，依赖 uvicorn 复用事件循环 | 运行正常，不规范 |

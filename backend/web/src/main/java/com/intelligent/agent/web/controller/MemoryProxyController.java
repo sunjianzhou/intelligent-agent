@@ -1,9 +1,6 @@
 package com.intelligent.agent.web.controller;
-import lombok.extern.slf4j.Slf4j;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.intelligent.agent.web.service.PythonProxyService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -12,7 +9,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import javax.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -22,39 +19,27 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/api/memory")
-public class MemoryProxyController {
-
-
-    @Autowired private PythonProxyService proxy;
-    @Autowired private ObjectMapper objectMapper;
+public class MemoryProxyController extends AbstractProxyController {
 
     @GetMapping("/list")
     public ResponseEntity<Map<String, Object>> memoryList(
             @RequestParam(defaultValue = "long_term") String memory_type,
             @RequestParam(defaultValue = "50") int limit,
             HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            String url = UriComponentsBuilder
-                    .fromHttpUrl(proxy.getBaseUrl() + "/api/memory/list")
-                    .queryParam("memory_type", memory_type)
-                    .queryParam("limit", limit)
-                    .build().toUriString();
-            ResponseEntity<String> res = proxy.get(url, true, userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("获取记忆列表失败", e);
-        }
+        String url = UriComponentsBuilder
+                .fromHttpUrl(proxy.getBaseUrl() + "/api/memory/list")
+                .queryParam("memory_type", memory_type)
+                .queryParam("limit", limit)
+                .build().toUriString();
         Map<String, Object> fallback = new HashMap<>();
-        fallback.put("memories", new ArrayList<>());
+        fallback.put("memories", Collections.emptyList());
         fallback.put("count", 0);
-        return ResponseEntity.ok(fallback);
+        return proxyGetAbsolute(url, req, fallback);
     }
 
     @DeleteMapping("/{memoryId}")
-    public ResponseEntity<Map<String, Object>> deleteMemory(@PathVariable String memoryId,
-            HttpServletRequest req) {
+    public ResponseEntity<Map<String, Object>> deleteMemory(
+            @PathVariable String memoryId, HttpServletRequest req) {
         String userId = proxy.extractUserIdFromRequest(req);
         try {
             proxy.delete("/api/memory/" + memoryId, userId);
@@ -76,18 +61,7 @@ public class MemoryProxyController {
             @PathVariable String memoryId,
             @RequestBody Map<String, Object> body,
             HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            String json = objectMapper.writeValueAsString(body);
-            ResponseEntity<String> res = proxy.patch("/api/memory/" + memoryId + "/importance", json, userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("更新记忆重要性失败", e);
-        }
-        Map<String, Object> err = new HashMap<>();
-        err.put("success", false);
-        return ResponseEntity.ok(err);
+        return proxyPatch("/api/memory/" + memoryId + "/importance", body, req);
     }
 
     @GetMapping("/search")
@@ -95,37 +69,19 @@ public class MemoryProxyController {
             @RequestParam String q,
             @RequestParam(defaultValue = "10") int limit,
             HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            String url = UriComponentsBuilder
-                    .fromHttpUrl(proxy.getBaseUrl() + "/api/memory/search")
-                    .queryParam("q", q)
-                    .queryParam("limit", limit)
-                    .build().toUriString();
-            ResponseEntity<String> res = proxy.get(url, true, userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("搜索记忆失败", e);
-        }
-        Map<String, Object> fallback = new HashMap<>();
-        fallback.put("results", new ArrayList<>());
-        return ResponseEntity.ok(fallback);
+        String url = UriComponentsBuilder
+                .fromHttpUrl(proxy.getBaseUrl() + "/api/memory/search")
+                .queryParam("q", q)
+                .queryParam("limit", limit)
+                .build().toUriString();
+        return proxyGetAbsolute(url, req,
+                Collections.singletonMap("results", Collections.emptyList()));
     }
 
     @GetMapping("")
     public ResponseEntity<Map<String, Object>> memoryStats(HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            ResponseEntity<String> res = proxy.get("/api/memory", userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("获取记忆统计失败", e);
-        }
-        Map<String, Object> fallback = new HashMap<>();
-        fallback.put("stats", new HashMap<>());
-        return ResponseEntity.ok(fallback);
+        return proxyGet("/api/memory", req,
+                Collections.singletonMap("stats", new HashMap<String, Object>()));
     }
 
     @DeleteMapping("")
@@ -133,53 +89,30 @@ public class MemoryProxyController {
         String userId = proxy.extractUserIdFromRequest(req);
         try {
             proxy.delete("/api/memory", userId);
-            Map<String, Object> r = new HashMap<>();
-            r.put("message", "记忆已清空");
-            return ResponseEntity.ok(r);
+            return ResponseEntity.ok(Collections.singletonMap("message", "记忆已清空"));
         } catch (Exception e) {
             log.error("清空记忆失败", e);
         }
-        Map<String, Object> err = new HashMap<>();
-        err.put("message", "清空失败");
-        return ResponseEntity.ok(err);
+        return ResponseEntity.ok(Collections.singletonMap("message", "清空失败"));
     }
 
     @PostMapping("/distill")
     public ResponseEntity<Map<String, Object>> distill(HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            ResponseEntity<String> res = proxy.post("/api/memory/distill", "{}", userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("触发记忆蒸馏失败", e);
-        }
-        Map<String, Object> err = new HashMap<>();
-        err.put("success", false);
-        err.put("message", "记忆蒸馏失败");
-        return ResponseEntity.ok(err);
+        return proxyPost("/api/memory/distill", "{}", req);
     }
 
     @GetMapping("/summaries")
     public ResponseEntity<Map<String, Object>> memorySummaries(
             @RequestParam(defaultValue = "30") int limit,
             HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            String url = UriComponentsBuilder
-                    .fromHttpUrl(proxy.getBaseUrl() + "/api/memory/summaries")
-                    .queryParam("limit", limit)
-                    .build().toUriString();
-            ResponseEntity<String> res = proxy.get(url, true, userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("获取记忆摘要失败", e);
-        }
+        String url = UriComponentsBuilder
+                .fromHttpUrl(proxy.getBaseUrl() + "/api/memory/summaries")
+                .queryParam("limit", limit)
+                .build().toUriString();
         Map<String, Object> fallback = new HashMap<>();
-        fallback.put("summaries", new ArrayList<>());
+        fallback.put("summaries", Collections.emptyList());
         fallback.put("count", 0);
-        return ResponseEntity.ok(fallback);
+        return proxyGetAbsolute(url, req, fallback);
     }
 
     @GetMapping("/export")
@@ -211,19 +144,8 @@ public class MemoryProxyController {
     }
 
     @PostMapping("/batch-import")
-    public ResponseEntity<Map<String, Object>> batchImport(@RequestBody Map<String, Object> body,
-            HttpServletRequest req) {
-        String userId = proxy.extractUserIdFromRequest(req);
-        try {
-            String json = objectMapper.writeValueAsString(body);
-            ResponseEntity<String> res = proxy.post("/api/memory/batch-import", json, userId);
-            if (res.getStatusCode().is2xxSuccessful())
-                return ResponseEntity.ok(objectMapper.readValue(res.getBody(), Map.class));
-        } catch (Exception e) {
-            log.error("批量导入记忆失败", e);
-        }
-        Map<String, Object> err = new HashMap<>();
-        err.put("success", false);
-        return ResponseEntity.ok(err);
+    public ResponseEntity<Map<String, Object>> batchImport(
+            @RequestBody Map<String, Object> body, HttpServletRequest req) {
+        return proxyPost("/api/memory/batch-import", body, req);
     }
 }

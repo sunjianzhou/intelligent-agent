@@ -63,6 +63,7 @@ import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useLocalSessionStore } from '@/stores/localSession'
+import { NAV_ITEMS, ADMIN_ITEMS } from '@/config/routes.config'
 
 const authStore    = useAuthStore()
 const router       = useRouter()
@@ -89,14 +90,9 @@ onMounted(() => sessionStore.loadSessions())
 
 const route = useRoute()
 
-// 客户端导航项
-const navItems = [
-  { name: 'chat',        label: '聊天',   icon: 'fas fa-comment',      path: '/chat' },
-  { name: 'role-editor', label: '角色配置', icon: 'fas fa-id-card',    path: '/roles/editor' },
-  { name: 'memory',      label: '记忆',   icon: 'fas fa-brain',        path: '/memory' },
-  { name: 'project',     label: '项目',   icon: 'fas fa-folder-open',  path: '/project' },
-  { name: 'admin-tasks', label: '任务',   icon: 'fas fa-tasks',        path: '/admin/tasks' },
-]
+// 侧边栏导航：主导航 + 任务快捷入口（短标签）
+const tasksItem = { ...ADMIN_ITEMS.find(i => i.name === 'admin-tasks'), label: '任务' }
+const navItems = [...NAV_ITEMS, tasksItem]
 
 // 检查当前激活的导航项
 const isActive = computed(() => (name) => {

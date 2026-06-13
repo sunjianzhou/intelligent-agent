@@ -12,24 +12,18 @@ class MemoryManager:
     def __init__(self,
                  short_term_config: Dict[str, Any] = None,
                  long_term_config: Dict[str, Any] = None):
-        """初始化记忆管理器
-
-        Args:
-            short_term_config: 短期记忆配置
-            long_term_config: 长期记忆配置
-        """
-        # 默认配置
+        from config.settings import settings as _settings
         short_term_config = short_term_config or {
             "name": "short_term",
-            "max_size": 100,
-            "ttl_hours": 24
+            "max_size": _settings.short_term_max_size,
+            "ttl_hours": _settings.short_term_ttl_hours,
         }
 
         long_term_config = long_term_config or {
             "name": "long_term",
             "vector_db_type": "chroma",
-            "embedding_model": "all-MiniLM-L6-v2",
-            "persist_dir": "./chroma_data"
+            "embedding_model": _settings.embedding_model,
+            "persist_dir": _settings.chroma_persist_dir,
         }
 
         # 初始化短期记忆

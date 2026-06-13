@@ -92,6 +92,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { useWebSocketStore } from '@/stores/websocket'
+import { NAV_ITEMS, ADMIN_ITEMS, PAGE_CONFIGS } from '@/config/routes.config'
 
 // ── 暗色主题（WANT-011）──────────────────────────────────
 const isDark = ref(localStorage.getItem('theme') === 'dark')
@@ -110,35 +111,14 @@ const store = useWebSocketStore()
 // ── 移动端菜单 ────────────────────────────────────────────
 const showMobileMenu = ref(false)
 
-const navItems = [
-  { name: 'chat',        label: '聊天',   icon: 'fas fa-comment',      path: '/chat' },
-  { name: 'role-editor', label: '角色配置', icon: 'fas fa-id-card',    path: '/roles/editor' },
-  { name: 'memory',      label: '记忆',   icon: 'fas fa-brain',        path: '/memory' },
-  { name: 'project',     label: '项目',   icon: 'fas fa-folder-open',  path: '/project' },
-  { name: 'admin-system', label: '系统',  icon: 'fas fa-info-circle',  path: '/admin/system' },
-]
+// 移动端主导航：主入口 + 系统快捷入口（短标签）
+const systemItem = { ...ADMIN_ITEMS.find(i => i.name === 'admin-system'), label: '系统' }
+const navItems = [...NAV_ITEMS, systemItem]
 
-const adminNavItems = [
-  { name: 'admin-tasks',  label: '任务管理', icon: 'fas fa-tasks',       path: '/admin/tasks' },
-  { name: 'admin-tools',  label: '工具管理', icon: 'fas fa-tools',       path: '/admin/tools' },
-  { name: 'admin-skills', label: 'Skill 管理', icon: 'fas fa-magic',     path: '/admin/skills' },
-  { name: 'admin-system', label: '系统信息', icon: 'fas fa-info-circle', path: '/admin/system' },
-  { name: 'admin-stats',  label: '统计分析', icon: 'fas fa-chart-bar',   path: '/admin/stats' },
-]
+const adminNavItems = ADMIN_ITEMS
 
 // ── 页面配置 ──────────────────────────────────────────────
-const pageConfigs = {
-  chat:          { title: '与智能体对话', icon: 'fas fa-comment' },
-  'role-editor': { title: '角色配置',     icon: 'fas fa-id-card' },
-  memory:        { title: '我的记忆',     icon: 'fas fa-brain' },
-  project:       { title: '项目文件',     icon: 'fas fa-folder-open' },
-  'admin-tools':  { title: '工具管理',   icon: 'fas fa-tools' },
-  'admin-skills': { title: 'Skill 管理', icon: 'fas fa-magic' },
-  'admin-tasks':  { title: '任务管理',   icon: 'fas fa-tasks' },
-  'admin-system': { title: '系统信息',   icon: 'fas fa-info-circle' },
-  'admin-stats':  { title: '统计分析',   icon: 'fas fa-chart-bar' },
-}
-const pageConfig  = computed(() => pageConfigs[route.name] || { title: '智能体', icon: 'fas fa-robot' })
+const pageConfig  = computed(() => PAGE_CONFIGS[route.name] || { title: '智能体', icon: 'fas fa-robot' })
 const pageTitle   = computed(() => pageConfig.value.title)
 const pageIcon    = computed(() => pageConfig.value.icon)
 
@@ -149,13 +129,7 @@ const connectionStatus = computed(() => store.connectionStatus)
 // ── 管理后台入口 ──────────────────────────────────────────
 const adminMenuOpen = ref(false)
 const adminMenuRef  = ref(null)
-const adminItems = [
-  { name: 'admin-tasks',  label: '任务管理', icon: 'fas fa-tasks',       path: '/admin/tasks' },
-  { name: 'admin-tools',  label: '工具管理', icon: 'fas fa-tools',       path: '/admin/tools' },
-  { name: 'admin-skills', label: 'Skill 管理', icon: 'fas fa-magic',     path: '/admin/skills' },
-  { name: 'admin-system', label: '系统信息', icon: 'fas fa-info-circle', path: '/admin/system' },
-  { name: 'admin-stats',  label: '统计分析', icon: 'fas fa-chart-bar',   path: '/admin/stats' },
-]
+const adminItems = ADMIN_ITEMS
 
 const handleClickOutside = (e) => {
   if (adminMenuRef.value && !adminMenuRef.value.contains(e.target)) {

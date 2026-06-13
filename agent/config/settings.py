@@ -118,6 +118,11 @@ class Settings(BaseSettings):
     # 阶段性摘要（9.4）
     memory_summary_interval: int = 10       # 每 N 轮对话生成一次阶段摘要
 
+    # 不支持 Ollama 原生 Function Calling 的模型前缀（逗号分隔）。
+    # 匹配这些前缀的模型自动切换到文本解析模式（<tool_call> 格式）。
+    # 可通过 TEXT_TOOL_CALLING_PATTERNS 环境变量扩展，无需改源码。
+    text_tool_calling_patterns: str = "dolphin,phi2,orca-mini,orca2"
+
     # 云端模型配置（留空则不启用）
     cloud_provider: str = ""  # openai / dashscope / deepseek / zhipu
     cloud_api_key: str = ""

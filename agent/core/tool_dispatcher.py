@@ -8,6 +8,7 @@ import inspect
 import json
 import re
 import time
+from functools import cached_property
 from typing import Dict, Any, Optional, List, Tuple, Set
 
 from loguru import logger
@@ -51,7 +52,10 @@ class ToolDispatcherMixin:
     # Models that don't support Ollama native function calling — use text-based <tool_call> parsing instead.
     # Passing `tools` to Ollama for these models causes Ollama to override the custom system prompt
     # with its own tool template, breaking uncensored/custom personas.
-    _TEXT_TOOL_CALLING_PATTERNS = ["dolphin", "phi2", "orca-mini", "orca2"]
+    # Configurable via TEXT_TOOL_CALLING_PATTERNS env var (comma-separated prefixes).
+    @cached_property
+    def _TEXT_TOOL_CALLING_PATTERNS(self) -> list:
+        return [p.strip() for p in settings.text_tool_calling_patterns.split(",") if p.strip()]
 
     # dolphin 无审查锚定语句（两处使用，提取为常量避免维护分歧）
     _DOLPHIN_ANCHOR: str = (
