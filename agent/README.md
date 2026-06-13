@@ -1,5 +1,22 @@
 # Python Agent 模块
 
+## 技术栈与运行环境
+
+| 项目 | 版本 |
+|------|------|
+| **语言** | Python **≥ 3.8**（开发 / Docker 推荐 **3.10**，conda 环境名 `python310`）|
+| Web 框架 | FastAPI 0.100+ / Uvicorn |
+| 数据校验 | Pydantic v2（`pydantic-settings`）|
+| 向量数据库 | ChromaDB（本地持久化，`./chroma_data`）|
+| Embedding 模型 | `all-MiniLM-L6-v2`（sentence-transformers）|
+| LLM 接口 | Ollama（本地）/ OpenAI-Compatible API（云端）|
+| 日志 | Loguru |
+| 测试 | pytest 6+（`conda activate python310 && pytest tests/`）|
+
+> **重要**：代码兼容 Python 3.8，但推荐在 3.10 环境开发以获得完整类型提示支持。
+
+---
+
 > FastAPI 服务，port 8000。所有 AI 逻辑的唯一载体：LLM 推理、工具执行、记忆管理、任务调度、角色系统、项目上下文。
 
 ---

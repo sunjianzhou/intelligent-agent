@@ -1,5 +1,21 @@
 # Frontend 模块
 
+## 技术栈与运行环境
+
+| 项目 | 版本 |
+|------|------|
+| **运行时** | Node.js **≥ 18**（开发机当前 **24.14.0**）|
+| UI 框架 | Vue **3.3.4** + Composition API |
+| 构建工具 | Vite **4.4.5** |
+| UI 组件库 | Element Plus **2.13.7** |
+| 状态管理 | Pinia |
+| 路由 | Vue Router 4 |
+| Markdown 渲染 | `marked` + `highlight.js` |
+| HTTP 客户端 | axios |
+| 包管理 | npm（`npm install && npm run dev`）|
+
+---
+
 > Vue 3 + Vite SPA，开发端口 3000（Docker Nginx）/ 3001（Vite dev，若 3000 被占用自动递增）。
 
 ---

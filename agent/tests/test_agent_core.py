@@ -11,6 +11,7 @@ IntelligentAgent 核心流程测试。
 
 所有测试不需要 Ollama、ChromaDB、Scheduler 真实服务。
 """
+from __future__ import annotations
 import sys
 import os
 import asyncio

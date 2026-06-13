@@ -1,5 +1,21 @@
 # Java Backend 模块
 
+## 技术栈与运行环境
+
+| 项目 | 版本 |
+|------|------|
+| **语言** | Java **1.8**（JDK 8，`pom.xml` 中 `<java.version>1.8</java.version>`）|
+| Web 框架 | Spring Boot **2.7.18** |
+| 构建工具 | Maven 3.6+（项目内置 `mvnw` wrapper）|
+| WebSocket | Spring WebSocket（`TextWebSocketHandler`）|
+| HTTP 客户端 | Apache HttpClient 4.5 |
+| JSON | Jackson 2.11 |
+| 测试 | JUnit 5（`./mvnw test`）|
+
+> **JDK 8 限制**：`Map.of()`、`List.of()` 等 Java 9+ API 不可用，多值 Map 须用 `new HashMap<>()` 或 `Collections.singletonMap()`。
+
+---
+
 > Spring Boot 2.7 服务，port 8080。纯粹的 WebSocket 网关 + HTTP 代理层，不含任何 AI 业务逻辑。
 
 ---

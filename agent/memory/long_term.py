@@ -129,8 +129,8 @@ class LongTermMemory(BaseMemory):
             logger.error("请安装 chromadb: pip install chromadb")
             raise
         except Exception as e:
-            logger.error(f"初始化ChromaDB失败: {e}")
-            raise
+            logger.error(f"初始化ChromaDB失败: {e}，降级到内存模式")
+            self._init_memory_db()
 
     def _init_memory_db(self):
         """初始化内存向量数据库（用于测试）"""
