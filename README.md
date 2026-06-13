@@ -438,6 +438,7 @@ intelligent_agent/
 │   ├── api/roles_router.py         /api/roles/* 角色 CRUD
 │   ├── api/conversations_router.py /api/conversations/* 历史会话
 │   ├── api/projects_router.py      /api/project/* 规格/任务/上下文
+│   ├── api/cloud_router.py         /api/cloud/* 云端服务商 CRUD + 激活切换
 │   ├── core/agent.py               IntelligentAgent 门面（继承三个 Mixin）
 │   ├── core/conversation_flow.py   ConversationFlowMixin（消息构建/chat/stream）
 │   ├── core/tool_dispatcher.py     ToolDispatcherMixin（工具注册/意图/LLM调用）
@@ -459,6 +460,7 @@ intelligent_agent/
 │       ├── AgentService            SSE 流式代理 + 事件转发（@Scheduled 5s 通知推送）
 │       ├── RoleController          /api/roles/* 代理（角色 CRUD + 激活）
 │       ├── ConversationsProxyController /api/conversations/* 代理（历史会话）
+│       ├── CloudProxyController    /api/cloud/* 代理（云端服务商 CRUD + 激活切换）
 │       └── controller/             其余 HTTP 代理（记忆/工具/项目/分析/图片等）
 │
 ├── frontend/                       Vue 3 SPA
@@ -539,6 +541,10 @@ intelligent_agent/
 | PUT | `/api/project/spec` | 写入项目规格文档 |
 | POST | `/api/project/tasks/decompose` | AI 任务分解 |
 | GET | `/api/tools/list` | 列出注册工具 |
+| GET | `/api/cloud/providers` | 列出云端服务商配置 |
+| POST | `/api/cloud/providers` | 新建云端服务商配置 |
+| POST | `/api/cloud/providers/{id}/activate` | 激活指定服务商（切换全局 provider）|
+| POST | `/api/cloud/deactivate` | 停用云端，切回 Ollama |
 
 ---
 
@@ -688,7 +694,7 @@ A: dolphin 不支持原生 Function Calling，系统自动切换 Text-tool 解�
 A: Docker 模式：`agent_data` 命名卷（`agent/data/`）和 `agent/chroma-data/`；本地模式：`agent/data/` 和 `agent/chroma_data/`。
 
 **Q: 如何接入云端 LLM（网络不好时 fallback）**  
-A: 在 `.env.docker` 设置 `CLOUD_PROVIDER`（如 `deepseek`）和 `CLOUD_API_KEY`，或在系统页在线配置，无需重启。
+A: 推荐在 `/admin/system` 系统页的"云端服务商"卡片中添加配置（支持 OpenAI / DeepSeek / 阿里百炼等 7 家，填 BaseURL + API Key + 模型名），点击"激活"立即切换，配置持久化到 `agent/data/cloud_providers.json`，重启后自动恢复。也可在 `.env.docker` 设置 `CLOUD_PROVIDER` 和 `CLOUD_API_KEY` 作为启动默认值。
 
 ---
 

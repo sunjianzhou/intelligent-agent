@@ -35,6 +35,7 @@ backend/web/src/main/java/.../
 │   ├── AnalyticsProxyController.java      /api/analytics/* → Python
 │   ├── ImageProxyController.java          /api/images/* → Python
 │   ├── ProjectProxyController.java        /api/project/* → Python（spec CRUD、context 查询）
+│   ├── CloudProxyController.java          /api/cloud/* → Python（云端服务商 CRUD + 激活切换）
 │   └── SpaController.java                 兜底路由（Vue Router history mode）
 ├── service/
 │   ├── AgentService.java            Python SSE 流读取 + WS 推送（线程池）

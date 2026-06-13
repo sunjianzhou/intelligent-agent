@@ -13,6 +13,7 @@ agent/
 │   ├── roles_router.py         /api/roles/* 角色 CRUD（含激活状态持久化）
 │   ├── conversations_router.py /api/conversations/* 历史会话 CRUD（T4）
 │   ├── projects_router.py      /api/project/* 项目规格/任务树/上下文
+│   ├── cloud_router.py         /api/cloud/* 云端服务商 CRUD + 激活切换
 │   └── metrics.py              Prometheus 指标 (/metrics)
 │
 ├── core/                       ReAct 推理核心（God Class 已拆分，commit 528b787）
@@ -55,8 +56,7 @@ agent/
 ├── personas/                   角色系统 Python 模块
 │   ├── role_manager.py         RoleManager（角色 CRUD + 激活状态持久化）
 │   ├── role_models.py          Pydantic 角色数据模型（RoleCard / CoreIdentity 等）
-│   ├── prompt_builder.py       PromptBuilder 单例（根据激活角色构建 system prompt）
-│   └── _backup/                旧版 *.md 角色文件存档（已迁移到新角色体系）
+│   └── prompt_builder.py       PromptBuilder 单例（根据激活角色构建 system prompt）
 │
 ├── skills/
 │   ├── manager.py              SkillManager（技能注册与查找）
@@ -294,6 +294,13 @@ black . && isort . && pylint . && mypy .
 | GET | `/api/tools/list` | 工具列表 |
 | GET | `/metrics` | Prometheus 指标 |
 | GET | `/api/notifications/poll` | 通知轮询（Java 每 5s 调用）|
+| GET | `/api/cloud/providers` | 列出云端服务商配置 |
+| POST | `/api/cloud/providers` | 新建服务商配置 |
+| PUT | `/api/cloud/providers/{id}` | 编辑服务商配置（空 api_key = 保留原值）|
+| DELETE | `/api/cloud/providers/{id}` | 删除服务商配置 |
+| POST | `/api/cloud/providers/{id}/activate` | 激活服务商（立即切换全局 provider）|
+| POST | `/api/cloud/deactivate` | 停用云端，切回 Ollama |
+| GET | `/api/cloud/presets` | 列出已知服务商 URL 预设（7 家）|
 
 ---
 
