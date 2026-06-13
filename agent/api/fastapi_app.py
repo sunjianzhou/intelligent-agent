@@ -33,6 +33,12 @@ from api.roles_router import (
     get_role_manager as _get_role_manager,
     _load_user_active_roles as _load_active_roles,
 )
+from api.cloud_router import (
+    router as cloud_router,
+    set_callbacks as _set_cloud_callbacks,
+    load_providers as _load_cloud_providers,
+    KNOWN_PROVIDER_URLS as _CLOUD_KNOWN_URLS,
+)
 from personas.prompt_builder import PromptBuilder as _PromptBuilder
 
 _prompt_builder = _PromptBuilder()
@@ -257,7 +263,7 @@ async def _inference_slot(queue_timeout: float = 30.0):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _inference_sem, _queue_sem
+    global _inference_sem, _queue_sem, provider
 
     # M-11: 先恢复运行时配置，让后续 Semaphore 使用持久化后的值
     for _k, _v in _load_runtime_config().items():
@@ -317,6 +323,32 @@ async def lifespan(app: FastAPI):
         _user_active_roles_state[_uid] = _role_id
         logger.info(f"恢复用户 {_uid} 的激活角色: {_role_id}")
 
+    # 恢复激活的云端服务商（以 cloud_providers.json 为准，优先级高于 .env）
+    _cloud_provs = _load_cloud_providers()
+    _active_cloud = next((p for p in _cloud_provs if p.get("is_active")), None)
+    if _active_cloud:
+        try:
+            from services.openai_provider import OpenAIProvider
+            _eff_url = _active_cloud.get("base_url") or _CLOUD_KNOWN_URLS.get(
+                _active_cloud["provider"].lower(), ""
+            )
+            _cloud_p = OpenAIProvider(
+                api_key=_active_cloud["api_key"],
+                base_url=_eff_url,
+                model=_active_cloud["model"],
+            )
+            provider = _cloud_p
+            settings.cloud_api_key = _active_cloud["api_key"]
+            settings.cloud_base_url = _eff_url
+            settings.cloud_model = _active_cloud["model"]
+            settings.cloud_provider = _active_cloud["provider"]
+            logger.info(
+                f"已从配置文件恢复云端服务商: {_active_cloud['name']} "
+                f"/ {_active_cloud['model']}"
+            )
+        except Exception as _ce:
+            logger.warning(f"恢复云端服务商失败（将继续使用当前 provider）: {_ce}")
+
     # 启动时预热 embedding 模型
     try:
         if agent and hasattr(agent, 'memory'):
@@ -362,6 +394,7 @@ app.include_router(analytics_router)
 app.include_router(projects_router)
 app.include_router(conversations_router)
 app.include_router(roles_router)
+app.include_router(cloud_router)
 app.include_router(metrics_router)
 app.middleware("http")(metrics_middleware)
 
@@ -461,6 +494,44 @@ if OLLAMA_AVAILABLE and provider:
     except Exception as e:
         logger.error(f"IntelligentAgent 初始化失败，降级为 Provider 直连: {e}")
         logger.error(traceback.format_exc())
+
+
+# ── 云端服务商激活/停用回调 ────────────────────────────────
+def _activate_cloud_provider(base_url: str, api_key: str, model: str, provider_name: str):
+    global provider
+    from services.openai_provider import OpenAIProvider
+    try:
+        new_p = OpenAIProvider(api_key=api_key, base_url=base_url, model=model)
+        provider = new_p
+        settings.cloud_api_key = api_key
+        settings.cloud_base_url = base_url
+        settings.cloud_model = model
+        settings.cloud_provider = provider_name
+        logger.info(f"云端服务商已切换: {provider_name} / {model} @ {base_url}")
+    except Exception as e:
+        logger.error(f"创建云端 Provider 实例失败: {e}")
+        raise
+
+
+def _deactivate_cloud_provider():
+    global provider
+    try:
+        new_p = OllamaProvider(base_url=settings.ollama_base_url)
+        ok = new_p.check_connection()
+        if ok:
+            provider = new_p
+            settings.cloud_api_key = ""
+            settings.cloud_base_url = ""
+            settings.cloud_model = ""
+            settings.cloud_provider = ""
+            logger.info("已切换回本地 Ollama")
+        else:
+            logger.warning("切换回 Ollama 失败：Ollama 连接不可用，保持当前提供方")
+    except Exception as e:
+        logger.warning(f"切换回 Ollama 时出错: {e}")
+
+
+_set_cloud_callbacks(_activate_cloud_provider, _deactivate_cloud_provider)
 
 
 # ── 数据模型 ──────────────────────────────────────────────

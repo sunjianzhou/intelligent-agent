@@ -214,3 +214,17 @@ export const activateRoleApi   = (roleId) =>
 export const deactivateRoleApi = () => request(`${BASE}/roles/activate`, { method: 'DELETE' })
 export const syncRoleToServer  = (roleId, data) =>
   request(`${BASE}/roles/${encodeURIComponent(roleId)}`, { method: 'PUT', body: JSON.stringify(data) })
+
+// ── 云端服务商配置 ─────────────────────────────────────────
+export const listCloudProviders     = () => request(`${BASE}/cloud/providers`)
+export const getCloudPresets        = () => request(`${BASE}/cloud/presets`)
+export const createCloudProvider    = (data) =>
+  request(`${BASE}/cloud/providers`, { method: 'POST', body: JSON.stringify(data) })
+export const updateCloudProvider    = (id, data) =>
+  request(`${BASE}/cloud/providers/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) })
+export const deleteCloudProvider    = (id) =>
+  request(`${BASE}/cloud/providers/${encodeURIComponent(id)}`, { method: 'DELETE' })
+export const activateCloudProvider  = (id) =>
+  request(`${BASE}/cloud/providers/${encodeURIComponent(id)}/activate`, { method: 'POST' })
+export const deactivateCloudProviders = () =>
+  request(`${BASE}/cloud/deactivate`, { method: 'POST' })

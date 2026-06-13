@@ -536,16 +536,135 @@
         <div v-if="models.length === 0" class="empty-tip">暂无可用模型</div>
       </div>
     </div>
+
+    <!-- 云端服务商配置 -->
+    <div class="detail-card cloud-providers-card">
+      <div class="detail-title">
+        <i class="fas fa-cloud-upload-alt" style="color:#667eea" />
+        云端服务商
+        <span class="rc-tip">{{ cloudProviders.length }} 个已配置</span>
+        <button class="cp-add-btn" @click="openCpAdd">
+          <i class="fas fa-plus" /> 添加服务商
+        </button>
+      </div>
+
+      <div v-if="cloudProviders.length === 0" class="cp-empty">
+        <i class="fas fa-cloud" style="font-size:2rem;color:#dde;display:block;margin-bottom:10px" />
+        暂无云端服务商配置。点击「添加服务商」接入 OpenAI、DeepSeek、阿里云百炼等兼容接口。
+      </div>
+
+      <div v-else class="cp-list">
+        <div v-for="p in cloudProviders" :key="p.id"
+             class="cp-card"
+             :class="{ 'cp-active': p.is_active }">
+          <div class="cp-card-header">
+            <div class="cp-name">
+              <i class="fas fa-cloud" :style="{ color: p.is_active ? '#667eea' : '#bbb' }" />
+              {{ p.name }}
+            </div>
+            <span v-if="p.is_active" class="cp-active-badge">
+              <i class="fas fa-check-circle" /> 使用中
+            </span>
+          </div>
+          <div class="cp-meta">
+            <span class="cp-provider-tag">{{ p.provider }}</span>
+            <span class="cp-model-name">{{ p.model }}</span>
+          </div>
+          <div class="cp-url" :title="p.base_url">{{ p.base_url || '（默认接口地址）' }}</div>
+          <div class="cp-key"><i class="fas fa-key" /> {{ p.api_key_masked }}</div>
+          <div class="cp-actions">
+            <button v-if="!p.is_active" class="cp-btn cp-btn-activate" @click="activateCp(p.id)">
+              <i class="fas fa-power-off" /> 激活
+            </button>
+            <button v-else class="cp-btn cp-btn-deactivate" @click="deactivateCp">
+              <i class="fas fa-toggle-off" /> 停用
+            </button>
+            <button class="cp-btn cp-btn-edit" @click="openCpEdit(p)">
+              <i class="fas fa-pen" /> 编辑
+            </button>
+            <button class="cp-btn cp-btn-del" @click="deleteCp(p.id, p.name)">
+              <i class="fas fa-trash" /> 删除
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 云端服务商 添加/编辑 对话框 -->
+    <div v-if="showCpDialog" class="modal-overlay" @click.self="showCpDialog = false">
+      <div class="modal-box">
+        <div class="modal-header">
+          <span class="modal-title">
+            {{ cpEditId ? '编辑服务商' : '添加云端服务商' }}
+          </span>
+          <button class="modal-close" @click="showCpDialog = false">
+            <i class="fas fa-times" />
+          </button>
+        </div>
+        <div class="modal-body">
+          <!-- 名称 -->
+          <div class="form-row">
+            <label>名称 <span class="required">*</span></label>
+            <input v-model="cpForm.name" placeholder="如：DeepSeek 生产账号" />
+          </div>
+          <!-- 服务商 -->
+          <div class="form-row">
+            <label>服务商类型</label>
+            <select v-model="cpForm.provider" @change="onCpProviderChange">
+              <option value="">-- 自定义 --</option>
+              <option v-for="preset in cpPresets" :key="preset.key" :value="preset.key">
+                {{ preset.label }}
+              </option>
+            </select>
+          </div>
+          <!-- Base URL -->
+          <div class="form-row">
+            <label>Base URL <span class="rc-tip" style="margin-left:4px">（服务商选择后自动填充，可自定义）</span></label>
+            <input v-model="cpForm.base_url" placeholder="https://api.openai.com/v1" />
+          </div>
+          <!-- API Key -->
+          <div class="form-row">
+            <label>
+              API Key <span class="required">*</span>
+              <span v-if="cpEditId" class="rc-tip" style="margin-left:4px">（留空保持原密钥）</span>
+            </label>
+            <input v-model="cpForm.api_key" type="password" placeholder="sk-..." autocomplete="new-password" />
+          </div>
+          <!-- Model -->
+          <div class="form-row">
+            <label>模型名称 <span class="required">*</span></label>
+            <input v-model="cpForm.model" placeholder="gpt-4o / deepseek-chat / qwen-plus …" />
+          </div>
+          <!-- 常用模型快选 -->
+          <div v-if="cpForm.provider && cpModelSuggestions.length" class="cp-model-chips">
+            <span class="cp-chips-label">快选:</span>
+            <span v-for="m in cpModelSuggestions" :key="m"
+                  class="cp-chip" @click="cpForm.model = m">{{ m }}</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" @click="showCpDialog = false">取消</button>
+          <button class="btn-confirm" @click="saveCpForm" :disabled="cpSaving">
+            <i class="fas fa-save" /> {{ cpSaving ? '保存中…' : '保存' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, defineComponent, h } from 'vue'
 import { useWebSocketStore } from '@/stores/websocket'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { ElMessage } from 'element-plus'
 import {
   getJavaHealth, getPythonHealth, getSystemInfo, getModels, getSystemResources,
-  getRuntimeConfig, updateRuntimeConfig
+  getRuntimeConfig, updateRuntimeConfig,
+  listCloudProviders, getCloudPresets,
+  createCloudProvider, updateCloudProvider, deleteCloudProvider,
+  activateCloudProvider, deactivateCloudProviders,
 } from '@/services/api'
 
 // ── SparkLine ─────────────────────────────────────────────
@@ -585,7 +704,8 @@ const SparkLine = defineComponent({
 })
 
 // ── Store ─────────────────────────────────────────────────
-const wsStore       = useWebSocketStore()
+const wsStore         = useWebSocketStore()
+const confirmDialog   = useConfirmDialogStore()
 const responseTimes = computed(() => wsStore.responseTimes || [])
 
 // ── 状态 ─────────────────────────────────────────────────
@@ -790,10 +910,121 @@ const refresh = async () => {
   }
 }
 
+// ── 云端服务商管理 ────────────────────────────────────────
+const cloudProviders = ref([])
+const cpPresets      = ref([])
+const showCpDialog   = ref(false)
+const cpEditId       = ref(null)
+const cpSaving       = ref(false)
+const cpForm         = ref({ name: '', provider: '', base_url: '', api_key: '', model: '' })
+
+const CP_MODEL_SUGGESTIONS = {
+  openai:      ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+  deepseek:    ['deepseek-chat', 'deepseek-reasoner'],
+  dashscope:   ['qwen-plus', 'qwen-turbo', 'qwen-max', 'qwen-long'],
+  zhipu:       ['glm-4', 'glm-4-flash', 'glm-4-air'],
+  moonshot:    ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
+  baidu:       ['ernie-4.5-turbo-128k', 'ernie-4.0-8k', 'ernie-speed-128k'],
+  siliconflow: ['deepseek-ai/DeepSeek-V3', 'Qwen/Qwen2.5-72B-Instruct'],
+}
+const cpModelSuggestions = computed(() =>
+  CP_MODEL_SUGGESTIONS[cpForm.value.provider] || []
+)
+
+const loadCloudProvs = async () => {
+  const data = await listCloudProviders()
+  if (data) cloudProviders.value = data.providers || []
+}
+
+const loadCpPresets = async () => {
+  const data = await getCloudPresets()
+  if (data) cpPresets.value = data.presets || []
+}
+
+const openCpAdd = () => {
+  cpEditId.value = null
+  cpForm.value   = { name: '', provider: '', base_url: '', api_key: '', model: '' }
+  showCpDialog.value = true
+}
+
+const openCpEdit = (p) => {
+  cpEditId.value = p.id
+  cpForm.value   = { name: p.name, provider: p.provider, base_url: p.base_url, api_key: '', model: p.model }
+  showCpDialog.value = true
+}
+
+const onCpProviderChange = () => {
+  const preset = cpPresets.value.find(p => p.key === cpForm.value.provider)
+  if (preset) cpForm.value.base_url = preset.url
+}
+
+const saveCpForm = async () => {
+  if (!cpForm.value.name.trim())  { ElMessage.warning('请填写名称'); return }
+  if (!cpForm.value.model.trim()) { ElMessage.warning('请填写模型名称'); return }
+  if (!cpEditId.value && !cpForm.value.api_key.trim()) { ElMessage.warning('请填写 API Key'); return }
+  cpSaving.value = true
+  try {
+    const payload = { ...cpForm.value }
+    let res
+    if (cpEditId.value) {
+      res = await updateCloudProvider(cpEditId.value, payload)
+    } else {
+      res = await createCloudProvider(payload)
+    }
+    if (res?.success) {
+      ElMessage.success(cpEditId.value ? '已更新服务商' : '已添加服务商')
+      showCpDialog.value = false
+      await loadCloudProvs()
+    }
+  } finally {
+    cpSaving.value = false
+  }
+}
+
+const activateCp = async (pid) => {
+  const res = await activateCloudProvider(pid)
+  if (res?.success) {
+    ElMessage.success('云端服务商已激活，后续对话将使用该服务商')
+    await loadCloudProvs()
+    await refresh()
+  }
+}
+
+const deactivateCp = async () => {
+  const ok = await confirmDialog.confirm('停用云端服务商，切换回本地 Ollama？', {
+    title: '停用云端服务商',
+    confirmText: '确认停用',
+    type: 'warning',
+  })
+  if (!ok) return
+  const res = await deactivateCloudProviders()
+  if (res?.success) {
+    ElMessage.success('已切换回本地 Ollama')
+    await loadCloudProvs()
+    await refresh()
+  }
+}
+
+const deleteCp = async (pid, name) => {
+  const ok = await confirmDialog.confirm(`确定删除服务商「${name}」？`, {
+    title: '删除服务商',
+    confirmText: '删除',
+    type: 'danger',
+  })
+  if (!ok) return
+  const res = await deleteCloudProvider(pid)
+  if (res?.success) {
+    ElMessage.success('已删除')
+    await loadCloudProvs()
+  }
+}
+
 let timer = null, clockTimer = null
 onMounted(() => {
   refresh()
   loadRuntimeConfig()
+  loadCloudProvs()
+  loadCpPresets()
   timer      = setInterval(refresh, 10000)
   clockTimer = setInterval(() => { countdown.value = Math.max(0, countdown.value - 1) }, 1000)
 })
@@ -1061,4 +1292,131 @@ onUnmounted(() => { clearInterval(timer); clearInterval(clockTimer) })
   .chart-row { grid-template-columns: repeat(2, 1fr); }
   .detail-row { grid-template-columns: 1fr; }
 }
+
+/* ── 云端服务商配置 ─────────────────────────────────────── */
+.cloud-providers-card { grid-column: 1 / -1; }
+
+.cp-add-btn {
+  margin-left: auto; padding: 6px 14px;
+  background: #667eea; color: white; border: none;
+  border-radius: 8px; font-size: 0.82rem; cursor: pointer;
+  display: flex; align-items: center; gap: 5px; transition: opacity 0.2s;
+}
+.cp-add-btn:hover { opacity: 0.85; }
+
+.cp-empty {
+  text-align: center; padding: 28px 0; color: #bbb; font-size: 0.88rem;
+}
+
+.cp-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.cp-card {
+  background: #fafafa; border: 1px solid #e8eaed; border-radius: 12px;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.cp-card:hover { border-color: #c5caf5; box-shadow: 0 2px 12px rgba(102,126,234,0.08); }
+.cp-card.cp-active {
+  border-color: #667eea;
+  background: linear-gradient(135deg, #f8f9ff 80%, #f0f2ff);
+}
+
+.cp-card-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.cp-name {
+  display: flex; align-items: center; gap: 7px;
+  font-weight: 500; font-size: 0.92rem; color: #333;
+}
+.cp-active-badge {
+  font-size: 0.72rem; background: #e8f5e9; color: #2e7d32;
+  padding: 2px 9px; border-radius: 10px; display: flex; align-items: center; gap: 4px;
+  flex-shrink: 0;
+}
+
+.cp-meta { display: flex; align-items: center; gap: 8px; }
+.cp-provider-tag {
+  font-size: 0.72rem; background: #f0f2ff; color: #667eea;
+  padding: 2px 8px; border-radius: 8px; text-transform: lowercase;
+}
+.cp-model-name { font-size: 0.82rem; color: #555; font-weight: 500; }
+
+.cp-url {
+  font-size: 0.72rem; color: #bbb; word-break: break-all;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cp-key { font-size: 0.75rem; color: #aaa; display: flex; align-items: center; gap: 5px; }
+.cp-key i { font-size: 0.65rem; }
+
+.cp-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.cp-btn {
+  padding: 5px 11px; border-radius: 7px; font-size: 0.78rem;
+  cursor: pointer; display: flex; align-items: center; gap: 4px;
+  transition: all 0.15s; border: 1px solid transparent;
+}
+.cp-btn-activate  { background: #667eea; color: white; border-color: #667eea; }
+.cp-btn-activate:hover { background: #5a6fd6; }
+.cp-btn-deactivate { background: white; color: #888; border-color: #e0e3e8; }
+.cp-btn-deactivate:hover { border-color: #f57c00; color: #f57c00; }
+.cp-btn-edit { background: white; color: #555; border-color: #e0e3e8; }
+.cp-btn-edit:hover { border-color: #667eea; color: #667eea; }
+.cp-btn-del  { background: white; color: #999; border-color: #e0e3e8; }
+.cp-btn-del:hover { border-color: #e53935; color: #e53935; }
+
+/* ── 服务商对话框 ──────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+}
+.modal-box {
+  background: white; border-radius: 14px;
+  width: 460px; max-height: 85vh; overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 20px 14px; border-bottom: 0.5px solid #e8eaed;
+}
+.modal-title { font-size: 1rem; font-weight: 500; }
+.modal-close { background: none; border: none; color: #aaa; cursor: pointer; font-size: 1rem; padding: 4px; }
+.modal-close:hover { color: #333; }
+.modal-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+.form-row { display: flex; flex-direction: column; gap: 5px; }
+.form-row label { font-size: 0.85rem; color: #555; font-weight: 500; display: flex; align-items: center; flex-wrap: wrap; }
+.form-row input, .form-row select {
+  padding: 8px 12px; border: 1px solid #e0e3e8;
+  border-radius: 8px; font-size: 0.88rem; outline: none; transition: border-color 0.2s;
+}
+.form-row input:focus, .form-row select:focus { border-color: #667eea; }
+.required { color: #f44336; margin-left: 2px; }
+.modal-footer {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 14px 20px 18px; border-top: 0.5px solid #e8eaed;
+}
+.btn-cancel {
+  padding: 8px 18px; border-radius: 8px; border: 1px solid #e0e3e8;
+  background: white; color: #555; cursor: pointer; font-size: 0.88rem;
+}
+.btn-confirm {
+  padding: 8px 18px; border-radius: 8px; border: none;
+  background: #667eea; color: white; cursor: pointer; font-size: 0.88rem;
+  display: flex; align-items: center; gap: 6px; transition: background 0.2s;
+}
+.btn-confirm:hover:not(:disabled) { background: #5a6fd6; }
+.btn-confirm:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.cp-model-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cp-chips-label { font-size: 0.75rem; color: #aaa; flex-shrink: 0; }
+.cp-chip {
+  font-size: 0.75rem; padding: 3px 9px; border-radius: 10px;
+  background: #f0f2ff; color: #667eea; cursor: pointer;
+  border: 1px solid #e0e3ef; transition: all 0.15s;
+}
+.cp-chip:hover { background: #667eea; color: white; border-color: #667eea; }
 </style>
