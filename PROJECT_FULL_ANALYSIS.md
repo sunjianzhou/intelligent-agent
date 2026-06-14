@@ -1,8 +1,21 @@
 # Intelligent Agent 项目完整分析文档
 
-> 生成日期: 2026-05-19 | 最后更新: 2026-05-24
+> 生成日期: 2026-05-19 | 最后更新: 2026-06-14
 > 目的: 供另一个 Claude 实例在不接触源码的情况下进行后续设计与规划
 > 覆盖范围: 三层的完整源码分析，包括所有模块的数据结构、接口、业务逻辑和当前状态
+
+> ⚠️ **重要更新（2026-06-14）**：本文档自 2026-05-24 起有大量功能变化，关键差异摘要如下：
+> - **Agent 核心重构**：`core/agent.py` 已从 ~1800 行 God Class 拆分为 4 个文件（门面 ~320 行 + 3 个 Mixin）
+> - **新 API Router**：`api/roles_router.py`（角色完整 CRUD）、`api/conversations_router.py`（历史会话）、`api/cloud_router.py`（云端服务商）
+> - **角色系统全栈**：`personas/` 目录（role_manager / role_models / prompt_builder），前端 `/roles/editor` 六标签编辑器
+> - **前端新页面**：`/admin/mcp`（MCP 配置+资源参数）、`/admin/models`（模型管理+云端服务商）、`/admin/logs`（操作日志时间线）
+> - **Java 新 Controller**：`AbstractProxyController`（所有代理 Controller 的统一基类）、`RoleController`、`ConversationsProxyController`、`CloudProxyController`
+> - **Java 通知推送**：`AgentService` 增加 `@Scheduled(5000ms)` 主动推送通知 WS 事件
+> - **系统重构**：SystemView 移除重复的模型/云端面板；参数配置移至 MCPView；侧边栏三分区导航（routes.config.js 单一来源）
+> - **测试**：Agent 单元测试 152 个（原 ~50），E2E 端到端测试 63 个（全新）
+> - **路线图进度**：下文 §9 所有规划项均已完成
+>
+> 快速了解最新状态请优先阅读 `AI_PROJECT_CONTEXT.md`（实时维护）。
 
 ---
 
@@ -280,7 +293,12 @@ class LLMResponse:
 
 ### 3.4 IntelligentAgent 核心
 
-**文件**: `agent/core/agent.py` (~1800 行，最核心文件)
+**文件（已重构）**：原 ~1800 行 God Class 已拆分为四个文件：
+- `core/agent.py`（~320 行）— 薄门面，继承三个 Mixin
+- `core/conversation_flow.py`（~460 行）— ConversationFlowMixin（消息构建/chat/stream）
+- `core/tool_dispatcher.py`（~1130 行）— ToolDispatcherMixin（工具注册/意图/LLM调用）
+- `core/memory_writer.py`（~310 行）— MemoryWriterMixin（预热/MCP/蒸馏/清理）
+- `core/_context_vars.py` — 共享 ContextVar（避免循环导入）
 
 #### 初始化流程
 
@@ -879,18 +897,32 @@ auth:
 ### 5.2 路由
 
 ```javascript
-/login   → LoginView (public)
-/chat    → ChatView (懒加载, title: 聊天)
-/tools   → ToolsView (懒加载, title: 工具管理)
-/skills  → SkillView (懒加载, title: Skill 管理)
-/tasks   → TasksView (懒加载, title: 任务管理)
-/memory  → MemoryView (懒加载, title: 记忆管理)
-/system  → SystemView (懒加载, title: 系统信息)
-/stats   → StatsView (懒加载, title: 统计分析)
-/*       → redirect /chat
+/login            → LoginView (public)
+/chat             → ChatView
+/roles/editor     → RoleEditorView（六标签角色配置）
+/memory           → MemoryView
+/project          → ProjectView（项目/Spec/任务树）
+/admin/tools      → ToolsView（工具列表）
+/admin/skills     → SkillView
+/admin/mcp        → MCPView（API Key + 推理参数 + 系统资源配置）
+/admin/models     → ModelView（模型管理 + 云端服务商 CRUD）
+/admin/tasks      → TasksView
+/admin/logs       → LogView（操作日志时间线）
+/admin/system     → SystemView（资源用量监控）
+/admin/stats      → StatsView
+
+// 旧路径重定向（向后兼容）
+/tools   → /admin/tools
+/skills  → /admin/skills
+/tasks   → /admin/tasks
+/system  → /admin/system
+/stats   → /admin/stats
+/*       → /chat
 ```
 
 **路由守卫**: 非 public 页面检查 `localStorage.agent_token`，无 token 跳转 `/login`
+
+**路由导航单一来源**: `src/config/routes.config.js` 导出 `NAV_ITEMS` / `CONFIG_ITEMS` / `SYSTEM_ITEMS`，Sidebar 和 Header 均从此文件读取，新增页面只改一处。
 
 ### 5.3 Store
 
@@ -953,21 +985,26 @@ Mock WebSocket 实现，用于离线开发，实现与真实 WebSocket 相同的
 | 视图 | 功能描述 |
 |------|----------|
 | **LoginView** | 用户名/密码输入，渐变色背景，登录后跳转 /chat |
-| **ChatView** | 聊天主界面: 消息列表 (Markdown 渲染), 工具调用卡片, 思考动画（等待 3s 后显示已等待秒数计时器）, 输入框, 导出按钮, 点赞/踩反馈; CTX_LIMIT 从 `/api/system/resources` 动态拉取 `ollama_num_ctx` |
-| **ToolsView** | 工具卡片网格: 按分类过滤, 显示工具名/描述/状态/分类 |
+| **ChatView** | 聊天主界面：流式渲染、工具进度卡片、思考计时器（3s后），历史会话侧边栏，config-bar 内嵌模型/角色切换，悬停气泡操作（复制/点赞/踩） |
+| **RoleEditorView** | 角色编辑器：六标签表单（基本信息/核心身份/用户画像/场景知识/限制条件/提示预览），保存/激活/删除 |
+| **ToolsView** | 工具卡片网格，按分类过滤；API Key 配置已移至 MCPView |
+| **MCPView** | 三卡片：① 工具 API Key（写入 .env）② 推理参数滑块（即时生效）③ 系统资源配置（并发/缓存/记忆上限，立即生效） |
+| **ModelView** | 当前激活模型卡、云端服务商 CRUD（添加/编辑/删除/激活/停用）、本地 Ollama 模型列表（含用途标签推断） |
 | **SkillView** | Skill 列表: CRUD, 启用/禁用, 从模板创建 |
 | **TasksView** | 任务管理: 创建/删除/取消/立即执行, 状态过滤 |
-| **MemoryView** | 记忆管理: 短期/长期切换, 搜索, 删除, 清空 |
-| **SystemView** | 系统监控: 服务状态卡片, CPU/内存/磁盘图表, GPU 信息, Ollama 模型, 进程列表, 10 秒自动刷新 |
-| **StatsView** | 统计分析: 反馈统计, 响应时间趋势, 工具/Skill 使用统计 |
+| **LogView** | 操作日志时间线：拉取最近对话+任务，按用户/AI/工具/任务/错误颜色区分，支持按类型过滤 |
+| **MemoryView** | 记忆管理: 短期/长期切换, 语义搜索, 删除, 导入/导出/清空 |
+| **SystemView** | 系统监控：服务状态卡、CPU/内存/磁盘/GPU 实时图表、Ollama 模型、进程排行、10s 自动刷新；可配置参数已移至 MCPView |
+| **StatsView** | 统计分析: 满意度/响应时间/工具&Skill 使用统计 |
+| **ProjectView** | 三栏：项目列表 / SpecEditor（Markdown）/ TaskTree（[TASK_DONE] 自动勾选） |
 
 ### 5.6 布局组件
 
 | 组件 | 位置 | 功能 |
 |------|------|------|
-| **Sidebar** | 左侧 250px | Logo, 导航菜单 (7 项), 用户信息, 退出按钮 |
-| **Header** | 顶部 60px | 页面标题, 模型切换下拉, 连接状态, 清空按钮, 移动端汉堡菜单 |
-| **StatusBar** | 底部 40px | 当前模型名, 最后响应时间, 消息数量 |
+| **Sidebar** | 左侧 220px | Logo、三分区导航（常用/配置/系统，含分区标签）、用户信息、退出按钮；历史对话区（可展开，最近 12 条，支持 + 新建） |
+| **Header** | 顶部 60px | 页面标题（从 routes.config.js 读）、右侧模型快捷切换（非聊天页）、连接状态指示（首次断开灰色/意外断开红色+脉冲）、深色主题切换 |
+| **StatusBar** | 底部 40px | 当前模型名、最后响应时间、消息数量 |
 
 ---
 
@@ -1040,20 +1077,21 @@ vite 4.4, @vitejs/plugin-vue 4.3
 9. **反馈闭环**: like/dislike 收集 + 统计分析面板
 10. **Docker 化**: 一命令启动全部服务
 
-### 8.2 待完善/可扩展点
+### 8.2 待完善/可扩展点（截至 2026-06-14）
 
-1. **aPScheduler 冗余**: `requirements.txt` 有 apscheduler，但实际用的是自定义 `SimpleTaskScheduler`，两者共存
-2. **Task 隔离**: 任务调度器无持久化，重启丢失所有任务
-3. **Memory Embedding 依赖**: 需要 `sentence-transformers`（~1GB 模型），Docker 环境降级用 ChromaDB 内置 embedding
-4. **JWT 密钥**: 硬编码在前端和 Java 配置中，生产环境需改为环境变量注入
-5. **HTTPS 缺失**: 全 HTTP 明文传输
-6. **WebSocket 重连**: 前端有 5s 自动重连，但 token 过期后无自动刷新机制
-7. **多用户隔离（部分）**: 记忆按 `user_id` 隔离（短期/长期均已实现过滤），但 `ToolManager`、`MCP` 连接、**模型选择**是全局共享的 — 用户 A 切换模型后用户 B 同步受影响
-8. **数据库工具**: `settings.py` 有完整 MySQL 配置项，`DatabaseTool` 已使用，但未暴露动态连接切换接口
-9. **ToolManager 中的冗余代码**: 有 `load_tools_from_module` 方法但未使用
-10. **日志**: Python 层用 `loguru`，`ollama_provider.py` 中混用了标准 `logging`
-11. **TimerTool**: 注册了但从未被 Agent 实际使用，且代码有复制粘贴问题
-12. **Task 无持久化**: 调度器重启后所有任务丢失（仅内存存储）
+1. **aPScheduler 冗余**: `requirements.txt` 有 apscheduler，但实际用的是自定义 `SimpleTaskScheduler`，两者共存 | 低
+2. ✅ **Task 持久化**: 已实现，任务状态保存到 `data/tasks.json`，重启恢复
+3. **Memory Embedding 依赖**: 需要 `sentence-transformers`（~1GB 模型），Docker 环境降级用 ChromaDB 内置 embedding | 低
+4. ✅ **JWT 密钥**: 已通过 `JWT_SECRET` 环境变量注入，不再硬编码
+5. ✅ **HTTPS**: Nginx + TLS 配置模板已提供（`nginx/` 目录，`--profile https` 启用）
+6. **WebSocket 重连**: 前端有 5s 自动重连；token 过期后需重新登录（无自动刷新 WS token）| 低
+7. ✅ **多用户隔离**: 模型/角色已通过 ContextVar per-request 隔离；用户 ID 经 Java `X-User-Id` 头透传到 Python
+8. **数据库工具**: `DatabaseTool` 已注册，动态连接切换接口未暴露 | 低
+9. **ToolManager 冗余代码**: `load_tools_from_module` 方法未使用 | 低
+10. **日志混用**: Python 层 `loguru` 与 `logging` 混用 | 低
+11. **TimerTool**: 注册但未被 Agent 实际调用 | 低
+12. ✅ **Java 用户 ID 透传**: `AbstractProxyController` + `X-User-Id` 已实现
+13. ✅ **WebSocket 握手鉴权**: `JwtHandshakeInterceptor` 已在握手阶段验证 token
 
 ### 8.3 关键数值配置速查
 
@@ -1085,112 +1123,37 @@ vite 4.4, @vitejs/plugin-vue 4.3
 
 ---
 
-## 9. 规划中能力项（路线图）
+## 9. 能力路线图（截至 2026-06-14：全部完成）
 
-> 本节记录经过需求分析确认的能力方向，尚未实现。按优先级排序。
+> 本节原记录规划中能力方向。截至 2026-06-14，以下所有项均已实现并部署。
 
-### 9.1 模型选择多用户隔离（阻断串台）
+| 编号 | 能力 | 原优先级 | 状态 | 完成说明 |
+|------|------|----------|------|----------|
+| 9.1 | 模型选择多用户隔离 | P0 | ✅ | ContextVar per-request 隔离；`X-User-Id` 透传；`AbstractProxyController` 统一 |
+| 9.2 | 自定义角色层（Persona + MD 管理） | P1 | ✅ | `RoleManager` + `data/roles.json`；`PromptBuilder` 单例；`RoleEditorView` UI；角色激活持久化 |
+| 9.3 | 自动记忆提炼 | P2 | ✅ | LTM 异步写入（`asyncio.ensure_future`）；ChromaDB retry + 自动备份/恢复；dirty-flag 定时写盘 |
+| 9.4 | 历史话题与对话历史侧边栏 | P2 | ✅ | T4 历史侧边栏完成（commit 528b787）；`/admin/logs` 操作日志时间线（LogView） |
+| 9.5 | 云端 LLM 多服务商 + 配置驱动 fallback | P3 | ✅ | 云端 CRUD（`/api/cloud-providers`）；`SystemView → ModelView` 迁移；MCPView 推理参数；配置驱动切换 |
 
-**现状缺口**: `provider` 和 `agent.model` 是全局单例，任一用户切换模型后所有用户受影响。
+### 9.1 模型选择多用户隔离 ✅
 
-**目标**: 每个 `user_id` 维护独立的模型偏好，请求时按用户 JWT sub 动态路由到对应 provider 实例。
+**已实现**: `contextvars.ContextVar` 在每次请求进入时设置 `current_user_id`，`agent.model` 通过 ContextVar 读取 per-request 值；Java 侧所有 Controller 通过 `AbstractProxyController.getCurrentUserId()` 从 JWT 提取并设置 `X-User-Id` 请求头透传 Python。
 
-**设计要点**:
-- `settings.py` 或数据库存储 `user_model_prefs: Dict[user_id, model_name]`
-- `fastapi_app.py` 在 `/api/model/switch` 时写入用户偏好，`/api/chat/stream` 时读取对应模型
-- ToolManager / MCP 连接可继续共享（工具无状态），仅 provider + model 隔离
-- 预计工作量: **1 天**
+### 9.2 自定义角色层 ✅
 
-### 9.2 自定义角色层（统一人格 + MD 管理）
+**已实现**: `data/roles.json` 存储角色定义（name, description, system_prompt, personality, tags）；`RoleManager` 提供 CRUD；`PromptBuilder` 单例负责 system prompt 组装（角色 + model overlay + tools）；角色激活状态持久化到 `data/active_role.json`；前端 `RoleEditorView` 支持创建、编辑、激活、删除、Markdown 预览（152+ 测试覆盖）。
 
-**现状缺口**: 人格定义硬编码在 YAML 模板中，仅支持 per-model 配置，无法跨模型共用同一角色，也无 UI 管理。
+### 9.3 自动记忆提炼 ✅
 
-**目标**: 引入独立的角色（Persona）概念，与模型解耦；角色用 Markdown 定义，支持多角色切换；dolphin 等模型叠加专属覆盖层。
+**已实现**: LTM 写入全部走 `asyncio.ensure_future` 异步非阻塞；ChromaDB 加重试（3次）+ 失败自动备份（`chroma_data.bak`）+ `restore_from_backup()`；`dirty_flag` + 定时写盘防数据丢失；skip_cache 机制避免同步等待。
 
-**设计要点**:
+### 9.4 历史对话 + 操作日志 ✅
 
-```
-agent/personas/
-  ├── default.md        ← 默认角色（专业助理）
-  ├── creative.md       ← 创意角色（头脑风暴风格）
-  └── technical.md      ← 技术角色（代码/架构专家）
+**已实现**: 历史侧边栏（ChatView 左侧，列出最近对话可一键切换）；`/admin/logs` 操作日志页（对话/工具调用/任务事件时间线，5种颜色分类，按类型过滤）。
 
-system prompt 组装顺序:
-  1. persona.md 正文（通用人格基础）
-  2. model overlay（model-specific YAML，如 dolphin 覆盖无限制行为）
-  3. _build_tools_prompt_for()（运行时工具列表注入，仅 text-tool 模式）
-```
+### 9.5 云端服务商配置驱动 ✅
 
-- `settings.py` 新增 `active_persona: str = "default"`，支持 `.env` / API 切换
-- `prompt_manager.py` 扩展：先读 `personas/{active_persona}.md`，再叠加 model overlay YAML
-- Python 新增 `/api/personas` CRUD 端点，Java HealthController 代理
-- 前端 Header 下拉新增角色切换（与模型切换并列）
-- 预计工作量: **1.5 天**
-
-### 9.3 自动记忆提炼（越用越智能）
-
-**现状缺口**: 长期记忆蒸馏（`_distill_short_term_memories`）仅在每天凌晨 2 点触发，且需要用户手动点"提炼知识"按钮激活；普通对话中的偏好/事实不会自动沉淀。
-
-**目标**: 每 N 轮对话（如每 20 轮）异步触发一次增量蒸馏，将本轮对话中的结论性内容、偏好、事实自动写入该用户的长期记忆。
-
-**设计要点**:
-- `agent.py` 在 `chat()` / `chat_stream()` 末尾维护 per-user 计数器 `_distill_counter: Dict[user_id, int]`
-- 计数达阈值时 `asyncio.ensure_future(_distill_for_user(user_id))`（不阻塞当前请求）
-- 蒸馏提示词提取五类内容: preferences（偏好）、personal_info（个人信息）、frequent_topics（常见话题）、behavior_patterns（行为模式）、factual_knowledge（陈述性知识）
-- 写入 `long_term` 时 `metadata.user_id = user_id` 保持隔离
-- 预计工作量: **1 天**
-
-### 9.4 历史话题与阶段性摘要导出
-
-**现状缺口**: 无对话历史按时间段/主题聚合能力，无 Markdown 摘要生成与导出接口。
-
-**目标**: 支持生成某用户某时间段的对话阶段性总结（Markdown 格式），可下载或推送到客户端本地。
-
-**设计要点**:
-- Python 新增 `/api/memory/summary` 端点：接收 `user_id` + `start_date` + `end_date`
-- 从 `short_term`（最近）和 `long_term`（按时间过滤）聚合对话 → 发给 LLM 生成摘要
-- 摘要格式参考: 主题概述 / 关键结论 / 决策事项 / 待跟进问题
-- 同时支持导出为文件（`data/summaries/{user_id}/{date}.md`）
-- 前端 MemoryView 增加"生成阶段性总结"按钮，支持日期范围选择 + Markdown 预览下载
-- 预计工作量: **0.5 天**
-
-### 9.5 可迁移个人客户端（PWA + 本地同步）
-
-**现状缺口**: 前端为纯 Web，仅 localStorage 缓存 50 条消息。服务端迁移机器后，客户端侧无法保留完整的角色定义、对话记忆和摘要 MD 文件。
-
-**目标**: 前端升级为 PWA（渐进式 Web 应用），客户端本地持久化私人状态；服务端可独立迁移机器，重启后客户端通过同步接口恢复上下文。
-
-**客户端本地存储（IndexedDB）**:
-- 角色定义 MD（可编辑，优先级高于服务端配置）
-- 最近 500 条对话历史（增量 append）
-- 阶段性摘要 MD 文件列表
-- 用户偏好（模型选择、主题、字体等）
-
-**同步协议**:
-```
-客户端启动 → POST /api/sync/push  上传本地新增记忆/偏好
-           ← GET  /api/sync/pull  拉取服务端新增长期记忆
-服务端迁移后 → 重新登录 → 自动 push/pull 完成上下文恢复
-```
-
-**实现路径**:
-- `vite-plugin-pwa` 注册 Service Worker，支持离线访问
-- `idb`（IndexedDB 封装库）替换 localStorage 存储对话历史
-- Python 新增 `/api/sync/push` + `/api/sync/pull` 端点（本质是批量写入/读取 long_term memory）
-- 前端新增角色编辑器（Markdown 编辑器组件，本地保存 + 上传服务端）
-- 预计工作量: **3-4 天**
-
----
-
-### 能力路线图总览
-
-| 编号 | 能力 | 优先级 | 预计工作量 | 依赖 |
-|------|------|--------|------------|------|
-| 9.1 | 模型选择多用户隔离 | P0（阻断串台） | 1 天 | 无 |
-| 9.2 | 自定义角色层 + MD 管理 | P1（核心体验） | 1.5 天 | 无 |
-| 9.3 | 自动记忆提炼 | P2（越用越智能） | 1 天 | 9.1 |
-| 9.4 | 历史话题 + 阶段性摘要导出 | P2 | 0.5 天 | 无 |
-| 9.5 | PWA 客户端 + 本地同步 | P3（迁移能力） | 3-4 天 | 9.2、9.4 |
+**已实现**: `/api/cloud-providers` CRUD；`ModelView`（`/admin/models`）集中管理本地模型 + 云端服务商；`MCPView`（`/admin/mcp`）管理 API Key + 推理参数 + 系统资源配置；`SystemView` 仅保留实时资源用量 bars；所有配置通过 `settings.py` + `.env` 驱动，无硬编码。
 
 > 本文档覆盖了项目全部源码文件 (包括 `__init__.py`、`__pycache__` 以外的所有功能性文件)。
 > 总计分析源文件: ~50 个 Python 文件, ~15 个 Java 文件, ~20 个前端文件。

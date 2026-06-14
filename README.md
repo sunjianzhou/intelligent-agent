@@ -116,10 +116,13 @@
 | `/roles/editor` | 角色编辑器：六标签表单（基本信息/核心身份/用户画像/场景知识/限制条件/提示预览）|
 | `/memory` | 短期/长期记忆查看，语义搜索（500ms 防抖），导入/导出/批量清空 |
 | `/project` | 项目列表 · Spec 编辑器 · 任务树（`[TASK_DONE]` 自动勾选） |
-| `/skills` | Skill 管理：触发词路由、步骤定义、强制工具约束、启用/禁用、MD 导入 |
+| `/admin/skills` | Skill 管理：触发词路由、步骤定义、强制工具约束、启用/禁用、MD 导入 |
 | `/admin/tasks` | 定时任务 CRUD，五种调度类型（immediate/delay/interval/datetime/cron） |
-| `/admin/tools` | 工具列表，API Key 在线配置 |
-| `/admin/system` | CPU/RAM/GPU/磁盘实时监控，推理参数滑块调节，云端服务商管理 |
+| `/admin/tools` | 工具列表（按分类过滤），点击查看参数说明 |
+| `/admin/mcp` | MCP 配置：工具 API Key、推理参数（温度/最大 Token/Top-P）、系统资源上限调节 |
+| `/admin/models` | 模型管理：当前激活模型、云端服务商 CRUD（OpenAI/DeepSeek/百炼等）、本地模型列表 |
+| `/admin/logs` | 操作日志：用户/AI/工具/任务/错误按颜色分类的时间线，支持过滤 |
+| `/admin/system` | CPU/RAM/GPU/磁盘/进程实时监控，资源用量可视化，跳转链接至配置页 |
 | `/admin/stats` | 满意度 / 响应时间 / 工具调用排名统计 |
 
 **关键体验**：
@@ -299,7 +302,7 @@ chat:
 
 ### 运行时调节（无需重启）
 
-Web 界面 → 系统页（⚙ 图标 → 系统）可在线调节温度、最大 token 数、并发上限、记忆提炼间隔等参数，写入 `agent/data/runtime_config.json`，重启后自动恢复。
+Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大 Token、Top-P 等推理参数，以及并发上限、缓存条目数、记忆大小等系统资源参数，均写入 `agent/data/runtime_config.json`，重启后自动恢复。
 
 ---
 
@@ -415,7 +418,7 @@ Web 界面 → 系统页（⚙ 图标 → 系统）可在线调节温度、最�
 
 | 层 | 测试框架 | 覆盖范围 |
 |------|------|------|
-| Agent 单元测试 | pytest（155 个） | 记忆系统、工具调用、调度器持久化、角色加载、上下文提取、项目接口等 |
+| Agent 单元测试 | pytest（152 个） | 记忆系统、工具调用、调度器持久化、角色加载、上下文提取、项目接口等 |
 | Backend 单元测试 | JUnit 5 | WebSocket 消息序列化、JWT 工具类、JSON 工具类 |
 | Frontend 单元测试 | Vitest | JWT 处理逻辑等关键工具函数 |
 | E2E 端到端测试 | pytest + httpx（63 个） | 从客户端发起 HTTP 请求打通 Java:8080 → Python:8000，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知全链路 |
@@ -436,16 +439,16 @@ Web 界面 → 系统页（⚙ 图标 → 系统）可在线调节温度、最�
 ```
 intelligent_agent/
 ├── agent/                          Python FastAPI AI 核心服务
-│   ├── api/fastapi_app.py          入口：所有 REST/SSE 端点
-│   ├── api/roles_router.py         /api/roles/* 角色 CRUD
+│   ├── api/fastapi_app.py          入口：所有 REST/SSE 端点（启动、健康、模型、聊天）
+│   ├── api/roles_router.py         /api/roles/* 角色完整 CRUD
 │   ├── api/conversations_router.py /api/conversations/* 历史会话
 │   ├── api/projects_router.py      /api/project/* 规格/任务/上下文
 │   ├── api/cloud_router.py         /api/cloud/* 云端服务商 CRUD + 激活切换
-│   ├── core/agent.py               IntelligentAgent 门面（继承三个 Mixin）
-│   ├── core/conversation_flow.py   ConversationFlowMixin（消息构建/chat/stream）
-│   ├── core/tool_dispatcher.py     ToolDispatcherMixin（工具注册/意图/LLM调用）
-│   ├── core/memory_writer.py       MemoryWriterMixin（预热/蒸馏/清理）
-│   ├── core/_context_vars.py       共享 ContextVar（per-request 隔离）
+│   ├── core/agent.py               IntelligentAgent 门面（继承三个 Mixin，~320行）
+│   ├── core/conversation_flow.py   ConversationFlowMixin（消息构建/chat/stream，~460行）
+│   ├── core/tool_dispatcher.py     ToolDispatcherMixin（工具注册/意图/LLM调用，~1130行）
+│   ├── core/memory_writer.py       MemoryWriterMixin（预热/MCP/蒸馏/清理，~310行）
+│   ├── core/_context_vars.py       共享 ContextVar（per-request 隔离，避免循环导入）
 │   ├── memory/                     记忆系统（短期/长期/提炼/缓存/项目上下文）
 │   ├── tools/                      ToolManager + 内置工具（计算/时间/文件/搜索/Shell/图片）
 │   ├── scheduler/                  SimpleTaskScheduler + TaskManager
@@ -467,8 +470,9 @@ intelligent_agent/
 │
 ├── frontend/                       Vue 3 SPA
 │   └── src/
-│       ├── views/                  页面组件（Chat/RoleEditor/Memory/Project/Tasks/System/Stats）
+│       ├── views/                  页面组件（Chat/RoleEditor/Memory/Project/Tasks/Tools/Skills/MCP/Models/System/Stats/Log）
 │       ├── stores/                 Pinia 状态（WebSocket/Auth/LocalSession/Project/ConfirmDialog）
+│       ├── config/routes.config.js 路由导航单一来源（侧边栏/Header 均从此读取）
 │       └── services/               WebSocket 客户端 + REST 封装（api.js/localDB.js）
 │
 ├── client/                         Python CLI 客户端（直连 Agent）
@@ -714,7 +718,7 @@ A: dolphin 不支持原生 Function Calling，系统自动切换 Text-tool 解�
 A: Docker 模式：`agent_data` 命名卷（`agent/data/`）和 `agent/chroma-data/`；本地模式：`agent/data/` 和 `agent/chroma_data/`。
 
 **Q: 如何接入云端 LLM（网络不好时 fallback）**  
-A: 推荐在 `/admin/system` 系统页的"云端服务商"卡片中添加配置（支持 OpenAI / DeepSeek / 阿里百炼等 7 家，填 BaseURL + API Key + 模型名），点击"激活"立即切换，配置持久化到 `agent/data/cloud_providers.json`，重启后自动恢复。也可在 `.env.docker` 设置 `CLOUD_PROVIDER` 和 `CLOUD_API_KEY` 作为启动默认值。
+A: 推荐在 `/admin/models` 模型管理页添加云端服务商配置（支持 OpenAI / DeepSeek / 阿里百炼等 7 家，填 BaseURL + API Key + 模型名），点击"激活"立即切换，配置持久化到 `agent/data/cloud_providers.json`，重启后自动恢复。也可在 `.env.docker` 设置 `CLOUD_PROVIDER` 和 `CLOUD_API_KEY` 作为启动默认值。
 
 ---
 
