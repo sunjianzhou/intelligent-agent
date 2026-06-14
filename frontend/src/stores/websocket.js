@@ -532,8 +532,11 @@ export const useWebSocketStore = defineStore('websocket', () => {
   // ── UI 事件信号（Sidebar/Header → 子视图跨层通信）──────────────────
   const openHistorySignal  = ref(0)
   const newSessionSignal   = ref(0)
+  const openSessionSignal  = ref(0)
+  const _pendingSessionId  = ref(null)
   const triggerOpenHistory = () => { openHistorySignal.value++ }
   const triggerNewSession  = () => { newSessionSignal.value++ }
+  const triggerOpenSession = (id) => { _pendingSessionId.value = id; openSessionSignal.value++ }
 
   return {
     // 状态
@@ -551,5 +554,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     // UI 信号
     openHistorySignal, triggerOpenHistory,
     newSessionSignal, triggerNewSession,
+    openSessionSignal, _pendingSessionId, triggerOpenSession,
   }
 })

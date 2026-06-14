@@ -37,9 +37,11 @@ export async function saveRole(roleConfig) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite')
     const store = tx.objectStore(STORE_NAME)
-    roleConfig.updatedAt = new Date().toISOString()
-    const req = store.put(roleConfig)
-    req.onsuccess = () => resolve(roleConfig)
+    // 再做一次深克隆，确保 Vue Proxy 对象不进入 IndexedDB 结构化克隆
+    const plain = JSON.parse(JSON.stringify(roleConfig))
+    plain.updatedAt = new Date().toISOString()
+    const req = store.put(plain)
+    req.onsuccess = () => resolve(plain)
     req.onerror = (e) => reject(e.target.error)
   })
 }

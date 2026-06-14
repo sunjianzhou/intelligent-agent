@@ -119,7 +119,11 @@ const newSession = () => {
 
 const openSession = async (id) => {
   await sessionStore.resumeSession(id)
-  router.push('/chat')
+  if (router.currentRoute.value.path === '/chat') {
+    wsStore.triggerOpenSession(id)
+  } else {
+    router.push('/chat').then(() => wsStore.triggerOpenSession(id))
+  }
 }
 
 const deleteSession = (id) => sessionStore.removeSession(id)

@@ -302,7 +302,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, defineComponent, onMounted } from 'vue'
+import { ref, reactive, computed, defineComponent, onMounted, toRaw } from 'vue'
 import {
   ElTabs, ElTabPane,
   ElSelect, ElOption,
@@ -469,7 +469,7 @@ async function handleSave() {
   }
   saving.value = true
   try {
-    await saveRole(JSON.parse(JSON.stringify(form)))
+    await saveRole(JSON.parse(JSON.stringify(toRaw(form))))
     if (syncEnabled.value) {
       const payload = formToApiPayload(form)
       const exists = roleList.value.some(r => r.roleId === form.roleId)

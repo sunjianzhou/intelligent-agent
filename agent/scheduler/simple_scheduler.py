@@ -256,6 +256,7 @@ class SimpleTaskScheduler:
                 return {"success": False, "error": str(e)}
 
         self.register_action("log", log_action)
+        self.register_action("log_action", log_action)   # backward-compat alias
         self.register_action("llm_generate", llm_generate_action)
         self.register_action("system_info", system_info_action)
         self.register_action("test", test_action)

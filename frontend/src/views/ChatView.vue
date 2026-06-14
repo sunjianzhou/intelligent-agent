@@ -928,6 +928,20 @@ const sessions       = ref([])
 watch(() => store.openHistorySignal, () => toggleHistory())
 // 响应侧边栏加号按钮（新开对话）
 watch(() => store.newSessionSignal, () => handleNewConversation())
+// 响应侧边栏点击历史条目 → 恢复 localSession 消息到 wsStore.messages
+watch(() => store.openSessionSignal, () => {
+  const msgs = sessionStore.messages
+  if (!msgs?.length) return
+  store.messages.splice(0)
+  msgs.forEach(m => store.messages.push({
+    id:        m.id || genId(),
+    role:      m.role,
+    content:   m.content,
+    timestamp: m.timestamp || new Date().toISOString(),
+  }))
+  nextTick(scrollToBottom)
+  ElMessage({ message: '已加载历史会话', type: 'success', duration: 1500 })
+})
 const historyLoading = ref(false)
 
 const toggleHistory = async () => {
@@ -1067,7 +1081,17 @@ const handleGlobalKey = (e) => {
 onMounted(async () => {
   // 初始化本地会话：加载历史列表，无活跃会话时新建
   await sessionStore.loadSessions()
-  if (!sessionStore.activeId) await sessionStore.startNewSession()
+  if (!sessionStore.activeId) {
+    await sessionStore.startNewSession()
+  } else if (sessionStore.messages.length > 0 && store.messages.length === 0) {
+    // 刷新页面或重新挂载时，从 localSession 恢复当前会话消息
+    sessionStore.messages.forEach(m => store.messages.push({
+      id:        m.id || genId(),
+      role:      m.role,
+      content:   m.content,
+      timestamp: m.timestamp || new Date().toISOString(),
+    }))
+  }
 
   scrollToBottom()
   inputRef.value?.focus()
