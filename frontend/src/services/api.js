@@ -211,6 +211,22 @@ export const branchConversation  = (messages, parentSessionId) =>
     body:    JSON.stringify({ messages, parent_session_id: parentSessionId }),
   })
 
+// ── Knowledge files ───────────────────────────────────────────────────────────
+
+export const listKnowledgeFiles  = () => request(`${BASE}/knowledge/files`)
+export const deleteKnowledgeFile = (fileId) =>
+  request(`${BASE}/knowledge/files/${encodeURIComponent(fileId)}`, { method: 'DELETE' })
+export const uploadKnowledgeFile = async (file, description = '') => {
+  const { useAuthStore } = await import('@/stores/auth')
+  const authStore = useAuthStore()
+  const fd = new FormData()
+  fd.append('file', file)
+  if (description) fd.append('description', description)
+  const headers = authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {}
+  const res = await fetch(`${BASE}/knowledge/upload`, { method: 'POST', body: fd, headers })
+  return res.ok ? res.json() : { success: false, message: `上传失败 (${res.status})` }
+}
+
 // ── Roles ─────────────────────────────────────────────────────────────────────
 
 export const listRolesApi      = () => request(`${BASE}/roles`)

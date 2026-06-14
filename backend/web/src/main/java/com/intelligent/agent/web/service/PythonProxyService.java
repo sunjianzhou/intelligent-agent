@@ -170,4 +170,41 @@ public class PythonProxyService {
         return restTemplate.exchange(baseUrl + path, HttpMethod.DELETE,
                 new HttpEntity<>(authHeaders(userId)), String.class);
     }
+
+    /** 以 multipart/form-data 格式把文件转发到 Python。*/
+    public ResponseEntity<String> postMultipart(
+            String path,
+            org.springframework.web.multipart.MultipartFile file,
+            String description,
+            String userId) throws java.io.IOException {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.MULTIPART_FORM_DATA);
+        headers.set("Authorization", "Bearer " + getServiceToken());
+        if (userId != null && !userId.isEmpty() && !"java-service".equals(userId)) {
+            headers.set("X-User-Id", userId);
+        }
+
+        org.springframework.util.MultiValueMap<String, Object> body =
+                new org.springframework.util.LinkedMultiValueMap<>();
+
+        byte[] bytes = file.getBytes();
+        String originalName = file.getOriginalFilename();
+        org.springframework.core.io.ByteArrayResource resource =
+                new org.springframework.core.io.ByteArrayResource(bytes) {
+                    @Override public String getFilename() {
+                        return originalName != null ? originalName : "upload";
+                    }
+                };
+        body.add("file", resource);
+        if (description != null && !description.isEmpty()) {
+            body.add("description", description);
+        }
+
+        return restTemplate.exchange(
+                baseUrl + path,
+                HttpMethod.POST,
+                new HttpEntity<>(body, headers),
+                String.class
+        );
+    }
 }
