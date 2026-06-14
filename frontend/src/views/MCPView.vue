@@ -191,6 +191,73 @@
 
       </div>
     </div>
+
+    <!-- 数据库工具配置 -->
+    <div class="config-card">
+      <div class="config-title">
+        <i class="fas fa-database" /> 数据库工具配置
+        <span class="db-status" :class="dbConnected ? 'db-status--on' : 'db-status--off'">
+          {{ dbConnected ? '已连接' : '未连接' }}
+        </span>
+      </div>
+      <div class="config-hint">配置 DatabaseTool 使用的 MySQL 连接（留空 db_type 则禁用数据库工具）</div>
+      <div class="db-form">
+        <div class="db-row">
+          <div class="db-field">
+            <label>数据库类型</label>
+            <select v-model="dbEdit.db_type" class="db-select">
+              <option value="">不启用</option>
+              <option value="mysql">MySQL / OceanBase</option>
+            </select>
+          </div>
+          <div class="db-field">
+            <label>字符集</label>
+            <input v-model="dbEdit.db_charset" placeholder="utf8mb4" class="db-input" />
+          </div>
+        </div>
+        <div class="db-row">
+          <div class="db-field db-field--wide">
+            <label>主机地址</label>
+            <input v-model="dbEdit.db_host" placeholder="127.0.0.1" class="db-input" />
+          </div>
+          <div class="db-field">
+            <label>端口</label>
+            <input v-model.number="dbEdit.db_port" type="number" placeholder="3306" class="db-input db-input--port" />
+          </div>
+        </div>
+        <div class="db-row">
+          <div class="db-field db-field--wide">
+            <label>数据库名</label>
+            <input v-model="dbEdit.db_database" placeholder="mydb" class="db-input" />
+          </div>
+          <div class="db-field">
+            <label>用户名</label>
+            <input v-model="dbEdit.db_user" placeholder="root" class="db-input" />
+          </div>
+        </div>
+        <div class="db-field">
+          <label>密码</label>
+          <div class="cfg-input-row">
+            <input
+              :type="dbShowPwd ? 'text' : 'password'"
+              v-model="dbEdit.db_password"
+              placeholder="留空则保持原密码不变"
+              class="cfg-input"
+            />
+            <button class="cfg-eye" @click="dbShowPwd = !dbShowPwd">
+              <i :class="dbShowPwd ? 'fas fa-eye-slash' : 'fas fa-eye'" />
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="config-footer">
+        <button class="cfg-save-btn" :disabled="dbSaving" @click="saveDatabaseConfig">
+          <i v-if="dbSaving" class="fas fa-circle-notch fa-spin" /><i v-else class="fas fa-plug" />
+          {{ dbSaving ? '连接中...' : '保存并测试连接' }}
+        </button>
+        <span class="cfg-tip">即时生效；密码留空保持原值；db_type 留空禁用工具</span>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -299,8 +366,68 @@ const saveRuntimeConfig = async () => {
   }
 }
 
+// ── 数据库工具配置 ──────────────────────────────────────────
+const dbEdit    = ref({ db_type: '', db_host: '', db_port: 3306, db_database: '', db_user: '', db_charset: 'utf8mb4', db_password: '' })
+const dbSaving  = ref(false)
+const dbShowPwd = ref(false)
+const dbConnected = ref(false)
+
+const loadDatabaseConfig = async () => {
+  try {
+    const res = await fetch('/api/config/database', {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('agent_token') || ''}` }
+    })
+    if (res.ok) {
+      const data = await res.json()
+      const cfg = data.config || {}
+      dbEdit.value = {
+        db_type:     cfg.db_type     || '',
+        db_host:     cfg.db_host     || '',
+        db_port:     cfg.db_port     || 3306,
+        db_database: cfg.db_database || '',
+        db_user:     cfg.db_user     || '',
+        db_charset:  cfg.db_charset  || 'utf8mb4',
+        db_password: '',
+      }
+      dbConnected.value = data.connected || false
+    }
+  } catch {}
+}
+
+const saveDatabaseConfig = async () => {
+  dbSaving.value = true
+  try {
+    const payload = { ...dbEdit.value }
+    if (!payload.db_password) delete payload.db_password
+    const res = await fetch('/api/config/database', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('agent_token') || ''}`,
+      },
+      body: JSON.stringify(payload),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      dbConnected.value = data.connected || false
+      if (data.connected) {
+        ElMessage({ message: '数据库连接成功', type: 'success', duration: 2000 })
+      } else if (!dbEdit.value.db_type) {
+        ElMessage({ message: '已禁用 DatabaseTool', type: 'info', duration: 2000 })
+      } else {
+        ElMessage({ message: '配置已保存，但连接失败，请检查参数', type: 'warning', duration: 3000 })
+      }
+    } else {
+      ElMessage({ message: '保存失败，请检查服务状态', type: 'error', duration: 3000 })
+    }
+  } finally {
+    dbSaving.value = false
+  }
+}
+
 onMounted(() => {
   loadRcConfig()
+  loadDatabaseConfig()
 })
 </script>
 
@@ -416,6 +543,42 @@ onMounted(() => {
 .rc-save-btn:hover:not(:disabled) { opacity: 0.85; }
 .rc-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
+/* 数据库配置 */
+.db-status {
+  margin-left: auto;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.db-status--on  { background: #d1fae5; color: #065f46; }
+.db-status--off { background: #fee2e2; color: #991b1b; }
+.db-form { display: flex; flex-direction: column; gap: 10px; }
+.db-row  { display: flex; gap: 10px; }
+.db-field { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.db-field label { font-size: 0.82rem; color: #555; }
+.db-field--wide { flex: 2; }
+.db-input {
+  border: 1px solid #e0e3e8;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 0.88rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.db-input:focus { border-color: #667eea; }
+.db-input--port { width: 90px; }
+.db-select {
+  border: 1px solid #e0e3e8;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 0.88rem;
+  background: white;
+  outline: none;
+  cursor: pointer;
+}
+.db-select:focus { border-color: #667eea; }
+
 [data-theme="dark"] .mcp-view { background: #1e1f24; }
 [data-theme="dark"] .config-card { background: #2c2d32; border-color: #3a3b42; }
 [data-theme="dark"] .config-title { color: #e0e1e4; }
@@ -426,4 +589,9 @@ onMounted(() => {
 [data-theme="dark"] .rc-group-title { color: #b0b1bb; border-color: #4a4b52; }
 [data-theme="dark"] .rc-field label { color: #a0a1ab; }
 [data-theme="dark"] .rc-num { background: #2c2d32; border-color: #4a4b52; color: #c1c2c5; }
+[data-theme="dark"] .db-field label { color: #a0a1ab; }
+[data-theme="dark"] .db-input { background: #383940; border-color: #4a4b52; color: #c1c2c5; }
+[data-theme="dark"] .db-select { background: #383940; border-color: #4a4b52; color: #c1c2c5; }
+[data-theme="dark"] .db-status--on  { background: #064e3b; color: #6ee7b7; }
+[data-theme="dark"] .db-status--off { background: #7f1d1d; color: #fca5a5; }
 </style>

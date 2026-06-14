@@ -152,6 +152,52 @@ async def patch_runtime_config(body: dict):
     return {"success": len(errors) == 0, "updated": updated, "errors": errors}
 
 
+@router.get("/database")
+async def get_database_config():
+    """返回当前 DatabaseTool 连接配置（密码不返回）。"""
+    tool = None
+    if _state.agent:
+        tool = _state.agent.tool_manager.get_tool("DatabaseTool")
+    connected = bool(tool and getattr(tool, "_connector", None))
+    return {
+        "config": {
+            "db_type":     settings.db_type,
+            "db_host":     settings.db_host,
+            "db_port":     settings.db_port,
+            "db_database": settings.db_database,
+            "db_user":     settings.db_user,
+            "db_charset":  settings.db_charset,
+        },
+        "connected": connected,
+    }
+
+
+@router.put("/database")
+async def update_database_config(body: dict):
+    """更新 DatabaseTool 连接配置并立即重新连接。密码留空则保留原值。"""
+    _INT_KEYS = {"db_port"}
+    _ALLOWED  = {"db_type", "db_host", "db_port", "db_database", "db_user", "db_password", "db_charset"}
+    for k, v in body.items():
+        if k not in _ALLOWED or not hasattr(settings, k):
+            continue
+        if k == "db_password" and not v:
+            continue  # 空密码不覆盖
+        try:
+            setattr(settings, k, int(v) if k in _INT_KEYS else str(v))
+        except (TypeError, ValueError):
+            pass
+
+    reconnected = False
+    if _state.agent:
+        tool = _state.agent.tool_manager.get_tool("DatabaseTool")
+        if tool:
+            tool._init_connector()
+            reconnected = bool(getattr(tool, "_connector", None))
+
+    logger.info(f"DatabaseTool 配置已更新，连接状态: {reconnected}")
+    return {"success": True, "connected": reconnected}
+
+
 @router.patch("/env")
 async def update_env_config(body: dict):
     updated = []

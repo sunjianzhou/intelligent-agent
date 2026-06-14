@@ -4,15 +4,9 @@
 
 ---
 
-## TODO-1: HTTPS/TLS — 生产环境全程 HTTP 明文
+## ~~TODO-1: HTTPS/TLS~~ ✅ 已完成（配置模板已提供）
 
-**什么**: 当前整个栈（前端 → Java → Python）全程 HTTP。在网络传输级别，Token 和聊天内容仍为明文。
-
-**为什么**: Token + 聊天内容明文传输是 OWASP A02:2021 加密失效风险。若部署到内网之外或多设备访问，必须解决。
-
-**如何实现**: docker-compose 前加一层 Nginx 反向代理，配置 Let's Encrypt 自动证书。Java/Python 后端无需改动，Nginx 终结 TLS。
-
-**当前状态**: 项目属于本地优先开发阶段，暂不影响开发体验。
+**结果**: `nginx/nginx-https.conf` 完整 Nginx TLS 反向代理配置已存在；`docker-compose.yml` 支持 `--profile https` 启用；支持自签名证书（开发）和 Let's Encrypt（生产）两种模式。Java/Python 后端无需改动，Nginx 终结 TLS。
 
 ---
 

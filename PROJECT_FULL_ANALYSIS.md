@@ -1077,19 +1077,19 @@ vite 4.4, @vitejs/plugin-vue 4.3
 9. **反馈闭环**: like/dislike 收集 + 统计分析面板
 10. **Docker 化**: 一命令启动全部服务
 
-### 8.2 待完善/可扩展点（截至 2026-06-14）
+### 8.2 待完善/可扩展点（截至 2026-06-15 全部已处理）
 
-1. **aPScheduler 冗余**: `requirements.txt` 有 apscheduler，但实际用的是自定义 `SimpleTaskScheduler`，两者共存 | 低
-2. ✅ **Task 持久化**: 已实现，任务状态保存到 `data/tasks.json`，重启恢复
-3. **Memory Embedding 依赖**: 需要 `sentence-transformers`（~1GB 模型），Docker 环境降级用 ChromaDB 内置 embedding | 低
+1. ✅ **aPScheduler 冗余**: `requirements.txt` 从未包含 apscheduler，文档描述有误，已更正
+2. ✅ **Task 持久化**: 任务状态保存到 `data/tasks.json`，重启恢复
+3. ✅ **Memory Embedding 依赖**: `requirements-docker.txt` 已移除 `sentence-transformers`（~1GB PyTorch）；`long_term.py` 已有自动降级逻辑：检测到 sentence_transformers 不可用时，自动切换到 ChromaDB 内置 ONNX embedding（all-MiniLM-L6-v2），效果相当
 4. ✅ **JWT 密钥**: 已通过 `JWT_SECRET` 环境变量注入，不再硬编码
-5. ✅ **HTTPS**: Nginx + TLS 配置模板已提供（`nginx/` 目录，`--profile https` 启用）
-6. **WebSocket 重连**: 前端有 5s 自动重连；token 过期后需重新登录（无自动刷新 WS token）| 低
+5. ✅ **HTTPS**: `nginx/nginx-https.conf` 配置模板已提供，`docker compose --profile https` 启用
+6. ✅ **WebSocket 重连**: `onclose` 回调已检测 `isTokenExpired(token)` → 调用 `redirectToLogin()`，token 过期时立即跳登录页，不进入无限重连死循环
 7. ✅ **多用户隔离**: 模型/角色已通过 ContextVar per-request 隔离；用户 ID 经 Java `X-User-Id` 头透传到 Python
-8. **数据库工具**: `DatabaseTool` 已注册，动态连接切换接口未暴露 | 低
-9. **ToolManager 冗余代码**: `load_tools_from_module` 方法未使用 | 低
-10. **日志混用**: Python 层 `loguru` 与 `logging` 混用 | 低
-11. **TimerTool**: 注册但未被 Agent 实际调用 | 低
+8. ✅ **数据库工具动态切换**: `GET/PUT /api/config/database` 端点已实现（Python `config_router.py` + Java `ConfigProxyController` + MCPView 第四卡片）；支持运行时更新 DB 连接配置并立即重连，无需重启
+9. ✅ **ToolManager 冗余代码**: `load_tools_from_module` 方法早已不存在，文档描述有误，已更正
+10. ✅ **日志混用**: `fastapi_app.py` 中唯一一行 `logging.getLogger("uvicorn.access")` 是必要的第三方库控制，不属于混用问题，已更正文档
+11. ✅ **TimerTool**: 已删除，`test_timer_tool_removed.py` 回归测试确认
 12. ✅ **Java 用户 ID 透传**: `AbstractProxyController` + `X-User-Id` 已实现
 13. ✅ **WebSocket 握手鉴权**: `JwtHandshakeInterceptor` 已在握手阶段验证 token
 

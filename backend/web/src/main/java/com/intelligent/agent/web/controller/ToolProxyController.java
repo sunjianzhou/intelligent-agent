@@ -41,4 +41,18 @@ class ConfigProxyController extends AbstractProxyController {
             @RequestBody Map<String, Object> body, HttpServletRequest req) {
         return proxyPatch("/api/config/params", body, req);
     }
+
+    @GetMapping("/database")
+    public ResponseEntity<Map<String, Object>> getDatabaseConfig(HttpServletRequest req) {
+        Map<String, Object> fallback = new HashMap<>();
+        fallback.put("config", new HashMap<>());
+        fallback.put("connected", false);
+        return proxyGet("/api/config/database", req, fallback);
+    }
+
+    @PutMapping("/database")
+    public ResponseEntity<Map<String, Object>> updateDatabaseConfig(
+            @RequestBody Map<String, Object> body, HttpServletRequest req) {
+        return proxyPut("/api/config/database", body, req);
+    }
 }
