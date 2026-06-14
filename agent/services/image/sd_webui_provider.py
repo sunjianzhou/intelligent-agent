@@ -45,6 +45,37 @@ class SDWebUIProvider(BaseImageProvider):
         except Exception:
             return False
 
+    async def list_models(self) -> list:
+        """从 SD WebUI 获取可用检查点列表（title / model_name）。"""
+        try:
+            async with httpx.AsyncClient(timeout=10, auth=self._auth) as client:
+                r = await client.get(f"{self._base_url}/sdapi/v1/sd-models")
+                r.raise_for_status()
+                return [
+                    {"name": m.get("title", ""), "filename": m.get("filename", ""), "hash": m.get("hash", "")}
+                    for m in r.json()
+                ]
+        except Exception as e:
+            logger.warning(f"[SDWebUI] 获取模型列表失败: {e}")
+            return []
+
+    async def switch_model(self, model_name: str) -> tuple:
+        """通过 /sdapi/v1/options 热切换模型，返回 (success, message)。"""
+        try:
+            async with httpx.AsyncClient(timeout=120, auth=self._auth) as client:
+                r = await client.post(
+                    f"{self._base_url}/sdapi/v1/options",
+                    json={"sd_model_checkpoint": model_name},
+                )
+                r.raise_for_status()
+                logger.info(f"[SDWebUI] 模型已切换为: {model_name}")
+                return True, f"模型已切换为 {model_name}"
+        except httpx.ConnectError:
+            return False, f"无法连接 SD WebUI（{self._base_url}）"
+        except Exception as e:
+            logger.error(f"[SDWebUI] 切换模型失败: {e}")
+            return False, str(e)
+
     async def generate(self, req: ImageRequest) -> ImageResult:
         # 将 WxH 格式解析为整数
         try:

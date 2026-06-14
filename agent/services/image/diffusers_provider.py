@@ -75,31 +75,56 @@ class DiffusersProvider(BaseImageProvider):
         except ImportError:
             return False
 
+    @staticmethod
+    def _is_sdxl(model_id: str) -> bool:
+        """根据模型 ID 判断是否为 SDXL 系列。"""
+        xl_keywords = ("xl", "sdxl", "stable-diffusion-xl")
+        lower = model_id.lower()
+        return any(k in lower for k in xl_keywords)
+
     def _load_pipeline(self) -> Any:
-        """懒加载 StableDiffusionPipeline；首次调用会下载模型（较慢）。"""
+        """懒加载 Pipeline；自动识别 SDXL / SD1.x，应用 float16 + attention slicing。"""
         if self._pipeline is not None:
             return self._pipeline
 
-        logger.info(f"[Diffusers] 加载模型 {self._model_id} → device={self._device} (首次加载可能需数分钟)")
+        logger.info(f"[Diffusers] 加载模型 {self._model_id} → device={self._device}（首次加载可能需数分钟）")
         try:
-            from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
             import torch
+            from diffusers import DPMSolverMultistepScheduler
 
             dtype = torch.float16 if self._device in ("cuda", "mps") else torch.float32
-            pipe  = StableDiffusionPipeline.from_pretrained(
-                self._model_id,
-                torch_dtype=dtype,
-                safety_checker=None,          # 关闭 NSFW 过滤（本地可自行控制）
-            )
+            use_fp16 = dtype == torch.float16
+
+            if self._is_sdxl(self._model_id):
+                from diffusers import StableDiffusionXLPipeline
+                pipe = StableDiffusionXLPipeline.from_pretrained(
+                    self._model_id,
+                    torch_dtype=dtype,
+                    use_safetensors=True,
+                    variant="fp16" if use_fp16 else None,
+                )
+                logger.info("[Diffusers] 检测到 SDXL 模型，使用 StableDiffusionXLPipeline")
+            else:
+                from diffusers import StableDiffusionPipeline
+                pipe = StableDiffusionPipeline.from_pretrained(
+                    self._model_id,
+                    torch_dtype=dtype,
+                    safety_checker=None,
+                )
+
             pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
             pipe = pipe.to(self._device)
+
+            # 内存优化
+            pipe.enable_attention_slicing()
+            logger.info("[Diffusers] attention slicing 已启用")
 
             if self._device == "cuda":
                 try:
                     pipe.enable_xformers_memory_efficient_attention()
                     logger.info("[Diffusers] xformers 内存优化已启用")
                 except Exception:
-                    pass
+                    logger.debug("[Diffusers] xformers 不可用（pip install xformers 可进一步提速）")
 
             self._pipeline = pipe
             logger.info(f"[Diffusers] 模型加载完成: {self._model_id}")

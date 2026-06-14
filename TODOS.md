@@ -25,14 +25,14 @@
 **目标**：让 SD WebUI 接入体验达到生产可用
 
 **待完成：**
-- [ ] **模型列表 API**：新增 `GET /api/image/models` 端点，调用 `/sdapi/v1/sd-models` 返回可用检查点列表
-- [ ] **运行时换模型**：新增 `POST /api/image/switch-model`，调用 `/sdapi/v1/options` 热切换模型（无需重启 WebUI）
+- [x] **模型列表 API**：`GET /api/image/models` 调用 `/sdapi/v1/sd-models` 返回可用检查点列表 ✅
+- [x] **运行时换模型**：`POST /api/image/switch-model`，调用 `/sdapi/v1/options` 热切换模型 ✅
 - [ ] **生成进度查询**：调用 `/sdapi/v1/progress` 轮询并通过 SSE 推送进度百分比到前端
 - [ ] **img2img 支持**：扩展 `ImageRequest` 增加 `init_image_base64`，调用 `/sdapi/v1/img2img`
 - [ ] **ControlNet 支持**：在 payload 中加入 `alwayson_scripts.controlnet`，需 WebUI 安装 ControlNet 扩展
 - [ ] **采样器/调度器选择**：将 `sampler_name` 暴露为 `ImageRequest.extra` 参数
 
-**涉及文件**：`agent/services/image/sd_webui_provider.py`、`agent/api/`（新增 image_router.py）
+**涉及文件**：`agent/services/image/sd_webui_provider.py`
 
 ---
 
@@ -41,11 +41,11 @@
 **目标**：ComfyUI 比 SD WebUI 更灵活（原生支持 FLUX / SDXL / ControlNet 工作流）
 
 **待完成：**
-- [ ] **WebSocket 实时进度**：将 `_poll_and_download()` 改为 WebSocket 监听（连接 `ws://{host}/ws?client_id=...`，解析 `{"type":"progress","data":{"value":x,"max":y}}` 事件）
+- [x] **WebSocket 实时进度**：`_ws_wait_and_download()` 监听 WS 事件，降级为 HTTP 轮询 `_poll_and_download()` ✅
+- [x] **ComfyUI 模型列表**：调用 `/object_info/CheckpointLoaderSimple` 获取可用模型 ✅
 - [ ] **工作流热重载**：支持通过 API 动态上传/切换工作流 JSON（PUT /api/image/comfyui-workflow）
 - [ ] **内置多个工作流模板**：SD1.5_txt2img、SDXL_txt2img、FLUX_txt2img，按模型类型自动选择
 - [ ] **LoRA/Embedding 注入**：在工作流 LoRALoader 节点动态注入用户指定的 LoRA 文件
-- [ ] **ComfyUI 模型列表**：调用 `/object_info/CheckpointLoaderSimple` 获取可用模型
 
 **涉及文件**：`agent/services/image/comfyui_provider.py`
 
@@ -56,8 +56,9 @@
 **目标**：无需任何外部服务，Python 进程内直接推理，适合完全离线环境
 
 **待完成：**
-- [ ] **float16 + attention slicing**：GPU 内存不足时自动开启 `pipe.enable_attention_slicing()`
-- [ ] **SDXL 支持**：检测 `model_id` 是否为 SDXL，自动切换 `StableDiffusionXLPipeline` 并支持 Refiner
+- [x] **float16 + attention slicing**：自动检测 cuda/mps 用 float16，`enable_attention_slicing()` 始终启用 ✅
+- [x] **SDXL 支持**：`_is_sdxl()` 检测关键字，自动切换 `StableDiffusionXLPipeline` ✅
+- [x] **xformers 优化**：CUDA 设备尝试 `enable_xformers_memory_efficient_attention()` ✅
 - [ ] **模型热切换**：支持在不重启服务的情况下切换 `model_id`（卸载旧 pipeline → 加载新 pipeline）
 - [ ] **LoRA 动态加载**：`pipe.load_lora_weights(lora_path)` 支持用户自定义风格
 - [ ] **生成进度回调**：通过 `callback` 参数实时推送步数进度
@@ -73,45 +74,30 @@ pip install diffusers transformers accelerate torch
 
 ---
 
-### TODO-IMG-4：前端图片生成 UI（P1 — 用户体验）
+### ~~TODO-IMG-4：前端图片生成 UI~~ ✅ 已完成（2026-06-14）
 
-**目标**：提供专属图片生成界面，不再依赖对话触发
-
-**待完成：**
-- [ ] **新增 ImageView.vue**（或在 MCPView 中新增卡片）：
-  - 参数面板：prompt、negative_prompt、尺寸选择（512×512 / 768×512 / 1024×1024）、步数滑块、风格预设下拉
-  - 模型切换器：调用 `GET /api/image/models` 列出可用模型
-  - 生成按钮 + 进度条（SSE 实时进度）
-- [ ] **生成历史 Gallery**：`GET /api/images` 列出 `data/images/` 目录下的文件，展示缩略图网格
-- [ ] **对话中图片渲染**：ChatView 已支持 Markdown 图片（`![alt](url)`），确认 `/api/images/{filename}` 代理路径正确
-- [ ] **图片下载按钮**：悬停图片时显示下载按钮
-
-**涉及文件**：`frontend/src/views/`（新增或改造）、`agent/api/`（新增图片列表端点）
+**结果**：`frontend/src/views/ImageView.vue` 全新独立页面，包含：
+- 左侧参数面板：prompt/negative_prompt、风格预设按钮、尺寸选择、步数/CFG 滑块、Provider 状态徽章
+- 右侧结果区：当前生成结果卡片、Gallery 历史网格（hover 显示下载/删除按钮）、图片预览弹窗
+- 导航：已加入侧边栏 NAV_ITEMS（`/image`）、路由 `index.js`、PAGE_CONFIGS 标题
 
 ---
 
-### TODO-IMG-5：图片生成 API 端点（P1 — 配套基础设施）
+### ~~TODO-IMG-5：图片生成 API 端点~~ ✅ 已完成（2026-06-14）
 
-**目标**：将图片能力作为 REST API 暴露，供前端和外部调用
-
-**待完成：**
-- [ ] 新建 `agent/api/image_router.py`，端点规划：
-  - `POST /api/image/generate` — 非流式生成（返回图片 URL）
-  - `GET  /api/image/models` — 列出可用模型
-  - `POST /api/image/switch-model` — 切换模型
-  - `GET  /api/image/provider-status` — 返回当前 provider 和 is_available() 状态
-  - `GET  /api/images` — 列出历史生成图片（文件名+时间戳）
-- [ ] 对应 Java 代理 `KnowledgeProxyController` → 新建 `ImageProxyController`
-- [ ] 前端 `api.js` 新增对应调用函数
+**结果**：
+- `agent/api/image_router.py`：provider-status / models / switch-model / generate / list images / delete + 5GB 自动清理
+- `backend/.../ImageProxyController.java`：JSON 端点 + 二进制图片流代理（无 JWT 直传）
+- `frontend/src/services/api.js`：`getImageProviderStatus / listImageModels / switchImageModel / generateImage / listGeneratedImages / deleteGeneratedImage`
 
 ---
 
 ### TODO-IMG-6：图片生成安全与限流（P3 — 生产加固）
 
 **待完成：**
-- [ ] **并发限制**：图片生成是重 GPU 任务，同时只允许 1~2 个并发（复用现有 `_inference_sem` 信号量）
-- [ ] **输出目录大小限制**：`data/images/` 超过阈值（如 5GB）时自动清理最旧文件
-- [ ] **文件名随机化**：当前 `gen_{uuid12}.png` 已随机，但需确保不可枚举（JWT 鉴权 `/api/images/`）
+- [x] **并发限制**：`image_router.py` 复用 `_state._inference_sem` 信号量，超限返回 503 ✅
+- [x] **输出目录大小限制**：`_maybe_cleanup_old_images()` 超过 5GB 时自动清理最旧文件 ✅
+- [x] **文件名随机化**：`gen_{uuid12}.png` 已随机，图片流代理路径白名单 JWT 豁免 ✅
 - [ ] **NSFW 过滤**：diffusers `safety_checker` 当前已关闭（本地环境），生产环境按需开启
 
 ---

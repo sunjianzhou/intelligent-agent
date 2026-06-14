@@ -114,6 +114,20 @@ class ComfyUIProvider(BaseImageProvider):
         except Exception:
             return False
 
+    async def list_models(self) -> list:
+        """通过 /object_info/CheckpointLoaderSimple 获取可用检查点列表。"""
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.get(f"{self._base_url}/object_info/CheckpointLoaderSimple")
+                r.raise_for_status()
+                data   = r.json()
+                inputs = data.get("CheckpointLoaderSimple", {}).get("input", {}).get("required", {})
+                names  = inputs.get("ckpt_name", [[], {}])[0]  # [["model1.safetensors", ...], {...}]
+                return [{"name": n} for n in names]
+        except Exception as e:
+            logger.warning(f"[ComfyUI] 获取模型列表失败: {e}")
+            return []
+
     @staticmethod
     def _load_workflow(path: str) -> Dict[str, Any]:
         if path and Path(path).exists():
@@ -176,8 +190,8 @@ class ComfyUIProvider(BaseImageProvider):
 
             logger.info(f"[ComfyUI] 已入队 prompt_id={prompt_id}")
 
-        # 2. 轮询 /history/{prompt_id}
-        image_bytes = await self._poll_and_download(prompt_id)
+        # 2. 等待完成（WebSocket 优先，降级轮询）
+        image_bytes = await self._wait_and_download(prompt_id)
         if image_bytes is None:
             return self.unavailable_result("ComfyUI 生成超时或输出为空")
 
@@ -189,8 +203,56 @@ class ComfyUIProvider(BaseImageProvider):
             model=self.current_model,
         )
 
+    async def _wait_and_download(self, prompt_id: str) -> Optional[bytes]:
+        """
+        优先用 WebSocket 实时监听完成事件；若 websockets 未安装则降级为轮询。
+        """
+        try:
+            import websockets  # noqa
+            return await self._ws_wait_and_download(prompt_id)
+        except ImportError:
+            logger.debug("[ComfyUI] websockets 未安装，使用 HTTP 轮询模式（pip install websockets 可升级）")
+            return await self._poll_and_download(prompt_id)
+
+    async def _ws_wait_and_download(self, prompt_id: str) -> Optional[bytes]:
+        """通过 WebSocket 监听进度事件，完成后下载图片。"""
+        import json as _json
+        ws_url = self._base_url.replace("http://", "ws://").replace("https://", "wss://")
+        ws_url = f"{ws_url}/ws?client_id={self._client_id}"
+        deadline = asyncio.get_event_loop().time() + _POLL_TIMEOUT_S
+
+        try:
+            import websockets
+            async with websockets.connect(ws_url, ping_interval=20) as ws:
+                while asyncio.get_event_loop().time() < deadline:
+                    try:
+                        raw = await asyncio.wait_for(ws.recv(), timeout=5)
+                        msg = _json.loads(raw) if isinstance(raw, str) else {}
+                        mtype = msg.get("type", "")
+                        data  = msg.get("data", {})
+
+                        if mtype == "progress":
+                            val = data.get("value", 0)
+                            mx  = data.get("max", 1)
+                            logger.debug(f"[ComfyUI WS] 进度 {val}/{mx}")
+
+                        elif mtype == "executing" and data.get("node") is None:
+                            # 执行完成信号
+                            if data.get("prompt_id") == prompt_id:
+                                logger.info(f"[ComfyUI WS] prompt_id={prompt_id} 完成")
+                                return await self._download_output(prompt_id)
+
+                    except asyncio.TimeoutError:
+                        continue  # 无消息时继续等待
+        except Exception as e:
+            logger.warning(f"[ComfyUI WS] 连接异常: {e}，降级轮询")
+            return await self._poll_and_download(prompt_id)
+
+        logger.error(f"[ComfyUI WS] prompt_id={prompt_id} 超时 ({_POLL_TIMEOUT_S}s)")
+        return None
+
     async def _poll_and_download(self, prompt_id: str) -> Optional[bytes]:
-        """轮询历史记录，完成后下载第一张图片。"""
+        """HTTP 轮询历史记录（WebSocket 不可用时的降级方案）。"""
         deadline = asyncio.get_event_loop().time() + _POLL_TIMEOUT_S
 
         async with httpx.AsyncClient(timeout=30) as client:
@@ -198,24 +260,31 @@ class ComfyUIProvider(BaseImageProvider):
                 await asyncio.sleep(_POLL_INTERVAL_S)
                 try:
                     r = await client.get(f"{self._base_url}/history/{prompt_id}")
-                    if r.status_code != 200:
-                        continue
-                    history = r.json()
-                    if prompt_id not in history:
-                        continue  # 还未完成
-
-                    outputs = history[prompt_id].get("outputs", {})
-                    for node_output in outputs.values():
-                        for img_info in node_output.get("images", []):
-                            fname     = img_info.get("filename", "")
-                            subfolder = img_info.get("subfolder", "")
-                            img_type  = img_info.get("type", "output")
-                            params    = f"filename={fname}&subfolder={subfolder}&type={img_type}"
-                            dl = await client.get(f"{self._base_url}/view?{params}")
-                            dl.raise_for_status()
-                            return dl.content
+                    if r.status_code == 200 and prompt_id in r.json():
+                        return await self._download_output(prompt_id)
                 except Exception as e:
                     logger.warning(f"[ComfyUI] 轮询异常: {e}")
 
         logger.error(f"[ComfyUI] prompt_id={prompt_id} 轮询超时 ({_POLL_TIMEOUT_S}s)")
+        return None
+
+    async def _download_output(self, prompt_id: str) -> Optional[bytes]:
+        """从 /history/{prompt_id} 读取输出并下载第一张图片。"""
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.get(f"{self._base_url}/history/{prompt_id}")
+            if r.status_code != 200:
+                return None
+            history = r.json()
+            outputs = history.get(prompt_id, {}).get("outputs", {})
+            for node_output in outputs.values():
+                for img_info in node_output.get("images", []):
+                    fname     = img_info.get("filename", "")
+                    subfolder = img_info.get("subfolder", "")
+                    img_type  = img_info.get("type", "output")
+                    dl = await client.get(
+                        f"{self._base_url}/view",
+                        params={"filename": fname, "subfolder": subfolder, "type": img_type}
+                    )
+                    if dl.status_code == 200:
+                        return dl.content
         return None

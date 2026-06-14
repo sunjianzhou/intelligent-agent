@@ -14,6 +14,7 @@ const RoleEditorView = () => import('@/views/RoleEditorView.vue')
 const ModelView      = () => import('@/views/ModelView.vue')
 const MCPView        = () => import('@/views/MCPView.vue')
 const LogView        = () => import('@/views/LogView.vue')
+const ImageView      = () => import('@/views/ImageView.vue')
 
 const routes = [
   { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
@@ -25,6 +26,7 @@ const routes = [
   { path: '/roles/editor', name: 'role-editor', component: RoleEditorView, meta: { title: '角色配置' } },
   { path: '/memory',   name: 'memory',   component: MemoryView, meta: { title: '我的记忆' } },
   { path: '/project',  name: 'project',  component: ProjectView, meta: { title: '项目文件' } },
+  { path: '/image',    name: 'image',    component: ImageView,   meta: { title: '图片生成' } },
 
   // ── 管理后台路由 ────────────────────────────────────────
   { path: '/admin/tools',  name: 'admin-tools',  component: ToolsView,  meta: { title: '工具管理', admin: true } },

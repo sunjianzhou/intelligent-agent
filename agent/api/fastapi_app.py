@@ -264,6 +264,7 @@ from api.system_router      import router as system_router
 from api.project_spec_router import router as project_spec_router
 from api.chat_router        import router as chat_router
 from api.knowledge_router   import router as knowledge_router
+from api.image_router       import router as image_router
 
 app.include_router(health_router)
 app.include_router(model_router)
@@ -274,6 +275,7 @@ app.include_router(system_router)
 app.include_router(project_spec_router)
 app.include_router(chat_router)
 app.include_router(knowledge_router)
+app.include_router(image_router)
 
 app.middleware("http")(metrics_middleware)
 

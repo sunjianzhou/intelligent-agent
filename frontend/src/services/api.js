@@ -211,6 +211,24 @@ export const branchConversation  = (messages, parentSessionId) =>
     body:    JSON.stringify({ messages, parent_session_id: parentSessionId }),
   })
 
+// ── Image generation ──────────────────────────────────────────────────────────
+
+export const getImageProviderStatus = () => request(`${BASE}/image/provider-status`)
+export const listImageModels        = () => request(`${BASE}/image/models`)
+export const switchImageModel       = (model) =>
+  request(`${BASE}/image/switch-model`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model }),
+  })
+export const generateImage = (params) =>
+  request(`${BASE}/image/generate`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+export const listGeneratedImages = () => request(`${BASE}/images`)
+export const deleteGeneratedImage = (filename) =>
+  request(`${BASE}/images/${encodeURIComponent(filename)}`, { method: 'DELETE' })
+
 // ── Knowledge files ───────────────────────────────────────────────────────────
 
 export const listKnowledgeFiles  = () => request(`${BASE}/knowledge/files`)
