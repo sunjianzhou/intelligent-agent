@@ -37,6 +37,10 @@ public class ChatRequest {
     @JsonProperty("session_id")
     private String sessionId;
 
+    /** 多模态图片（base64，不含 data URL 前缀；非多模态模型时忽略）*/
+    @JsonProperty("image_base64")
+    private String imageBase64;
+
     /** 前端真实用户 ID（从 WebSocket session 属性中提取，不序列化到 JSON body）*/
     private transient String userId;
 

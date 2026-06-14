@@ -139,12 +139,13 @@ public class WebSocketController extends TextWebSocketHandler {
 
     private void handleChatMessage(WebSocketSession session,
                                    Map<String, Object> request) throws IOException {
-        String  userMessage = (String)  request.get("message");
-        Boolean useTools    = (Boolean) request.get("use_tools");
-        Boolean useMemory   = (Boolean) request.get("use_memory");
-        String  requestId   = (String)  request.get("request_id");
-        String  projectId   = (String)  request.get("project_id");
-        String  sessionId   = (String)  request.get("session_id");
+        String  userMessage  = (String)  request.get("message");
+        Boolean useTools     = (Boolean) request.get("use_tools");
+        Boolean useMemory    = (Boolean) request.get("use_memory");
+        String  requestId    = (String)  request.get("request_id");
+        String  projectId    = (String)  request.get("project_id");
+        String  sessionId    = (String)  request.get("session_id");
+        String  imageBase64  = (String)  request.get("image_base64");
         @SuppressWarnings("unchecked")
         java.util.List<java.util.Map<String, Object>> pendingTasks =
             (java.util.List<java.util.Map<String, Object>>) request.get("pending_tasks");
@@ -173,6 +174,7 @@ public class WebSocketController extends TextWebSocketHandler {
         chatRequest.setProjectId(projectId);
         chatRequest.setSessionId(sessionId);
         chatRequest.setPendingTasks(pendingTasks);
+        chatRequest.setImageBase64(imageBase64);
         chatRequest.setUserId(userId);  // 透传真实用户 ID
 
         // 异步流式处理；线程池满时向客户端返回 503 而不是卡住 Tomcat 线程

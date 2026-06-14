@@ -51,6 +51,7 @@ class ChatRequest(BaseModel):
     project_id: Optional[str] = None
     pending_tasks: Optional[List[Dict[str, Any]]] = None
     session_id: Optional[str] = None
+    image_base64: Optional[str] = None  # 前端传来的单张图片 base64（不含 data URL 前缀）
 
 
 @router.post("/api/chat")
@@ -78,6 +79,7 @@ async def chat(request: ChatRequest, http_req: Request):
                     persona_override=user_persona_content,
                     project_id=request.project_id,
                     pending_tasks=request.pending_tasks,
+                    image_base64=request.image_base64,
                 )
                 _now = datetime.now().isoformat()
                 _sid = request.session_id or user_id
@@ -102,12 +104,17 @@ async def chat(request: ChatRequest, http_req: Request):
                     max_tokens=request.max_tokens or settings.ollama_max_tokens,
                     top_p=request.top_p or settings.ollama_top_p,
                 )
+                _img_prefix = "[图片已附加，请结合图片回答]\n" if request.image_base64 else ""
                 messages = [
                     ChatMessage(role="system", content=(
                         f"你是一个有帮助的AI助手，请用中文回答。"
                         f"当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                     )),
-                    ChatMessage(role="user", content=request.message),
+                    ChatMessage(
+                        role="user",
+                        content=_img_prefix + request.message,
+                        images=[request.image_base64] if request.image_base64 else None,
+                    ),
                 ]
                 resp = user_provider.chat(messages, config)
                 return {
@@ -163,6 +170,7 @@ async def chat_stream_endpoint(request: ChatRequest, http_req: Request):
                             persona_override=user_persona_content,
                             project_id=request.project_id,
                             pending_tasks=request.pending_tasks,
+                            image_base64=request.image_base64,
                     ):
                         yield f"data: {_json.dumps({'type': event_type, 'data': data}, ensure_ascii=False)}\n\n"
                         if event_type == "done" and isinstance(data, dict):
@@ -181,12 +189,17 @@ async def chat_stream_endpoint(request: ChatRequest, http_req: Request):
                         max_tokens=request.max_tokens or settings.ollama_max_tokens,
                         top_p=request.top_p or settings.ollama_top_p,
                     )
+                    _img_prefix_s = "[图片已附加，请结合图片回答]\n" if request.image_base64 else ""
                     chat_messages = [
                         ChatMessage(role="system", content=(
                             f"你是一个有帮助的AI助手，请用中文回答。"
                             f"当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                         )),
-                        ChatMessage(role="user", content=request.message),
+                        ChatMessage(
+                            role="user",
+                            content=_img_prefix_s + request.message,
+                            images=[request.image_base64] if request.image_base64 else None,
+                        ),
                     ]
                     loop = asyncio.get_running_loop()
                     queue: asyncio.Queue = asyncio.Queue(maxsize=100)

@@ -63,26 +63,19 @@
 
 ---
 
-### TODO-IMG-3：diffusers 进程内推理优化（P2 — 离线部署）
+### ~~TODO-IMG-3：diffusers 进程内推理优化~~ ✅ 已完成（2026-06-15）
 
-**目标**：无需任何外部服务，Python 进程内直接推理，适合完全离线环境
+**结果**：
+- 模块级 `_pipeline_cache`（线程安全）+ `switch_model()` 热切换（清除缓存 + CUDA empty_cache）
+- `callback_on_step_end` 实时更新 `_progress_state`，`get_progress()` 跨请求读取
+- img2img 支持（`StableDiffusionImg2ImgPipeline`，底图 base64 解码 + resize，失败时降级 txt2img）
+- `GET /api/image/progress` 已加 diffusers 分支；前端 ImageView 进度轮询扩展至三个 provider
 
-**待完成：**
-- [x] **float16 + attention slicing**：自动检测 cuda/mps 用 float16，`enable_attention_slicing()` 始终启用 ✅
-- [x] **SDXL 支持**：`_is_sdxl()` 检测关键字，自动切换 `StableDiffusionXLPipeline` ✅
-- [x] **xformers 优化**：CUDA 设备尝试 `enable_xformers_memory_efficient_attention()` ✅
-- [ ] **模型热切换**：支持在不重启服务的情况下切换 `model_id`（卸载旧 pipeline → 加载新 pipeline）
-- [ ] **LoRA 动态加载**：`pipe.load_lora_weights(lora_path)` 支持用户自定义风格
-- [ ] **生成进度回调**：通过 `callback` 参数实时推送步数进度
-- [ ] **量化支持（bitsandbytes）**：低显存（<6GB）设备开启 8-bit / 4-bit 量化
+**遗留（P3）**：
+- LoRA 动态加载（`pipe.load_lora_weights(lora_path)`）
+- bitsandbytes 量化（Windows 兼容性问题，暂缓）
 
-**安装命令**：
-```bash
-pip install diffusers transformers accelerate torch
-# GPU（CUDA）：pip install torch --index-url https://download.pytorch.org/whl/cu121
-```
-
-**涉及文件**：`agent/services/image/diffusers_provider.py`
+**涉及文件**：`agent/services/image/diffusers_provider.py`, `agent/api/image_router.py`
 
 ---
 
@@ -438,6 +431,28 @@ ModelView.vue 已集成：云端服务商 CRUD（添加/编辑/删除/激活）+
 - 路由 `/admin/logs`，加入 SYSTEM_ITEMS 导航
 
 **入口文件**: `frontend/src/views/LogView.vue`, `frontend/src/router/index.js`, `frontend/src/config/routes.config.js`
+
+---
+
+## ~~TODO-58: [NEW PAGE] 知识库管理页面~~ ✅ 已完成（2026-06-15）
+
+**结果**：`frontend/src/views/KnowledgeView.vue` 全新独立页面：
+- 拖拽 + 点击上传区（.txt/.md/.pdf/.json，≤10MB），可填描述
+- 文件列表：名称/分块数/大小/描述/上传时间/删除；删除用 `useConfirmDialogStore`
+- 路由 `/knowledge`，加入 NAV_ITEMS（高频区）
+
+**涉及文件**：`frontend/src/views/KnowledgeView.vue`, `frontend/src/router/index.js`, `frontend/src/config/routes.config.js`
+
+---
+
+## ~~TODO-59: [FEATURE] 多模态聊天输入（图片附件）~~ ✅ 已完成（2026-06-15）
+
+**结果**：
+- 前端：聊天输入区新增"附图"按钮 + 粘贴图片支持；显示缩略图预览；发送时 base64 附在 WS 消息
+- Java：`ChatRequest` 加 `imageBase64` 字段；`WebSocketController` 提取并透传；`AgentService` 写入 Python body
+- Python：`ChatMessage` 加 `images` 字段；`chat_router.py` 接收 `image_base64`；Ollama provider 透传 images 给 Ollama API（支持 llava 等多模态模型）
+
+**涉及文件**：`agent/services/base_provider.py`, `agent/services/ollama_provider.py`, `agent/api/chat_router.py`, `agent/core/conversation_flow.py`, `ChatRequest.java`, `WebSocketController.java`, `AgentService.java`, `ChatView.vue`, `websocket.js`
 
 ---
 

@@ -133,7 +133,14 @@
                 class="md-content"
                 v-html="renderMarkdown(msg.content, msg.isStreaming) + (msg.isStreaming ? '<span class=\'cursor\'>▍</span>' : '')"
               />
-              <span v-else v-html="highlightSearch(msg.content)"></span>
+              <!-- user 气泡图片预览（多模态消息） -->
+              <img
+                v-if="msg.role === 'user' && msg.imagePreview"
+                :src="msg.imagePreview"
+                class="msg-img-thumb"
+                alt="附图"
+              />
+              <span v-if="msg.role !== 'assistant'" v-html="highlightSearch(msg.content)"></span>
               <!-- 定时通知气泡底部跳转链接 -->
               <router-link v-if="msg.notif" to="/admin/tasks" class="notif-task-link">
                 <i class="fas fa-tasks" /> 查看任务管理
@@ -360,6 +367,13 @@
 
     <!-- 输入区 -->
     <div class="input-area">
+      <!-- 图片附件预览 -->
+      <div v-if="attachedImagePreview" class="attached-img-row">
+        <img :src="attachedImagePreview" class="attached-thumb" />
+        <button class="attached-remove" @click="clearAttachedImage" title="移除图片">
+          <i class="fas fa-times" />
+        </button>
+      </div>
       <div class="input-wrap" :class="{ 'input-wrap-thinking': isThinking || isStreaming, 'input-wrap-disconnected': !isConnected }">
         <textarea
           ref="inputRef"
@@ -370,7 +384,13 @@
           rows="1"
           @keydown="handleKeydown"
           @input="autoResize"
+          @paste="onPasteImage"
         />
+        <!-- 附图按钮 -->
+        <label class="attach-btn" title="附上图片（支持粘贴）" :class="{ 'attach-active': attachedImagePreview }">
+          <i class="fas fa-image" />
+          <input type="file" accept="image/*" style="display:none" @change="onAttachImageFile" />
+        </label>
         <!-- 停止生成按钮（流式输出时显示）+ 脉冲动画 -->
         <button v-if="isStreaming || isThinking" class="stop-btn stop-btn-pulse" title="点击停止生成" @click="cancelStreaming">
           <i class="fas fa-stop" />
@@ -548,9 +568,56 @@ const closeConfigDropdown = (e) => {
 }
 
 // ── 本地状态 ───────────────────────────────────────────────
-const inputText      = ref('')
-const isThinking     = ref(false)
-const messageListRef = ref(null)
+const inputText            = ref('')
+const isThinking           = ref(false)
+const messageListRef       = ref(null)
+// 多模态图片附件
+const attachedImageB64     = ref(null)   // 纯 base64 字符串（去掉 data URL 前缀）
+const attachedImagePreview = ref(null)   // Data URL 用于本地显示缩略图
+
+const IMAGE_MAX_BYTES = 5 * 1024 * 1024  // 5 MB 上限
+
+const _readImageFile = (file) => {
+  if (!file || !file.type.startsWith('image/')) return
+  if (file.size > IMAGE_MAX_BYTES) {
+    ElMessage({ message: '图片大小不能超过 5MB', type: 'warning', duration: 2500 })
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const dataUrl = e.target.result             // "data:image/png;base64,xxxx"
+    attachedImagePreview.value = dataUrl
+    // 去掉 "data:image/xxx;base64," 前缀，只保留纯 base64
+    const comma = dataUrl.indexOf(',')
+    attachedImageB64.value = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
+  }
+  reader.readAsDataURL(file)
+}
+
+const onAttachImageFile = (e) => {
+  const file = e.target.files?.[0]
+  if (file) _readImageFile(file)
+}
+
+const clearAttachedImage = () => {
+  attachedImageB64.value = null
+  attachedImagePreview.value = null
+}
+
+const onPasteImage = (e) => {
+  const items = e.clipboardData?.items
+  if (!items) return
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+      if (file) {
+        e.preventDefault()
+        _readImageFile(file)
+      }
+      break
+    }
+  }
+}
 
 // ── 推理等待计时器 ─────────────────────────────────────────
 const thinkingSeconds  = ref(0)
@@ -803,17 +870,23 @@ const sendMessage = () => {
   const text = inputText.value.trim()
   if (!text || !canSend.value) return
 
-  const userMsg = { id: genId(), role: 'user', content: text, timestamp: new Date() }
+  const imgPreview = attachedImagePreview.value
+  const imgB64     = attachedImageB64.value
+  const userMsg = {
+    id: genId(), role: 'user', content: text, timestamp: new Date(),
+    ...(imgPreview ? { imagePreview: imgPreview } : {}),
+  }
   store.addMessage(userMsg)
   sessionStore.addMessage({ role: 'user', content: text, timestamp: new Date().toISOString() })
 
   inputText.value = ''
   nextTick(() => { if (inputRef.value) inputRef.value.style.height = 'auto' })
+  clearAttachedImage()
 
   isThinking.value = true
 
   const activeTasks = projectStore.activeProject?.task_tree?.root_tasks ?? null
-  const ok = store.sendChatMessage(text, true, true, projectStore.activeProjectId, activeTasks)
+  const ok = store.sendChatMessage(text, true, true, projectStore.activeProjectId, activeTasks, imgB64)
   if (!ok) {
     isThinking.value = false
     store.addMessage({ role: 'system', content: '发送失败，请检查连接状态', timestamp: new Date() })
@@ -1515,6 +1588,60 @@ onUnmounted(() => {
 .chat-input:disabled         { opacity: 0.7; cursor: not-allowed; }
 .input-wrap-thinking .chat-input::placeholder { color: #667eea; font-style: italic; }
 .input-wrap-disconnected .chat-input::placeholder { color: #e57373; }
+
+/* ── 图片附件 ─────────────────────────────────────────────── */
+.attached-img-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px 2px;
+}
+.attached-thumb {
+  max-height: 80px;
+  max-width: 120px;
+  border-radius: 6px;
+  border: 1px solid #e0e3e8;
+  object-fit: contain;
+}
+.attached-remove {
+  background: none;
+  border: none;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 3px 5px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  line-height: 1;
+}
+.attached-remove:hover { color: #e53935; background: #fce4e4; }
+.attach-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid #e0e3e8;
+  background: white;
+  color: #aaa;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.attach-btn:hover  { border-color: #667eea; color: #667eea; background: #f0f2ff; }
+.attach-btn.attach-active { border-color: #667eea; color: #667eea; background: #f0f2ff; }
+/* 气泡内图片缩略图 */
+.msg-img-thumb {
+  display: block;
+  max-height: 200px;
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.3);
+  margin-bottom: 6px;
+  object-fit: contain;
+}
 
 /* 停止按钮脉冲动画 */
 .stop-btn-pulse {

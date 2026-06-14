@@ -386,8 +386,8 @@ const doSwitchModel = async () => {
 // ── 进度轮询 ──────────────────────────────────────────────────────────────────
 
 const startProgressPoll = () => {
-  // SD WebUI 和 ComfyUI 均支持进度查询
-  if (!['sd_webui', 'comfyui'].includes(providerName.value)) return
+  // SD WebUI、ComfyUI、diffusers 均支持进度查询
+  if (!['sd_webui', 'comfyui', 'diffusers'].includes(providerName.value)) return
   progressPct.value = 0
   progressEta.value = 0
   const interval = providerName.value === 'comfyui' ? 1500 : 1000

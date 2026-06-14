@@ -384,7 +384,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
   }
 
-  const sendChatMessage = (message, useTools = true, useMemory = true, projectId = null, pendingTasks = null) => {
+  const sendChatMessage = (message, useTools = true, useMemory = true, projectId = null, pendingTasks = null, imageBase64 = null) => {
     const payload = {
       type: 'chat_message', message,
       use_tools: useTools, use_memory: useMemory,
@@ -392,6 +392,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
     if (projectId) payload.project_id = projectId
     if (pendingTasks && pendingTasks.length) payload.pending_tasks = pendingTasks
+    if (imageBase64) payload.image_base64 = imageBase64
     return send(payload)
   }
 

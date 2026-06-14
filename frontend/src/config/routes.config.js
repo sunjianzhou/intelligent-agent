@@ -10,6 +10,7 @@ export const NAV_ITEMS = [
   { name: 'memory',      label: '记忆',   icon: 'fas fa-brain',       path: '/memory' },
   { name: 'project',     label: '项目',   icon: 'fas fa-folder-open', path: '/project' },
   { name: 'image',       label: '图片生成', icon: 'fas fa-image',      path: '/image' },
+  { name: 'knowledge',   label: '知识库',   icon: 'fas fa-book',       path: '/knowledge' },
 ]
 
 // 低频配置区（侧边栏第二区）
@@ -38,6 +39,7 @@ export const PAGE_CONFIGS = {
   memory:         { title: '我的记忆',     icon: 'fas fa-brain' },
   project:        { title: '项目文件',     icon: 'fas fa-folder-open' },
   image:          { title: '图片生成',     icon: 'fas fa-image' },
+  knowledge:      { title: '知识库管理',   icon: 'fas fa-book' },
   'admin-tools':  { title: '工具管理',     icon: 'fas fa-tools' },
   'admin-skills': { title: 'Skill 管理',  icon: 'fas fa-magic' },
   'admin-mcp':    { title: 'MCP 配置',    icon: 'fas fa-plug' },

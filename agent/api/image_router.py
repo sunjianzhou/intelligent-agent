@@ -132,6 +132,14 @@ async def get_image_progress():
         )
         data = p.get_progress()
         return {"success": True, "provider": "comfyui", **data}
+    if provider_name == "diffusers":
+        from services.image.diffusers_provider import DiffusersProvider
+        p = DiffusersProvider(
+            model_id=settings.image_gen_diffusers_model,
+            device=settings.image_gen_diffusers_device,
+        )
+        data = p.get_progress()
+        return {"success": True, "provider": "diffusers", **data}
     return {"success": True, "provider": provider_name, "progress": 0.0, "eta": 0.0,
             "note": f"{provider_name} 不支持进度查询"}
 
@@ -160,6 +168,17 @@ async def switch_image_model(request: Request):
         ok, msg = await p.switch_model(model_name)
         if ok:
             settings.image_gen_model = model_name
+        return {"success": ok, "model": model_name, "message": msg}
+
+    if provider_name == "diffusers":
+        from services.image.diffusers_provider import DiffusersProvider
+        p = DiffusersProvider(
+            model_id=settings.image_gen_diffusers_model,
+            device=settings.image_gen_diffusers_device,
+        )
+        ok, msg = p.switch_model(model_name)
+        if ok:
+            settings.image_gen_diffusers_model = model_name
         return {"success": ok, "model": model_name, "message": msg}
 
     return JSONResponse(

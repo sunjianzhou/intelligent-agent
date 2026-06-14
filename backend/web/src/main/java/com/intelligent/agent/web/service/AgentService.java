@@ -137,6 +137,9 @@ public class AgentService {
             if (request.getPendingTasks() != null && !request.getPendingTasks().isEmpty()) {
                 body.put("pending_tasks", request.getPendingTasks());
             }
+            if (request.getImageBase64() != null && !request.getImageBase64().isEmpty()) {
+                body.put("image_base64", request.getImageBase64());
+            }
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, authHeaders());
             ResponseEntity<String> response = restTemplate.exchange(
@@ -189,6 +192,9 @@ public class AgentService {
             }
             if (request.getPendingTasks() != null && !request.getPendingTasks().isEmpty()) {
                 body.put("pending_tasks", request.getPendingTasks());
+            }
+            if (request.getImageBase64() != null && !request.getImageBase64().isEmpty()) {
+                body.put("image_base64", request.getImageBase64());
             }
             String bodyJson = objectMapper.writeValueAsString(body);
 

@@ -92,7 +92,11 @@ class OllamaProvider(BaseLLMProvider):
         cfg = config or self._default_config
         payload = {
             "model": self._model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "messages": [
+                {**{"role": m.role, "content": m.content},
+                 **({"images": m.images} if m.images else {})}
+                for m in messages
+            ],
             "stream": False,
             "keep_alive": settings.ollama_keep_alive,
             "options": {
@@ -173,7 +177,11 @@ class OllamaProvider(BaseLLMProvider):
         cfg = config or self._default_config
         payload = {
             "model": self._model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "messages": [
+                {**{"role": m.role, "content": m.content},
+                 **({"images": m.images} if m.images else {})}
+                for m in messages
+            ],
             "stream": True,
             "keep_alive": settings.ollama_keep_alive,
             "options": {
@@ -228,7 +236,11 @@ class OllamaProvider(BaseLLMProvider):
         cfg = config or self._default_config
         payload = {
             "model": self._model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "messages": [
+                {**{"role": m.role, "content": m.content},
+                 **({"images": m.images} if m.images else {})}
+                for m in messages
+            ],
             "tools": tools,
             "stream": False,
             "keep_alive": settings.ollama_keep_alive,

@@ -1,13 +1,14 @@
 """LLM Provider 抽象基类"""
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
 class ChatMessage:
     role: str     # system / user / assistant
     content: str
+    images: Optional[List[str]] = field(default=None)  # base64 字符串列表（不含 data URL 前缀）
 
 
 @dataclass

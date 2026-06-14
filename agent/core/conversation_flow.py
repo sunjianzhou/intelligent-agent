@@ -48,7 +48,8 @@ class ConversationFlowMixin:
     async def _build_messages_async(self, message: str, use_memory: bool,
                                     user_id: str = "default",
                                     project_id: Optional[str] = None,
-                                    pending_tasks: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, str]]:
+                                    pending_tasks: Optional[List[Dict[str, Any]]] = None,
+                                    image_base64: Optional[str] = None) -> List[Dict[str, str]]:
         """异步版 _build_messages：超预算时先尝试 LLM 摘要压缩，再兜底截断。"""
         if use_memory:
             self.memory.store_conversation("user", message, user_id=user_id)
@@ -152,7 +153,15 @@ class ConversationFlowMixin:
                 ),
             })
 
-        msgs.append({"role": "user", "content": message})
+        # 多模态：若有图片，在用户消息中加提示文字，并将 images 存入消息 dict 供后续转为 ChatMessage 时使用
+        if image_base64:
+            msgs.append({
+                "role": "user",
+                "content": "[图片已附加，请结合图片回答]\n" + message,
+                "_images": [image_base64],
+            })
+        else:
+            msgs.append({"role": "user", "content": message})
 
         max_context = getattr(settings, 'max_context_tokens', 0)
         if max_context > 0:
@@ -239,7 +248,8 @@ class ConversationFlowMixin:
                    persona_override: Optional[str] = None,
                    project_id: Optional[str] = None,
                    pending_tasks: Optional[List[Dict[str, Any]]] = None,
-                   skip_cache: bool = False) -> dict:
+                   skip_cache: bool = False,
+                   image_base64: Optional[str] = None) -> dict:
         """非流式聊天（ReAct 循环）。
         provider_override: 若传入，则本次请求使用该 provider（per-user 隔离）。
         persona_override:  若传入，则本次请求使用该角色内容（per-user 角色隔离）。
@@ -281,7 +291,8 @@ class ConversationFlowMixin:
 
         messages = await self._build_messages_async(message, use_memory, user_id=user_id,
                                                      project_id=project_id,
-                                                     pending_tasks=pending_tasks)
+                                                     pending_tasks=pending_tasks,
+                                                     image_base64=image_base64)
         tool_call_log = []
 
         if not use_tools:
@@ -460,7 +471,8 @@ class ConversationFlowMixin:
                           provider_override=None,
                           persona_override: Optional[str] = None,
                           project_id: Optional[str] = None,
-                          pending_tasks: Optional[List[Dict[str, Any]]] = None):
+                          pending_tasks: Optional[List[Dict[str, Any]]] = None,
+                          image_base64: Optional[str] = None):
         """SSE 流式聊天（ReAct 循环 + 流式最终回答）。
         cancel_event：客户端断连时由 FastAPI 端点设置，通知底层停止生产。
         provider_override: 若传入，则本次请求使用该 provider（per-user 隔离）。
@@ -476,7 +488,8 @@ class ConversationFlowMixin:
 
         messages = await self._build_messages_async(message, use_memory, user_id=user_id,
                                                      project_id=project_id,
-                                                     pending_tasks=pending_tasks)
+                                                     pending_tasks=pending_tasks,
+                                                     image_base64=image_base64)
         tool_call_log = []
 
         if not use_tools:
@@ -489,7 +502,8 @@ class ConversationFlowMixin:
                 num_ctx=settings.ollama_num_ctx,
             )
             chat_messages = [
-                ChatMessage(role=m["role"], content=m.get("content", ""))
+                ChatMessage(role=m["role"], content=m.get("content", ""),
+                            images=m.get("_images"))
                 for m in messages
             ]
             full_response = ""
@@ -605,7 +619,8 @@ class ConversationFlowMixin:
             num_ctx=settings.ollama_num_ctx,
         )
         chat_messages = [
-            ChatMessage(role=m["role"], content=m.get("content", ""))
+            ChatMessage(role=m["role"], content=m.get("content", ""),
+                        images=m.get("_images"))
             for m in final_messages
         ]
 
