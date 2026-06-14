@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     # 项目路径
     project_root: Path = Path(__file__).parent.parent.parent
 
+    # 对话历史配置
+    conversation_max_messages: int = 200  # 单会话最大消息条数（超出截断最旧的）
+
     # 短期记忆配置
     short_term_max_size: int = 100
     short_term_ttl_hours: int = 24

@@ -53,6 +53,51 @@ def _is_sdxl(model_id: str) -> bool:
     return any(k in model_id.lower() for k in xl_kw)
 
 
+def _pick_dtype(device: str):
+    """返回适合该设备的 torch dtype。"""
+    import torch
+    return torch.float16 if device in ("cuda", "mps") else torch.float32
+
+
+def _build_base_pipeline(model_id: str, dtype) -> Any:
+    """从 HuggingFace 加载裸 pipeline（未移至设备）。"""
+    from diffusers import DPMSolverMultistepScheduler
+
+    if _is_sdxl(model_id):
+        from diffusers import StableDiffusionXLPipeline
+        import torch
+        pipe = StableDiffusionXLPipeline.from_pretrained(
+            model_id, torch_dtype=dtype,
+            use_safetensors=True,
+            variant="fp16" if dtype == torch.float16 else None,
+        )
+        logger.info("[Diffusers] SDXL 模型，使用 StableDiffusionXLPipeline")
+    else:
+        from diffusers import StableDiffusionPipeline
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_id, torch_dtype=dtype, safety_checker=None,
+        )
+
+    pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+    return pipe
+
+
+def _apply_memory_opts(pipe: Any, device: str) -> Any:
+    """移至设备并启用显存优化选项。"""
+    pipe = pipe.to(device)
+    pipe.enable_attention_slicing()
+    logger.info("[Diffusers] attention slicing 已启用")
+
+    if device == "cuda":
+        try:
+            pipe.enable_xformers_memory_efficient_attention()
+            logger.info("[Diffusers] xformers 内存优化已启用")
+        except Exception:
+            logger.debug("[Diffusers] xformers 不可用（pip install xformers 可进一步提速）")
+
+    return pipe
+
+
 def _load_pipeline(model_id: str, device: str) -> Any:
     """加载并缓存 pipeline（线程安全）。"""
     cache_key = f"{model_id}:{device}"
@@ -62,37 +107,9 @@ def _load_pipeline(model_id: str, device: str) -> Any:
 
     logger.info(f"[Diffusers] 加载模型 {model_id} → {device}（首次加载可能需数分钟）")
     try:
-        import torch
-        from diffusers import DPMSolverMultistepScheduler
-
-        dtype    = torch.float16 if device in ("cuda", "mps") else torch.float32
-        use_fp16 = dtype == torch.float16
-
-        if _is_sdxl(model_id):
-            from diffusers import StableDiffusionXLPipeline
-            pipe = StableDiffusionXLPipeline.from_pretrained(
-                model_id, torch_dtype=dtype,
-                use_safetensors=True,
-                variant="fp16" if use_fp16 else None,
-            )
-            logger.info("[Diffusers] SDXL 模型，使用 StableDiffusionXLPipeline")
-        else:
-            from diffusers import StableDiffusionPipeline
-            pipe = StableDiffusionPipeline.from_pretrained(
-                model_id, torch_dtype=dtype, safety_checker=None,
-            )
-
-        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-        pipe = pipe.to(device)
-        pipe.enable_attention_slicing()
-        logger.info("[Diffusers] attention slicing 已启用")
-
-        if device == "cuda":
-            try:
-                pipe.enable_xformers_memory_efficient_attention()
-                logger.info("[Diffusers] xformers 内存优化已启用")
-            except Exception:
-                logger.debug("[Diffusers] xformers 不可用（pip install xformers 可进一步提速）")
+        dtype = _pick_dtype(device)
+        pipe  = _build_base_pipeline(model_id, dtype)
+        pipe  = _apply_memory_opts(pipe, device)
 
         with _cache_lock:
             _pipeline_cache[cache_key] = pipe

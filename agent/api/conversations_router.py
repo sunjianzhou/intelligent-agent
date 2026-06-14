@@ -23,11 +23,12 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
 
+from config.settings import settings
+
 router = APIRouter()
 
 _CONV_BASE = os.path.join(os.path.dirname(__file__), "..", "data", "conversations")
 _MAX_SESSIONS_LISTED = 100
-_MAX_MESSAGES_PER_SESSION = 200
 
 
 # ── 存储辅助 ──────────────────────────────────────────────────────────────────
@@ -105,7 +106,7 @@ def append_messages(user_id: str, session_id: str, messages: List[Dict[str, Any]
     }
     session["messages"].extend(messages)
     # Trim to avoid unbounded growth
-    session["messages"] = session["messages"][-_MAX_MESSAGES_PER_SESSION:]
+    session["messages"] = session["messages"][-settings.conversation_max_messages:]
     session["updated_at"] = datetime.now().isoformat()
     _save_session(user_id, session)
 
@@ -172,7 +173,7 @@ async def branch_conversation(request: Request):
         "created_at":        now,
         "updated_at":        now,
         "parent_session_id": parent_session_id,
-        "messages":          messages[-_MAX_MESSAGES_PER_SESSION:],
+        "messages":          messages[-settings.conversation_max_messages:],
     }
     _save_session(user_id, session)
     logger.info(

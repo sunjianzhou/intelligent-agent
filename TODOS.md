@@ -620,7 +620,7 @@ ModelView.vue 已集成：云端服务商 CRUD（添加/编辑/删除/激活）+
 
 ---
 
-## TODO-76: [SEC-LOW] knowledge_router 路径遍历防护缺失
+## ~~TODO-76: [SEC-LOW] knowledge_router 路径遍历防护缺失~~ ✅ 已完成（2026-06-14）
 
 **问题**：`knowledge_router.py:25-28` 对 `user_id`/`filename` 参数未做路径净化，恶意 `../` 可能越目录。
 
@@ -630,7 +630,7 @@ ModelView.vue 已集成：云端服务商 CRUD（添加/编辑/删除/激活）+
 
 ---
 
-## TODO-77: [CLEANUP-LOW] 会话消息数上限 200 硬编码
+## ~~TODO-77: [CLEANUP-LOW] 会话消息数上限 200 硬编码~~ ✅ 已完成（2026-06-14）
 
 **问题**：`conversations_router.py:107` 截断上限写死，大型项目或长对话无法调整。
 
@@ -640,7 +640,7 @@ ModelView.vue 已集成：云端服务商 CRUD（添加/编辑/删除/激活）+
 
 ---
 
-## TODO-78: [CLEANUP-LOW] diffusers `_load_pipeline()` 函数超 170 行
+## ~~TODO-78: [CLEANUP-LOW] diffusers `_load_pipeline()` 函数超 170 行~~ ✅ 已完成（2026-06-14）
 
 **问题**：`diffusers_provider.py:55-100` 模型加载、dtype 选择、内存优化混在一起，可读性差。
 

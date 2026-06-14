@@ -13,6 +13,7 @@ import os
 import re
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
@@ -23,18 +24,34 @@ import api.state as _state
 
 router = APIRouter()
 
-_KF_BASE     = os.path.join(os.path.dirname(__file__), "..", "data", "knowledge_files")
-_CHUNK_SIZE  = 800
+_KF_BASE      = os.path.join(os.path.dirname(__file__), "..", "data", "knowledge_files")
+_KF_BASE_PATH = Path(_KF_BASE).resolve()
+_CHUNK_SIZE   = 800
 _CHUNK_OVERLAP = 100
-_MAX_BYTES   = 10 * 1024 * 1024  # 10 MB
-_ALLOWED_EXT = {".txt", ".md", ".pdf", ".json"}
+_MAX_BYTES    = 10 * 1024 * 1024  # 10 MB
+_ALLOWED_EXT  = {".txt", ".md", ".pdf", ".json"}
+_SAFE_ID_RE   = re.compile(r'[^\w\-.]')   # 只允许字母数字、连字符、下划线、点
+
+
+def _sanitize_id(value: str) -> str:
+    """净化 user_id / file_id，去除路径遍历字符，最长 128 字符。"""
+    return _SAFE_ID_RE.sub('_', value)[:128]
+
+
+def _safe_path(base: Path, *parts: str) -> Path:
+    """构建路径并验证其在 base 目录内，防止目录遍历攻击。"""
+    target = (base / Path(*parts)).resolve()
+    if not str(target).startswith(str(base)):
+        raise ValueError(f"非法路径: {target}")
+    return target
 
 
 # ── 文件清单辅助 ──────────────────────────────────────────────────────────────
 
 def _manifest_path(user_id: str) -> str:
-    os.makedirs(_KF_BASE, exist_ok=True)
-    return os.path.join(_KF_BASE, f"{user_id}.json")
+    _KF_BASE_PATH.mkdir(parents=True, exist_ok=True)
+    uid = _sanitize_id(user_id)
+    return str(_safe_path(_KF_BASE_PATH, f"{uid}.json"))
 
 
 def _load_manifest(user_id: str) -> Dict[str, Any]:
