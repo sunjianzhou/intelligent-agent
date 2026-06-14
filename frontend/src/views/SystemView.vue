@@ -264,193 +264,57 @@
       </div>
     </div>
 
-    <!-- 资源配置面板 -->
+    <!-- 资源用量面板 -->
     <div class="detail-card resource-config-card">
       <div class="detail-title">
-        <i class="fas fa-sliders-h" /> 资源配置
-        <span class="rc-tip">修改后立即生效，重启前有效</span>
-        <button class="rc-save-btn" :class="{ saving: rcSaving }" @click="saveRuntimeConfig" :disabled="rcSaving">
-          <i class="fas fa-save" /> {{ rcSaving ? '保存中…' : '保存配置' }}
-        </button>
+        <i class="fas fa-chart-bar" /> 实时用量
+        <span class="rc-tip">各资源当前消耗</span>
+        <router-link to="/admin/mcp" class="rc-config-link">
+          <i class="fas fa-cog" /> 调整参数上限
+        </router-link>
       </div>
-
-      <div class="rc-body">
-        <!-- 左：实时用量 -->
-        <div class="rc-usage-col">
-          <div class="rc-section-label"><i class="fas fa-chart-bar" /> 实时用量</div>
-          <div class="rc-usage-grid">
-            <div class="rc-usage-item">
-              <span class="ru-label">推理并发</span>
-              <div class="ru-bar-wrap">
-                <div class="ru-bar" :style="{ width: usagePct(rcUsage.active_inferences, rcCfg.inference_concurrency) + '%' }" />
-              </div>
-              <span class="ru-val">{{ rcUsage.active_inferences ?? 0 }} / {{ rcCfg.inference_concurrency }}</span>
-            </div>
-            <div class="rc-usage-item">
-              <span class="ru-label">等待队列</span>
-              <div class="ru-bar-wrap">
-                <div class="ru-bar ru-bar-queue" :style="{ width: usagePct(rcCfg.inference_queue_size - (rcUsage.queue_slots ?? rcCfg.inference_queue_size), rcCfg.inference_queue_size) + '%' }" />
-              </div>
-              <span class="ru-val">已用 {{ rcCfg.inference_queue_size - (rcUsage.queue_slots ?? rcCfg.inference_queue_size) }} / {{ rcCfg.inference_queue_size }}</span>
-            </div>
-            <div class="rc-usage-item">
-              <span class="ru-label">L1 精确缓存</span>
-              <div class="ru-bar-wrap">
-                <div class="ru-bar ru-bar-cache" :style="{ width: usagePct(rcUsage.l1_cache_entries, rcCfg.response_cache_max_size) + '%' }" />
-              </div>
-              <span class="ru-val">{{ rcUsage.l1_cache_entries ?? 0 }} / {{ rcCfg.response_cache_max_size }}</span>
-            </div>
-            <div class="rc-usage-item">
-              <span class="ru-label">L2 语义缓存</span>
-              <div class="ru-bar-wrap">
-                <div class="ru-bar ru-bar-cache" :style="{ width: usagePct(rcUsage.l2_cache_entries, rcCfg.semantic_cache_max_entries) + '%' }" />
-              </div>
-              <span class="ru-val">{{ rcUsage.l2_cache_entries ?? 0 }} / {{ rcCfg.semantic_cache_max_entries }}</span>
-            </div>
-            <div class="rc-usage-item">
-              <span class="ru-label">短期记忆</span>
-              <div class="ru-bar-wrap">
-                <div class="ru-bar ru-bar-mem" :style="{ width: usagePct(rcUsage.short_term_entries, rcCfg.short_term_max_size) + '%' }" />
-              </div>
-              <span class="ru-val">{{ rcUsage.short_term_entries ?? 0 }} / {{ rcCfg.short_term_max_size }}</span>
-            </div>
-            <div class="rc-usage-item">
-              <span class="ru-label">长期记忆</span>
-              <div class="ru-bar-wrap">
-                <div class="ru-bar ru-bar-mem" style="background:#a78bfa" :style="{ width: Math.min(100, (rcUsage.long_term_entries ?? 0) / 200 * 100) + '%' }" />
-              </div>
-              <span class="ru-val">{{ rcUsage.long_term_entries ?? 0 }} 条</span>
-            </div>
+      <div class="rc-usage-grid">
+        <div class="rc-usage-item">
+          <span class="ru-label">推理并发</span>
+          <div class="ru-bar-wrap">
+            <div class="ru-bar" :style="{ width: usagePct(rcUsage.active_inferences, rcCfg.inference_concurrency) + '%' }" />
           </div>
+          <span class="ru-val">{{ rcUsage.active_inferences ?? 0 }} / {{ rcCfg.inference_concurrency }}</span>
         </div>
-
-        <!-- 右：可配置参数 -->
-        <div class="rc-form-col">
-          <div class="rc-section-label"><i class="fas fa-cog" /> 可配置参数</div>
-          <div class="rc-form-grid">
-
-            <div class="rc-group">
-              <div class="rc-group-title">推理并发控制</div>
-              <div class="rc-field">
-                <label>最大并发数 <span class="rc-range">[1–20]</span></label>
-                <div class="rc-slider-row">
-                  <input type="range" min="1" max="20" v-model.number="rcEdit.inference_concurrency" />
-                  <input type="number" min="1" max="20" v-model.number="rcEdit.inference_concurrency" class="rc-num" />
-                </div>
-              </div>
-              <div class="rc-field">
-                <label>等待队列上限 <span class="rc-range">[5–200]</span></label>
-                <div class="rc-slider-row">
-                  <input type="range" min="5" max="200" step="5" v-model.number="rcEdit.inference_queue_size" />
-                  <input type="number" min="5" max="200" v-model.number="rcEdit.inference_queue_size" class="rc-num" />
-                </div>
-              </div>
-            </div>
-
-            <div class="rc-group">
-              <div class="rc-group-title">响应缓存 (L1 精确)</div>
-              <div class="rc-field">
-                <label>最大条目数 <span class="rc-range">[10–10000]</span></label>
-                <div class="rc-slider-row">
-                  <input type="range" min="10" max="2000" step="10" v-model.number="rcEdit.response_cache_max_size" />
-                  <input type="number" min="10" max="10000" v-model.number="rcEdit.response_cache_max_size" class="rc-num" />
-                </div>
-              </div>
-              <div class="rc-field">
-                <label>有效期 (秒) <span class="rc-range">[60–86400]</span></label>
-                <div class="rc-slider-row">
-                  <input type="range" min="60" max="86400" step="60" v-model.number="rcEdit.response_cache_ttl_secs" />
-                  <input type="number" min="60" max="86400" v-model.number="rcEdit.response_cache_ttl_secs" class="rc-num" />
-                </div>
-              </div>
-            </div>
-
-            <div class="rc-group">
-              <div class="rc-group-title">语义缓存 (L2 向量)</div>
-              <div class="rc-field">
-                <label>相似度阈值 <span class="rc-range">[0.5–1.0]</span></label>
-                <div class="rc-slider-row">
-                  <input type="range" min="0.5" max="1.0" step="0.01" v-model.number="rcEdit.semantic_cache_threshold" />
-                  <input type="number" min="0.5" max="1.0" step="0.01" v-model.number="rcEdit.semantic_cache_threshold" class="rc-num" />
-                </div>
-              </div>
-              <div class="rc-field">
-                <label>最大条目数 <span class="rc-range">[100–20000]</span></label>
-                <div class="rc-slider-row">
-                  <input type="range" min="100" max="5000" step="100" v-model.number="rcEdit.semantic_cache_max_entries" />
-                  <input type="number" min="100" max="20000" v-model.number="rcEdit.semantic_cache_max_entries" class="rc-num" />
-                </div>
-              </div>
-            </div>
-
-            <div class="rc-group">
-              <div class="rc-group-title">记忆系统</div>
-              <div class="rc-field">
-                <label>短期记忆上限 <span class="rc-range">[10–2000]</span></label>
-                <div class="rc-slider-row">
-                  <input type="range" min="10" max="500" step="10" v-model.number="rcEdit.short_term_max_size" />
-                  <input type="number" min="10" max="2000" v-model.number="rcEdit.short_term_max_size" class="rc-num" />
-                </div>
-              </div>
-              <div class="rc-field">
-                <label>短期记忆保留 (小时) <span class="rc-range">[1–720]</span></label>
-                <div class="rc-slider-row">
-                  <input type="range" min="1" max="168" v-model.number="rcEdit.short_term_ttl_hours" />
-                  <input type="number" min="1" max="720" v-model.number="rcEdit.short_term_ttl_hours" class="rc-num" />
-                </div>
-              </div>
-            </div>
-
-            <div class="rc-group">
-              <div class="rc-group-title">推理参数</div>
-              <div class="rc-field">
-                <label>
-                  上下文窗口 (num_ctx)
-                  <span class="rc-range">[512–131072]</span>
-                </label>
-                <div class="rc-hint-text">
-                  影响显存/内存占用。GTX1660 6GB 建议 ≤ 16384；纯CPU可到 32768。修改后下条消息生效。
-                </div>
-                <div class="rc-slider-row">
-                  <input type="range" min="512" max="32768" step="512" v-model.number="rcEdit.ollama_num_ctx" />
-                  <input type="number" min="512" max="131072" step="512" v-model.number="rcEdit.ollama_num_ctx" class="rc-num" />
-                </div>
-              </div>
-              <div class="rc-field">
-                <label>最大输出 Tokens <span class="rc-range">[128–32768]</span></label>
-                <div class="rc-slider-row">
-                  <input type="range" min="128" max="8192" step="128" v-model.number="rcEdit.ollama_max_tokens" />
-                  <input type="number" min="128" max="32768" v-model.number="rcEdit.ollama_max_tokens" class="rc-num" />
-                </div>
-              </div>
-              <div class="rc-field">
-                <label>Temperature <span class="rc-range">[0–2]</span></label>
-                <div class="rc-slider-row">
-                  <input type="range" min="0" max="2" step="0.05" v-model.number="rcEdit.ollama_temperature" />
-                  <input type="number" min="0" max="2" step="0.05" v-model.number="rcEdit.ollama_temperature" class="rc-num" />
-                </div>
-              </div>
-            </div>
-
-            <div class="rc-group">
-              <div class="rc-group-title">超时 / 输出</div>
-              <div class="rc-field">
-                <label>请求超时 (秒) <span class="rc-range">[10–600]</span></label>
-                <div class="rc-slider-row">
-                  <input type="range" min="10" max="600" step="10" v-model.number="rcEdit.chat_timeout" />
-                  <input type="number" min="10" max="600" v-model.number="rcEdit.chat_timeout" class="rc-num" />
-                </div>
-              </div>
-              <div class="rc-field">
-                <label>工具结果最大字符 <span class="rc-range">[200–50000]</span></label>
-                <div class="rc-slider-row">
-                  <input type="range" min="200" max="10000" step="100" v-model.number="rcEdit.tool_result_max_chars" />
-                  <input type="number" min="200" max="50000" v-model.number="rcEdit.tool_result_max_chars" class="rc-num" />
-                </div>
-              </div>
-            </div>
-
+        <div class="rc-usage-item">
+          <span class="ru-label">等待队列</span>
+          <div class="ru-bar-wrap">
+            <div class="ru-bar ru-bar-queue" :style="{ width: usagePct(rcCfg.inference_queue_size - (rcUsage.queue_slots ?? rcCfg.inference_queue_size), rcCfg.inference_queue_size) + '%' }" />
           </div>
+          <span class="ru-val">已用 {{ rcCfg.inference_queue_size - (rcUsage.queue_slots ?? rcCfg.inference_queue_size) }} / {{ rcCfg.inference_queue_size }}</span>
+        </div>
+        <div class="rc-usage-item">
+          <span class="ru-label">L1 精确缓存</span>
+          <div class="ru-bar-wrap">
+            <div class="ru-bar ru-bar-cache" :style="{ width: usagePct(rcUsage.l1_cache_entries, rcCfg.response_cache_max_size) + '%' }" />
+          </div>
+          <span class="ru-val">{{ rcUsage.l1_cache_entries ?? 0 }} / {{ rcCfg.response_cache_max_size }}</span>
+        </div>
+        <div class="rc-usage-item">
+          <span class="ru-label">L2 语义缓存</span>
+          <div class="ru-bar-wrap">
+            <div class="ru-bar ru-bar-cache" :style="{ width: usagePct(rcUsage.l2_cache_entries, rcCfg.semantic_cache_max_entries) + '%' }" />
+          </div>
+          <span class="ru-val">{{ rcUsage.l2_cache_entries ?? 0 }} / {{ rcCfg.semantic_cache_max_entries }}</span>
+        </div>
+        <div class="rc-usage-item">
+          <span class="ru-label">短期记忆</span>
+          <div class="ru-bar-wrap">
+            <div class="ru-bar ru-bar-mem" :style="{ width: usagePct(rcUsage.short_term_entries, rcCfg.short_term_max_size) + '%' }" />
+          </div>
+          <span class="ru-val">{{ rcUsage.short_term_entries ?? 0 }} / {{ rcCfg.short_term_max_size }}</span>
+        </div>
+        <div class="rc-usage-item">
+          <span class="ru-label">长期记忆</span>
+          <div class="ru-bar-wrap">
+            <div class="ru-bar ru-bar-mem" style="background:#a78bfa" :style="{ width: Math.min(100, (rcUsage.long_term_entries ?? 0) / 200 * 100) + '%' }" />
+          </div>
+          <span class="ru-val">{{ rcUsage.long_term_entries ?? 0 }} 条</span>
         </div>
       </div>
     </div>
@@ -504,153 +368,12 @@
       </div>
     </div>
 
-    <!-- 已安装/可用模型（可折叠） -->
-    <div class="detail-card model-card">
-      <div class="detail-title collapsible-title" @click="showModelList = !showModelList" style="cursor:pointer;user-select:none">
-        <i class="fas fa-cube" /> 可用模型
-        <span class="rc-tip">{{ models.length }} 个</span>
-        <i :class="showModelList ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" style="margin-left:auto;font-size:0.75rem;color:#bbb" />
-      </div>
-      <div v-if="showModelList" class="model-list">
-        <!-- 当前是云端模型时，顶部高亮显示 -->
-        <div v-if="cloudMode" class="model-item active cloud-model-item">
-          <i class="fas fa-cloud" />
-          <span class="model-name">{{ cloudModel }}</span>
-          <span class="model-badge cloud-badge">云端 · 使用中</span>
-        </div>
-
-        <!-- 所有模型列表 -->
-        <div v-for="m in models" :key="m"
-            class="model-item"
-            :class="{ active: !cloudMode && m === currentModel }">
-          <i :class="cloudModel && m === cloudModel ? 'fas fa-cloud' : 'fas fa-cube'" />
-          <span class="model-name">{{ m }}</span>
-          <!-- 当前使用中标注 -->
-          <span v-if="!cloudMode && m === currentModel" class="model-badge">当前</span>
-          <!-- 云端标注（有云端配置且匹配） -->
-          <span v-if="cloudModel && m === cloudModel"
-                class="model-local-badge"
-                style="background:#f0f2ff;color:#667eea">云端</span>
-          <!-- 本地标注（非云端模型） -->
-          <span v-else class="model-local-badge">本地</span>
-        </div>
-
-        <div v-if="models.length === 0" class="empty-tip">暂无可用模型</div>
-      </div>
-    </div>
-
-    <!-- 云端服务商配置 -->
-    <div class="detail-card cloud-providers-card">
-      <div class="detail-title">
-        <i class="fas fa-cloud-upload-alt" style="color:#667eea" />
-        云端服务商
-        <span class="rc-tip">{{ cloudProviders.length }} 个已配置</span>
-        <button class="cp-add-btn" @click="openCpAdd">
-          <i class="fas fa-plus" /> 添加服务商
-        </button>
-      </div>
-
-      <div v-if="cloudProviders.length === 0" class="cp-empty">
-        <i class="fas fa-cloud" style="font-size:2rem;color:#dde;display:block;margin-bottom:10px" />
-        暂无云端服务商配置。点击「添加服务商」接入 OpenAI、DeepSeek、阿里云百炼等兼容接口。
-      </div>
-
-      <div v-else class="cp-list">
-        <div v-for="p in cloudProviders" :key="p.id"
-             class="cp-card"
-             :class="{ 'cp-active': p.is_active }">
-          <div class="cp-card-header">
-            <div class="cp-name">
-              <i class="fas fa-cloud" :style="{ color: p.is_active ? '#667eea' : '#bbb' }" />
-              {{ p.name }}
-            </div>
-            <span v-if="p.is_active" class="cp-active-badge">
-              <i class="fas fa-check-circle" /> 使用中
-            </span>
-          </div>
-          <div class="cp-meta">
-            <span class="cp-provider-tag">{{ p.provider }}</span>
-            <span class="cp-model-name">{{ p.model }}</span>
-          </div>
-          <div class="cp-url" :title="p.base_url">{{ p.base_url || '（默认接口地址）' }}</div>
-          <div class="cp-key"><i class="fas fa-key" /> {{ p.api_key_masked }}</div>
-          <div class="cp-actions">
-            <button v-if="!p.is_active" class="cp-btn cp-btn-activate" @click="activateCp(p.id)">
-              <i class="fas fa-power-off" /> 激活
-            </button>
-            <button v-else class="cp-btn cp-btn-deactivate" @click="deactivateCp">
-              <i class="fas fa-toggle-off" /> 停用
-            </button>
-            <button class="cp-btn cp-btn-edit" @click="openCpEdit(p)">
-              <i class="fas fa-pen" /> 编辑
-            </button>
-            <button class="cp-btn cp-btn-del" @click="deleteCp(p.id, p.name)">
-              <i class="fas fa-trash" /> 删除
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 云端服务商 添加/编辑 对话框 -->
-    <div v-if="showCpDialog" class="modal-overlay" @click.self="showCpDialog = false">
-      <div class="modal-box">
-        <div class="modal-header">
-          <span class="modal-title">
-            {{ cpEditId ? '编辑服务商' : '添加云端服务商' }}
-          </span>
-          <button class="modal-close" @click="showCpDialog = false">
-            <i class="fas fa-times" />
-          </button>
-        </div>
-        <div class="modal-body">
-          <!-- 名称 -->
-          <div class="form-row">
-            <label>名称 <span class="required">*</span></label>
-            <input v-model="cpForm.name" placeholder="如：DeepSeek 生产账号" />
-          </div>
-          <!-- 服务商 -->
-          <div class="form-row">
-            <label>服务商类型</label>
-            <select v-model="cpForm.provider" @change="onCpProviderChange">
-              <option value="">-- 自定义 --</option>
-              <option v-for="preset in cpPresets" :key="preset.key" :value="preset.key">
-                {{ preset.label }}
-              </option>
-            </select>
-          </div>
-          <!-- Base URL -->
-          <div class="form-row">
-            <label>Base URL <span class="rc-tip" style="margin-left:4px">（服务商选择后自动填充，可自定义）</span></label>
-            <input v-model="cpForm.base_url" placeholder="https://api.openai.com/v1" />
-          </div>
-          <!-- API Key -->
-          <div class="form-row">
-            <label>
-              API Key <span class="required">*</span>
-              <span v-if="cpEditId" class="rc-tip" style="margin-left:4px">（留空保持原密钥）</span>
-            </label>
-            <input v-model="cpForm.api_key" type="password" placeholder="sk-..." autocomplete="new-password" />
-          </div>
-          <!-- Model -->
-          <div class="form-row">
-            <label>模型名称 <span class="required">*</span></label>
-            <input v-model="cpForm.model" placeholder="gpt-4o / deepseek-chat / qwen-plus …" />
-          </div>
-          <!-- 常用模型快选 -->
-          <div v-if="cpForm.provider && cpModelSuggestions.length" class="cp-model-chips">
-            <span class="cp-chips-label">快选:</span>
-            <span v-for="m in cpModelSuggestions" :key="m"
-                  class="cp-chip" @click="cpForm.model = m">{{ m }}</span>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-cancel" @click="showCpDialog = false">取消</button>
-          <button class="btn-confirm" @click="saveCpForm" :disabled="cpSaving">
-            <i class="fas fa-save" /> {{ cpSaving ? '保存中…' : '保存' }}
-          </button>
-        </div>
-      </div>
+    <!-- 模型管理与云端服务商已迁移至模型管理页 -->
+    <div class="redirect-hint">
+      <i class="fas fa-robot" />
+      可用模型列表、云端服务商配置和激活请前往
+      <router-link to="/admin/models" class="redirect-link">模型管理</router-link>
+      页面操作
     </div>
 
   </div>
@@ -659,14 +382,9 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, defineComponent, h } from 'vue'
 import { useWebSocketStore } from '@/stores/websocket'
-import { useConfirmDialogStore } from '@/stores/confirmDialog'
-import { ElMessage } from 'element-plus'
 import {
   getJavaHealth, getPythonHealth, getSystemInfo, getModels, getSystemResources,
-  getRuntimeConfig, updateRuntimeConfig,
-  listCloudProviders, getCloudPresets,
-  createCloudProvider, updateCloudProvider, deleteCloudProvider,
-  activateCloudProvider, deactivateCloudProviders,
+  getRuntimeConfig,
 } from '@/services/api'
 
 // ── SparkLine ─────────────────────────────────────────────
@@ -707,14 +425,12 @@ const SparkLine = defineComponent({
 
 // ── Store ─────────────────────────────────────────────────
 const wsStore         = useWebSocketStore()
-const confirmDialog   = useConfirmDialogStore()
 const responseTimes = computed(() => wsStore.responseTimes || [])
 
 // ── 状态 ─────────────────────────────────────────────────
 const loading      = ref(false)
 const showOthers   = ref(false)
 const showMemTips  = ref(false)
-const showModelList = ref(true)
 const topOthers    = ref([])
 const javaOk       = ref(null)   // null=检测中, true=ok, false=失败, 'timeout'=超时
 const pythonOk     = ref(null)
@@ -723,7 +439,6 @@ const currentModel = ref('')
 const cloudModel   = ref('')
 const cloudBaseUrl = ref('')
 const cloudMode    = ref(false)
-const models       = ref([])
 const sysInfo      = ref({})
 const resources    = ref({})
 const processes    = ref({})
@@ -732,39 +447,17 @@ const ollamaModels = ref([])
 const lastUpdated  = ref('-')
 const countdown    = ref(10)
 
-// ── 资源配置 ──────────────────────────────────────────────
-const rcCfg    = ref({})   // 服务端当前值（只读展示）
-const rcUsage  = ref({})   // 实时用量
-const rcEdit   = ref({})   // 用户正在编辑的值
-const rcSaving = ref(false)
+// ── 资源配置（只读用量展示） ──────────────────────────────
+const rcCfg   = ref({})
+const rcUsage = ref({})
 
 const usagePct = (used, total) => total > 0 ? Math.min(100, Math.round((used ?? 0) / total * 100)) : 0
 
 const loadRuntimeConfig = async () => {
   const data = await getRuntimeConfig()
   if (!data) return
-  rcCfg.value   = data.config  || {}
-  rcUsage.value = data.usage   || {}
-  // 只在首次加载时初始化编辑值（防止覆盖用户正在编辑的内容）
-  if (Object.keys(rcEdit.value).length === 0) {
-    rcEdit.value = { ...data.config }
-  }
-}
-
-const saveRuntimeConfig = async () => {
-  rcSaving.value = true
-  try {
-    const res = await updateRuntimeConfig(rcEdit.value)
-    if (res?.success) {
-      ElMessage.success(`已更新 ${Object.keys(res.updated || {}).length} 项配置`)
-      await loadRuntimeConfig()
-    } else {
-      const errKeys = Object.keys(res?.errors || {})
-      ElMessage.error(errKeys.length ? `${errKeys[0]}: ${res.errors[errKeys[0]]}` : '保存失败')
-    }
-  } finally {
-    rcSaving.value = false
-  }
+  rcCfg.value   = data.config || {}
+  rcUsage.value = data.usage  || {}
 }
 
 const MAX_POINTS = 30
@@ -890,8 +583,6 @@ const refresh = async () => {
     }
 
     if (modelData2?.available_models) {
-      models.value = [...new Set(modelData2.available_models)]
-      // 优先用 /api/models 返回的 per-user current_model（与 ChatView 保持一致）
       currentModel.value = modelData2.current_model || sysd?.agent_model || ''
     } else if (sysd?.agent_model) {
       currentModel.value = sysd.agent_model
@@ -917,121 +608,10 @@ const refresh = async () => {
   }
 }
 
-// ── 云端服务商管理 ────────────────────────────────────────
-const cloudProviders = ref([])
-const cpPresets      = ref([])
-const showCpDialog   = ref(false)
-const cpEditId       = ref(null)
-const cpSaving       = ref(false)
-const cpForm         = ref({ name: '', provider: '', base_url: '', api_key: '', model: '' })
-
-const CP_MODEL_SUGGESTIONS = {
-  openai:      ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-  deepseek:    ['deepseek-chat', 'deepseek-reasoner'],
-  dashscope:   ['qwen-plus', 'qwen-turbo', 'qwen-max', 'qwen-long'],
-  zhipu:       ['glm-4', 'glm-4-flash', 'glm-4-air'],
-  moonshot:    ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
-  baidu:       ['ernie-4.5-turbo-128k', 'ernie-4.0-8k', 'ernie-speed-128k'],
-  siliconflow: ['deepseek-ai/DeepSeek-V3', 'Qwen/Qwen2.5-72B-Instruct'],
-}
-const cpModelSuggestions = computed(() =>
-  CP_MODEL_SUGGESTIONS[cpForm.value.provider] || []
-)
-
-const loadCloudProvs = async () => {
-  const data = await listCloudProviders()
-  if (data) cloudProviders.value = data.providers || []
-}
-
-const loadCpPresets = async () => {
-  const data = await getCloudPresets()
-  if (data) cpPresets.value = data.presets || []
-}
-
-const openCpAdd = () => {
-  cpEditId.value = null
-  cpForm.value   = { name: '', provider: '', base_url: '', api_key: '', model: '' }
-  showCpDialog.value = true
-}
-
-const openCpEdit = (p) => {
-  cpEditId.value = p.id
-  cpForm.value   = { name: p.name, provider: p.provider, base_url: p.base_url, api_key: '', model: p.model }
-  showCpDialog.value = true
-}
-
-const onCpProviderChange = () => {
-  const preset = cpPresets.value.find(p => p.key === cpForm.value.provider)
-  if (preset) cpForm.value.base_url = preset.url
-}
-
-const saveCpForm = async () => {
-  if (!cpForm.value.name.trim())  { ElMessage.warning('请填写名称'); return }
-  if (!cpForm.value.model.trim()) { ElMessage.warning('请填写模型名称'); return }
-  if (!cpEditId.value && !cpForm.value.api_key.trim()) { ElMessage.warning('请填写 API Key'); return }
-  cpSaving.value = true
-  try {
-    const payload = { ...cpForm.value }
-    let res
-    if (cpEditId.value) {
-      res = await updateCloudProvider(cpEditId.value, payload)
-    } else {
-      res = await createCloudProvider(payload)
-    }
-    if (res?.success) {
-      ElMessage.success(cpEditId.value ? '已更新服务商' : '已添加服务商')
-      showCpDialog.value = false
-      await loadCloudProvs()
-    }
-  } finally {
-    cpSaving.value = false
-  }
-}
-
-const activateCp = async (pid) => {
-  const res = await activateCloudProvider(pid)
-  if (res?.success) {
-    ElMessage.success('云端服务商已激活，后续对话将使用该服务商')
-    await loadCloudProvs()
-    await refresh()
-  }
-}
-
-const deactivateCp = async () => {
-  const ok = await confirmDialog.confirm('停用云端服务商，切换回本地 Ollama？', {
-    title: '停用云端服务商',
-    confirmText: '确认停用',
-    type: 'warning',
-  })
-  if (!ok) return
-  const res = await deactivateCloudProviders()
-  if (res?.success) {
-    ElMessage.success('已切换回本地 Ollama')
-    await loadCloudProvs()
-    await refresh()
-  }
-}
-
-const deleteCp = async (pid, name) => {
-  const ok = await confirmDialog.confirm(`确定删除服务商「${name}」？`, {
-    title: '删除服务商',
-    confirmText: '删除',
-    type: 'danger',
-  })
-  if (!ok) return
-  const res = await deleteCloudProvider(pid)
-  if (res?.success) {
-    ElMessage.success('已删除')
-    await loadCloudProvs()
-  }
-}
-
 let timer = null, clockTimer = null
 onMounted(() => {
   refresh()
   loadRuntimeConfig()
-  loadCloudProvs()
-  loadCpPresets()
   timer      = setInterval(refresh, 10000)
   clockTimer = setInterval(() => { countdown.value = Math.max(0, countdown.value - 1) }, 1000)
 })
@@ -1113,6 +693,13 @@ onUnmounted(() => { clearInterval(timer); clearInterval(clockTimer) })
 
 .detail-row  { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .detail-card { background: white; border-radius: 12px; border: 0.5px solid #e8eaed; padding: 18px; }
+.redirect-hint {
+  background: #f0f2ff; border: 1px solid #c5caf5; border-radius: 10px;
+  padding: 12px 16px; color: #555; font-size: 0.88rem; display: flex; align-items: center; gap: 8px;
+}
+.redirect-hint i { color: #667eea; }
+.redirect-link { color: #667eea; text-decoration: none; font-weight: 600; }
+.redirect-link:hover { text-decoration: underline; }
 .model-card  { grid-column: 1 / -1; }
 .detail-title {
   font-size: 0.95rem; font-weight: 500; color: #333;
@@ -1235,24 +822,19 @@ onUnmounted(() => { clearInterval(timer); clearInterval(clockTimer) })
 .detail-title .rc-tip {
   font-size: 0.75rem; color: #aaa; font-weight: 400; margin-left: 8px;
 }
-.rc-save-btn {
-  margin-left: auto; padding: 6px 16px; background: #667eea; color: white;
-  border: none; border-radius: 8px; font-size: 0.85rem; cursor: pointer;
-  display: flex; align-items: center; gap: 6px; transition: opacity 0.2s;
+.rc-config-link {
+  margin-left: auto; padding: 5px 14px; background: #f0f2ff; color: #667eea;
+  border: 1px solid #c5caf5; border-radius: 8px; font-size: 0.82rem;
+  text-decoration: none; display: flex; align-items: center; gap: 6px; transition: background 0.2s;
 }
-.rc-save-btn:hover:not(:disabled) { opacity: 0.85; }
-.rc-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.rc-save-btn.saving { background: #9ca3af; }
-
-.rc-body { display: grid; grid-template-columns: 280px 1fr; gap: 24px; align-items: start; }
+.rc-config-link:hover { background: #e0e3ff; }
 
 /* 用量列 */
-.rc-usage-col { display: flex; flex-direction: column; gap: 10px; }
 .rc-section-label {
   font-size: 0.8rem; font-weight: 600; color: #667eea; text-transform: uppercase;
   letter-spacing: 0.04em; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;
 }
-.rc-usage-grid { display: flex; flex-direction: column; gap: 10px; }
+.rc-usage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .rc-usage-item { display: flex; flex-direction: column; gap: 3px; }
 .ru-label { font-size: 0.78rem; color: #888; }
 .ru-bar-wrap { height: 5px; background: #f0f0f0; border-radius: 3px; overflow: hidden; }

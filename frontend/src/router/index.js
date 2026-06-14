@@ -13,6 +13,7 @@ const ProjectView    = () => import('@/views/ProjectView.vue')
 const RoleEditorView = () => import('@/views/RoleEditorView.vue')
 const ModelView      = () => import('@/views/ModelView.vue')
 const MCPView        = () => import('@/views/MCPView.vue')
+const LogView        = () => import('@/views/LogView.vue')
 
 const routes = [
   { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
@@ -32,7 +33,8 @@ const routes = [
   { path: '/admin/tasks',  name: 'admin-tasks',  component: TasksView,  meta: { title: '任务管理', admin: true } },
   { path: '/admin/system', name: 'admin-system', component: SystemView, meta: { title: '系统信息', admin: true } },
   { path: '/admin/stats',  name: 'admin-stats',  component: () => import('@/views/StatsView.vue'), meta: { title: '统计分析', admin: true } },
-  { path: '/admin/models', name: 'admin-models', component: ModelView, meta: { title: '模型管理', admin: true } },
+  { path: '/admin/models', name: 'admin-models', component: ModelView,   meta: { title: '模型管理', admin: true } },
+  { path: '/admin/logs',   name: 'admin-logs',   component: LogView,    meta: { title: '操作日志', admin: true } },
 
   // 旧路径重定向，保持后向兼容
   { path: '/tools',  redirect: '/admin/tools' },

@@ -20,10 +20,11 @@ export const CONFIG_ITEMS = [
 
 // 系统与数据区（侧边栏第三区）
 export const SYSTEM_ITEMS = [
-  { name: 'admin-models', label: '模型管理', icon: 'fas fa-robot',       path: '/admin/models' },
-  { name: 'admin-tasks',  label: '任务管理', icon: 'fas fa-tasks',       path: '/admin/tasks' },
-  { name: 'admin-stats',  label: '统计分析', icon: 'fas fa-chart-bar',   path: '/admin/stats' },
-  { name: 'admin-system', label: '系统信息', icon: 'fas fa-info-circle', path: '/admin/system' },
+  { name: 'admin-models', label: '模型管理', icon: 'fas fa-robot',         path: '/admin/models' },
+  { name: 'admin-tasks',  label: '任务管理', icon: 'fas fa-tasks',         path: '/admin/tasks' },
+  { name: 'admin-logs',   label: '操作日志', icon: 'fas fa-clipboard-list', path: '/admin/logs' },
+  { name: 'admin-stats',  label: '统计分析', icon: 'fas fa-chart-bar',     path: '/admin/stats' },
+  { name: 'admin-system', label: '系统信息', icon: 'fas fa-info-circle',   path: '/admin/system' },
 ]
 
 // 合并所有后台条目（移动端抽屉管理区复用）
@@ -39,6 +40,7 @@ export const PAGE_CONFIGS = {
   'admin-skills': { title: 'Skill 管理',  icon: 'fas fa-magic' },
   'admin-mcp':    { title: 'MCP 配置',    icon: 'fas fa-plug' },
   'admin-tasks':  { title: '任务管理',     icon: 'fas fa-tasks' },
+  'admin-logs':   { title: '操作日志',     icon: 'fas fa-clipboard-list' },
   'admin-system': { title: '系统信息',     icon: 'fas fa-info-circle' },
   'admin-stats':  { title: '统计分析',     icon: 'fas fa-chart-bar' },
   'admin-models': { title: '模型管理',     icon: 'fas fa-robot' },

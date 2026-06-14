@@ -286,3 +286,54 @@ ModelView.vue 已集成：云端服务商 CRUD（添加/编辑/删除/激活）+
 
 ---
 
+## TODO-55: [REFACTOR] SystemView 清理重复的"可用模型"和"云端服务商"面板✅ 已完成
+
+**什么**: SystemView 底部的「可用模型」折叠卡 + 「云端服务商配置」卡（含全套 CRUD 弹窗）与 ModelView 功能完全重复。
+
+**为什么**: 维护两份相同功能的代码；用户进入系统信息页看到过时的 CRUD 面板造成困惑。
+
+**如何实现**:
+- 删除 template 中的 `.model-card` 和 `.cloud-providers-card` 两个 detail-card div
+- 删除相关 dialog 模板（`showCpDialog` 对话框）
+- 删除 JS 中云端服务商所有 ref/computed/函数：`cloudProviders, cpPresets, showCpDialog, cpEditId, cpSaving, cpForm, CP_MODEL_SUGGESTIONS, cpModelSuggestions, loadCloudProvs, loadCpPresets, openCpAdd, openCpEdit, onCpProviderChange, saveCpForm, activateCp, deactivateCp, deleteCp`
+- 删除 `models` ref（仅用于已删除的列表）；保留 `currentModel`
+- 删除 import 中不再使用的 cloud API 函数（7个）
+- 在原位置加跳转提示，指向 `/admin/models`
+- 删除对应 CSS 块
+
+**入口文件**: `frontend/src/views/SystemView.vue`
+
+---
+
+## TODO-56: [REFACTOR] SystemView 可配置参数面板移至 MCPView ✅ 已完成
+
+**什么**: SystemView 中的「资源配置」右列（可配置参数：并发数/队列/缓存/记忆）与 MCPView（工具配置中心）位置不符，且系统信息页应只展示状态，不做配置。
+
+**为什么**: 页面职责混淆；用户在"系统信息"页找不到应在"配置"页的设置项。
+
+**如何实现**:
+- MCPView 新增第三个 card 「系统资源配置」，包含所有可编辑参数 + 保存按钮
+- SystemView 「资源配置」卡只保留左侧"实时用量"部分，去掉右侧"可配置参数"列；底部加「→ 前往 MCP配置页调整参数」跳转链接
+- MCPView 引入 `getRuntimeConfig, updateRuntimeConfig` API，复制状态变量和保存逻辑
+
+**入口文件**: `frontend/src/views/SystemView.vue`, `frontend/src/views/MCPView.vue`
+
+---
+
+## TODO-57: [NEW PAGE] 操作日志管理页 ✅ 已完成
+
+**什么**: 新增一个操作日志页面，展示用户操作与 AI 操作的时间线，按类型颜色区分。
+
+**为什么**: 方便排查问题（AI调了哪些工具、用户发了什么消息、任务何时执行）；增强系统透明度。
+
+**如何实现**:
+- 新建 `frontend/src/views/LogView.vue`
+- 数据源：拉取 `/api/conversations`（用户↔AI 对话）+ `/api/tasks`（任务执行）+ websocket store 响应时间
+- 类型颜色：用户消息（蓝）/ AI 回复（绿）/ 工具调用（紫）/ 任务执行（橙）/ 错误（红）
+- 支持按类型过滤 + 时间范围筛选
+- 路由 `/admin/logs`，加入 SYSTEM_ITEMS 导航
+
+**入口文件**: `frontend/src/views/LogView.vue`, `frontend/src/router/index.js`, `frontend/src/config/routes.config.js`
+
+---
+
