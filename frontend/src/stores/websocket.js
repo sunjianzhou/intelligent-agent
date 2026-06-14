@@ -89,10 +89,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     if (USE_MOCK) { enableMockMode(); return }
 
     const token = localStorage.getItem('agent_token') || ''
-    if (!token) {
-      console.log('[WS] 未登录，跳过连接')
-      return
-    }
+    if (!token) return
 
     // 仅首次连接（非重连）加载历史，避免重连时覆盖内存中的新消息
     if (!_historyLoaded) {
@@ -101,14 +98,12 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
 
     const wsUrl = `${wsTarget}?token=${token}`
-    console.log('[WS] 连接:', wsUrl)
     ws = new WebSocket(wsUrl)
 
     ws.onopen = () => {
       isConnected.value = true
       wasEverConnected.value = true
       error.value = null
-      console.log('[WS] 连接成功')
       // 每 10 分钟 REST 心跳，确保长时间 WS 会话的 Token 自动续期
       clearInterval(heartbeatTimer)
       heartbeatTimer = setInterval(pingRestForRenewal, 10 * 60 * 1000)
@@ -124,36 +119,30 @@ export const useWebSocketStore = defineStore('websocket', () => {
         try {
           handleMessage(JSON.parse(cleaned))
         } catch {
-          console.error('[WS] 消息解析失败:', event.data)
+          // 无法解析的原始帧，忽略
         }
       }
     }
 
     ws.onerror = (err) => {
-      console.error('[WS] 连接错误:', err)
       isConnected.value = false
       error.value = err
       addMessage({ role: 'system', content: 'WebSocket 连接错误，请检查后端是否运行', timestamp: new Date() })
     }
 
     ws.onclose = () => {
-      console.log('[WS] 连接关闭')
       isConnected.value = false
       clearInterval(heartbeatTimer)
       heartbeatTimer = null
 
       // cancelStreaming 已负责 500ms 后重连，此处不再追加第二个重连定时器
-      if (_manualClose) {
-        console.log('[WS] 主动关闭，跳过自动重连')
-        return
-      }
+      if (_manualClose) return
 
       const token = localStorage.getItem('agent_token')
       if (!token) return
 
       // Token 过期时跳登录，避免无限重连死循环
       if (isTokenExpired(token)) {
-        console.warn('[WS] Token 已过期，跳转登录页')
         redirectToLogin()
         return
       }
@@ -168,7 +157,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   // ── Mock 模式 ─────────────────────────────────────────────
   const enableMockMode = async () => {
     const { WebSocketMock } = await import('@/services/websocket-mock')
-    console.log('[WS] 启用模拟模式')
+    isMockMode.value = true
     isMockMode.value = true
     ws = new WebSocketMock('ws://localhost:8080/ws')
 

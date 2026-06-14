@@ -13,7 +13,7 @@ from typing import Optional, List, Dict, Any
 from loguru import logger
 
 from config.settings import settings
-from services.base_provider import LLMConfig, ChatMessage
+from services.base_provider import LLMConfig, ChatMessage, MULTIMODAL_IMAGE_PREFIX
 from api.metrics import cache_hits_total, cache_misses_total
 from core._context_vars import (
     _request_provider_ctx,
@@ -157,7 +157,7 @@ class ConversationFlowMixin:
         if image_base64:
             msgs.append({
                 "role": "user",
-                "content": "[图片已附加，请结合图片回答]\n" + message,
+                "content": MULTIMODAL_IMAGE_PREFIX + message,
                 "_images": [image_base64],
             })
         else:

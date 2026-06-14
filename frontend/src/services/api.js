@@ -7,6 +7,8 @@ const BASE = '/api'
 // 静默端点：这些接口失败不弹 toast（轮询类接口，失败是正常状态）
 const SILENT_URLS = ['/api/health', '/api/python/health', '/api/system/info', '/api/system/resources']
 
+const _REQUEST_TIMEOUT_MS = 30000
+
 const request = async (url, options = {}) => {
   const authStore = useAuthStore()
   const errorBus  = useErrorBusStore()
@@ -18,12 +20,17 @@ const request = async (url, options = {}) => {
     ...(options.headers || {}),
   }
 
+  const controller = new AbortController()
+  const timeoutId  = setTimeout(() => controller.abort(), _REQUEST_TIMEOUT_MS)
+
   try {
     const res = await fetch(url, {
       ...options,
       headers,
       cache: 'no-store',
+      signal: controller.signal,
     })
+    clearTimeout(timeoutId)
 
     // 处理 token 续期
     const newToken = res.headers.get('X-New-Token')
@@ -41,7 +48,11 @@ const request = async (url, options = {}) => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return await res.json()
   } catch (err) {
-    const msg = `请求失败：${url.replace(BASE, '')} (${err.message})`
+    clearTimeout(timeoutId)
+    const isTimeout = err.name === 'AbortError'
+    const msg = isTimeout
+      ? `请求超时：${url.replace(BASE, '')}（${_REQUEST_TIMEOUT_MS / 1000}s）`
+      : `请求失败：${url.replace(BASE, '')} (${err.message})`
     console.error('[API]', msg)
     errorBus.push(msg, 'error', url)
     if (!silent) {
@@ -242,8 +253,22 @@ export const uploadKnowledgeFile = async (file, description = '') => {
   fd.append('file', file)
   if (description) fd.append('description', description)
   const headers = authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {}
-  const res = await fetch(`${BASE}/knowledge/upload`, { method: 'POST', body: fd, headers })
-  return res.ok ? res.json() : { success: false, message: `上传失败 (${res.status})` }
+  try {
+    const controller = new AbortController()
+    const timeoutId  = setTimeout(() => controller.abort(), 60000) // 上传允许更长超时
+    const res = await fetch(`${BASE}/knowledge/upload`, { method: 'POST', body: fd, headers, signal: controller.signal })
+    clearTimeout(timeoutId)
+    if (!res.ok) {
+      const errMsg = `上传失败 (${res.status})`
+      ElMessage({ message: errMsg, type: 'error', duration: 4000, showClose: true })
+      return { success: false, message: errMsg }
+    }
+    return res.json()
+  } catch (err) {
+    const msg = err.name === 'AbortError' ? '上传超时（60s），请检查文件大小或网络' : `上传失败: ${err.message}`
+    ElMessage({ message: msg, type: 'error', duration: 4000, showClose: true })
+    return { success: false, message: msg }
+  }
 }
 
 // ── Roles ─────────────────────────────────────────────────────────────────────

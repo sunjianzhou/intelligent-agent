@@ -387,9 +387,11 @@
           @paste="onPasteImage"
         />
         <!-- 附图按钮 -->
-        <label class="attach-btn" title="附上图片（支持粘贴）" :class="{ 'attach-active': attachedImagePreview }">
-          <i class="fas fa-image" />
-          <input type="file" accept="image/*" style="display:none" @change="onAttachImageFile" />
+        <label class="attach-btn" title="附上图片（支持粘贴）"
+               :class="{ 'attach-active': attachedImagePreview, 'attach-loading': isReadingImage }"
+               :style="isReadingImage ? 'pointer-events:none;opacity:0.5' : ''">
+          <i :class="isReadingImage ? 'fas fa-circle-notch fa-spin' : 'fas fa-image'" />
+          <input type="file" accept="image/*" style="display:none" :disabled="isReadingImage" @change="onAttachImageFile" />
         </label>
         <!-- 停止生成按钮（流式输出时显示）+ 脉冲动画 -->
         <button v-if="isStreaming || isThinking" class="stop-btn stop-btn-pulse" title="点击停止生成" @click="cancelStreaming">
@@ -574,6 +576,7 @@ const messageListRef       = ref(null)
 // 多模态图片附件
 const attachedImageB64     = ref(null)   // 纯 base64 字符串（去掉 data URL 前缀）
 const attachedImagePreview = ref(null)   // Data URL 用于本地显示缩略图
+const isReadingImage       = ref(false)  // FileReader 进行中时禁用附图按钮
 
 const IMAGE_MAX_BYTES = 5 * 1024 * 1024  // 5 MB 上限
 
@@ -583,6 +586,7 @@ const _readImageFile = (file) => {
     ElMessage({ message: '图片大小不能超过 5MB', type: 'warning', duration: 2500 })
     return
   }
+  isReadingImage.value = true
   const reader = new FileReader()
   reader.onload = (e) => {
     const dataUrl = e.target.result             // "data:image/png;base64,xxxx"
@@ -590,6 +594,11 @@ const _readImageFile = (file) => {
     // 去掉 "data:image/xxx;base64," 前缀，只保留纯 base64
     const comma = dataUrl.indexOf(',')
     attachedImageB64.value = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
+    isReadingImage.value = false
+  }
+  reader.onerror = () => {
+    ElMessage({ message: '图片读取失败，请重试', type: 'error', duration: 2500 })
+    isReadingImage.value = false
   }
   reader.readAsDataURL(file)
 }
@@ -813,7 +822,8 @@ const submitFeedback = async (msg, index, rating) => {
       request_id:      null,
     })
   } catch (e) {
-    console.error('[Feedback] 提交失败:', e)
+    ElMessage({ message: '反馈提交失败，请重试', type: 'error', duration: 2500 })
+    feedbacks.value[index] = null  // 重置按钮状态，允许用户再次提交
   }
 }
 
@@ -1052,12 +1062,18 @@ const loadSession = async (sessionId) => {
   store.currentSessionId = sessionId
   localStorage.setItem('ia_session_id', sessionId)
   msgs.forEach(m => {
-    store.messages.push({
+    const entry = {
       id: genId(),
       role: m.role,
       content: m.content,
       timestamp: m.timestamp || new Date().toISOString(),
-    })
+    }
+    // 还原多模态图片预览（base64 存于 images_b64[0]）
+    if (m.images_b64?.length) {
+      entry.images_b64 = m.images_b64
+      entry.imagePreview = `data:image/jpeg;base64,${m.images_b64[0]}`
+    }
+    store.messages.push(entry)
   })
   showHistory.value = false
   nextTick(scrollToBottom)
@@ -1085,11 +1101,11 @@ const deleteSession = async (sessionId) => {
 }
 
 const branchFromMessage = async (index) => {
-  const seedMsgs = messages.value.slice(0, index + 1).map(m => ({
-    role:      m.role,
-    content:   m.content || '',
-    timestamp: m.timestamp || new Date().toISOString(),
-  }))
+  const seedMsgs = messages.value.slice(0, index + 1).map(m => {
+    const entry = { role: m.role, content: m.content || '', timestamp: m.timestamp || new Date().toISOString() }
+    if (m.images_b64?.length) entry.images_b64 = m.images_b64
+    return entry
+  })
   try {
     const res = await apiBranchConversation(seedMsgs, store.currentSessionId)
     if (!res?.session_id) throw new Error('no session_id')

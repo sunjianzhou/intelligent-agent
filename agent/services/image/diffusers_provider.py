@@ -24,13 +24,14 @@ from services.image.base_image_provider import BaseImageProvider, ImageRequest, 
 _pipeline_cache: Dict[str, Any] = {}
 _cache_lock = threading.Lock()
 
-# 进度状态：由生成回调写入，由 get_progress() 读取
+# 进度状态：由生成回调写入，由 get_progress() 读取；_progress_lock 保护并发读写
 _progress_state: Dict[str, Any] = {
     "progress": 0.0,
     "step": 0,
     "max": 0,
     "model_id": None,
 }
+_progress_lock = threading.Lock()
 
 
 def _resolve_device(device: str) -> str:
@@ -103,6 +104,9 @@ def _load_pipeline(model_id: str, device: str) -> Any:
             f"diffusers/torch 未安装: {e}\n"
             "请执行: pip install diffusers transformers accelerate torch"
         ) from e
+    except Exception as e:
+        logger.error(f"[Diffusers] 模型加载失败 ({model_id}): {e}", exc_info=True)
+        raise
 
 
 class DiffusersProvider(BaseImageProvider):
@@ -136,12 +140,13 @@ class DiffusersProvider(BaseImageProvider):
 
     def get_progress(self) -> dict:
         """返回当前生成进度（由 step callback 更新）。"""
-        return {
-            "progress":  _progress_state.get("progress", 0.0),
-            "step":      _progress_state.get("step", 0),
-            "max":       _progress_state.get("max", 0),
-            "model_id":  _progress_state.get("model_id"),
-        }
+        with _progress_lock:
+            return {
+                "progress":  _progress_state.get("progress", 0.0),
+                "step":      _progress_state.get("step", 0),
+                "max":       _progress_state.get("max", 0),
+                "model_id":  _progress_state.get("model_id"),
+            }
 
     def switch_model(self, new_model_id: str) -> Tuple[bool, str]:
         """清除旧模型缓存，下次生成时自动加载新模型。"""
@@ -161,7 +166,8 @@ class DiffusersProvider(BaseImageProvider):
 
     async def generate(self, req: ImageRequest) -> ImageResult:
         import asyncio
-        _progress_state.update({"progress": 0.0, "step": 0, "max": 0, "model_id": self._model_id})
+        with _progress_lock:
+            _progress_state.update({"progress": 0.0, "step": 0, "max": 0, "model_id": self._model_id})
         try:
             image_bytes = await asyncio.get_event_loop().run_in_executor(
                 None, self._generate_sync, req
@@ -192,8 +198,9 @@ class DiffusersProvider(BaseImageProvider):
         _progress_state["max"] = total_steps
 
         def _step_callback(pipeline, step: int, timestep: int, kwargs: dict) -> dict:
-            _progress_state["step"]     = step + 1
-            _progress_state["progress"] = (step + 1) / total_steps
+            with _progress_lock:
+                _progress_state["step"]     = step + 1
+                _progress_state["progress"] = (step + 1) / total_steps
             return kwargs
 
         logger.info(f"[Diffusers] 开始推理 size={req.size} steps={total_steps} device={self._device}")
@@ -215,7 +222,8 @@ class DiffusersProvider(BaseImageProvider):
         buf = io.BytesIO()
         image.save(buf, format="PNG")
         logger.info(f"[Diffusers] 推理完成，{len(buf.getvalue())} bytes")
-        _progress_state["progress"] = 1.0
+        with _progress_lock:
+            _progress_state["progress"] = 1.0
         return buf.getvalue()
 
     def _generate_img2img(self, pipe, req: ImageRequest, prompt: str,

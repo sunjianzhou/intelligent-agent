@@ -3,6 +3,9 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 
+# 多模态消息前缀：提示不支持 images 字段的模型时使用
+MULTIMODAL_IMAGE_PREFIX = "[图片已附加，请结合图片回答]\n"
+
 
 @dataclass
 class ChatMessage:

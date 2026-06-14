@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -82,17 +83,43 @@ def _extract_text(filename: str, content: bytes) -> str:
 # ── 分块 ─────────────────────────────────────────────────────────────────────
 
 def _chunk_text(text: str) -> List[str]:
+    """按段落/句子边界分块，保证语义完整性。"""
     text = text.strip()
     if not text:
         return []
+
+    # 按双换行分段落
+    paragraphs = [p.strip() for p in re.split(r'\n{2,}', text) if p.strip()]
+
     chunks: List[str] = []
-    start = 0
-    while start < len(text):
-        end = min(start + _CHUNK_SIZE, len(text))
-        chunks.append(text[start:end])
-        if end >= len(text):
-            break
-        start = end - _CHUNK_OVERLAP
+    current = ""
+
+    for para in paragraphs:
+        if not current:
+            current = para
+        elif len(current) + len(para) + 2 <= _CHUNK_SIZE:
+            current = current + "\n\n" + para
+        else:
+            chunks.append(current)
+            # 段落本身超限则按句子继续拆分
+            if len(para) > _CHUNK_SIZE:
+                sentences = re.split(r'(?<=[。！？.!?…])\s*', para)
+                buf = ""
+                for sen in sentences:
+                    if not buf:
+                        buf = sen
+                    elif len(buf) + len(sen) <= _CHUNK_SIZE:
+                        buf += sen
+                    else:
+                        chunks.append(buf)
+                        buf = sen
+                current = buf
+            else:
+                current = para
+
+    if current:
+        chunks.append(current)
+
     return chunks
 
 
@@ -115,12 +142,17 @@ async def upload_knowledge_file(
             content={"success": False, "message": f"不支持 {ext}，可用: {', '.join(sorted(_ALLOWED_EXT))}"},
         )
 
-    content = await file.read()
-    if len(content) > _MAX_BYTES:
+    # 先检查文件大小（无需全量读取内容）
+    file.file.seek(0, 2)
+    file_size = file.file.tell()
+    file.file.seek(0)
+    if file_size > _MAX_BYTES:
         return JSONResponse(
             status_code=400,
             content={"success": False, "message": "文件超过 10 MB 上限"},
         )
+
+    content = await file.read()
 
     try:
         text = _extract_text(filename, content)
@@ -171,10 +203,7 @@ async def upload_knowledge_file(
     }
     _save_manifest(user_id, manifest)
 
-    logger.info(
-        f"文件入库完成: user={user_id}, file={filename}, "
-        f"chunks={len(chunks)}, chars={len(text)}, file_id={file_id}"
-    )
+    logger.info(f"文件入库完成: user={user_id}, file={filename}, chunks={len(chunks)}, file_id={file_id}")
     return {
         "success":     True,
         "file_id":     file_id,

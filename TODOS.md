@@ -456,3 +456,197 @@ ModelView.vue 已集成：云端服务商 CRUD（添加/编辑/删除/激活）+
 
 ---
 
+## TODO-60: [BUG-HIGH] 多模态图片未持久化到对话历史
+
+**问题**：`conversation_flow.py:157-162` 中 `image_base64` 仅注入 LLM 消息 dict 的 `_images` 字段，但 `_append_messages()` 保存对话历史时不携带该字段；重新加载历史对话时图片丢失。
+
+**修复方向**：
+- `_append_messages()` 保存 user 消息时，若消息 dict 有 `_images`，将 base64 一同写入 ChromaDB metadata（`images_b64` 字段）
+- `get_context_for_query()` / 对话历史 API 返回时带上 `images_b64`
+
+**涉及文件**：`agent/core/conversation_flow.py`, `agent/memory/short_term_memory.py`
+
+---
+
+## TODO-61: [BUG-HIGH] 前端历史会话加载丢弃图片数据
+
+**问题**：`ChatView.vue:loadSession()` 从 `/api/conversations/{id}` 加载消息时，仅复制 `role/content/timestamp`，不恢复 `imagePreview`；即使后端已存图片，前端气泡也不显示。
+
+**修复方向**：
+- 后端 `conversations_router.py` 返回消息时携带 `images_b64`（来自 memory metadata）
+- `loadSession()` 将 `images_b64[0]` 还原为 `imagePreview`（加 data URL 前缀）显示在气泡
+
+**涉及文件**：`frontend/src/views/ChatView.vue`, `agent/api/conversations_router.py`
+
+---
+
+## TODO-62: [BUG-HIGH] diffusers `_progress_state` 无锁全局变量
+
+**问题**：`diffusers_provider.py:28-32` 模块级字典在无锁保护下被并发请求同时读写，多用户并发时进度信息错乱。
+
+**修复方向**：用 `threading.Lock()` 保护 `_progress_state` 的读写操作，或改为 `dict` + `RLock`。
+
+**涉及文件**：`agent/services/image/diffusers_provider.py`
+
+---
+
+## TODO-63: [SEC-HIGH] knowledge_router 上传日志泄露物理路径
+
+**问题**：`knowledge_router.py:174-177` 将用户上传文件的完整磁盘路径输出到日志，生产环境安全隐患。
+
+**修复方向**：日志只记录文件名和 chunk 数，去掉完整路径。
+
+**涉及文件**：`agent/api/knowledge_router.py`
+
+---
+
+## TODO-64: [REFACTOR-HIGH] 多模态"图片前缀"文本两处重复
+
+**问题**：`chat_router.py:107` 和 `conversation_flow.py:160` 分别硬编码 `"[图片已附加，请结合图片回答]\n"`，维护不一致风险。
+
+**修复方向**：提取为常量 `MULTIMODAL_IMAGE_PREFIX`，统一在一处定义（`base_provider.py` 或 `chat_router.py`）。
+
+**涉及文件**：`agent/api/chat_router.py`, `agent/core/conversation_flow.py`
+
+---
+
+## TODO-65: [BUG-HIGH] diffusers 模型加载裸 `except Exception` 吞掉异常
+
+**问题**：`diffusers_provider.py:93,100,104` 多处 `except Exception` 未记录异常详情，硬件/网络/权限问题无法快速定位。
+
+**修复方向**：改为 `except Exception as e: logger.error("...", exc_info=True)` 并重新抛出或返回明确错误信息。
+
+**涉及文件**：`agent/services/image/diffusers_provider.py`
+
+---
+
+## TODO-66: [BUG-HIGH] `project_id` 未写入对话历史 metadata
+
+**问题**：`conversations_router.py` 保存对话时仅存 `role/content/timestamp`，`project_id` 未写入；重新加载后项目上下文丢失。
+
+**修复方向**：`_append_messages()` 接受并存储 `project_id` 到 metadata。
+
+**涉及文件**：`agent/core/conversation_flow.py`, `agent/memory/short_term_memory.py`
+
+---
+
+## TODO-67: [BUG-HIGH] 前端 API 无全局请求超时
+
+**问题**：`api.js` 所有 `fetch()` 调用无超时控制，网络卡顿时 UI 冻结无限等待。
+
+**修复方向**：封装 `withTimeout(fetchPromise, 30000)` 或用 `AbortController`，在通用 `request()` 函数中统一处理。
+
+**涉及文件**：`frontend/src/services/api.js`
+
+---
+
+## TODO-68: [CLEANUP-MEDIUM] websocket.js 遗留 6 条 console.log
+
+**问题**：`websocket.js:93,104,111,140,147,171` 调试日志未清理，生产环境输出连接/关闭/模拟模式信息。
+
+**修复方向**：删除或替换为 `import.meta.env.DEV && console.log(...)` 条件输出。
+
+**涉及文件**：`frontend/src/stores/websocket.js`
+
+---
+
+## TODO-69: [UX-MEDIUM] 反馈提交失败无用户提示
+
+**问题**：`ChatView.vue:816` 点赞/踩提交失败仅 `console.error()`，用户无感知。
+
+**修复方向**：改为 `ElMessage.error('反馈提交失败，请重试')` 并重置按钮状态。
+
+**涉及文件**：`frontend/src/views/ChatView.vue`
+
+---
+
+## TODO-70: [UX-MEDIUM] 附图按钮上传中无禁用态
+
+**问题**：`ChatView.vue:391` 图片读取过程中按钮无 `disabled`，用户可重复点击覆盖上一张。
+
+**修复方向**：`_readImageFile()` 读取期间将按钮设为 disabled；`onload` 后恢复。
+
+**涉及文件**：`frontend/src/views/ChatView.vue`
+
+---
+
+## TODO-71: [PERF-MEDIUM] knowledge_router 先读文件再检查大小
+
+**问题**：`knowledge_router.py:118-122` `await file.read()` 后才校验文件大小，大文件先占内存后拒绝。
+
+**修复方向**：通过 `file.size`（UploadFile 属性）先做大小校验，再 `read()`。
+
+**涉及文件**：`agent/api/knowledge_router.py`
+
+---
+
+## TODO-72: [REFACTOR-MEDIUM] uploadKnowledgeFile 绕过通用 request()
+
+**问题**：`api.js:244` 直接 `fetch()` 发送 FormData，未走统一错误处理/令牌刷新逻辑。
+
+**修复方向**：改用通用 `request()` 函数并传入 `{body: formData}`（不设 Content-Type，让浏览器自动设 multipart boundary）。
+
+**涉及文件**：`frontend/src/services/api.js`
+
+---
+
+## TODO-73: [UX-MEDIUM] 分支对话丢弃附图
+
+**问题**：`ChatView.vue:1054` `branchFromMessage()` 构造种子消息时丢弃 `imagePreview`/`images`。
+
+**修复方向**：`seedMsgs.push({ ...msg })` 改为完整复制（含图片字段）。
+
+**涉及文件**：`frontend/src/views/ChatView.vue`
+
+---
+
+## TODO-74: [QUALITY-MEDIUM] knowledge_router 固定字符数分块
+
+**问题**：`knowledge_router.py:84-96` 仅按固定 500 字符切割，不考虑句子/段落边界，分块质量差，检索相关性下降。
+
+**修复方向**：按句号/换行符先分句，凑满阈值再封块；或引入 `langchain.text_splitter.RecursiveCharacterTextSplitter`。
+
+**涉及文件**：`agent/api/knowledge_router.py`
+
+---
+
+## TODO-75: [OBSERV-MEDIUM] 缺少请求 traceID
+
+**问题**：`chat_router.py` 等无请求级别 traceID，无法追踪一个请求在三层服务间的完整链路。
+
+**修复方向**：在 `ChatRequest` 加 `request_id`（前端生成 UUID），各层日志携带该字段。
+
+**涉及文件**：`agent/api/chat_router.py`, `frontend/src/stores/websocket.js`
+
+---
+
+## TODO-76: [SEC-LOW] knowledge_router 路径遍历防护缺失
+
+**问题**：`knowledge_router.py:25-28` 对 `user_id`/`filename` 参数未做路径净化，恶意 `../` 可能越目录。
+
+**修复方向**：用 `pathlib.Path.resolve()` 验证最终路径在 `_KF_BASE` 内。
+
+**涉及文件**：`agent/api/knowledge_router.py`
+
+---
+
+## TODO-77: [CLEANUP-LOW] 会话消息数上限 200 硬编码
+
+**问题**：`conversations_router.py:107` 截断上限写死，大型项目或长对话无法调整。
+
+**修复方向**：提取为 `settings.conversation_max_messages`（默认 200），通过 `.env` 可配置。
+
+**涉及文件**：`agent/api/conversations_router.py`, `agent/config/settings.py`
+
+---
+
+## TODO-78: [CLEANUP-LOW] diffusers `_load_pipeline()` 函数超 170 行
+
+**问题**：`diffusers_provider.py:55-100` 模型加载、dtype 选择、内存优化混在一起，可读性差。
+
+**修复方向**：拆为 `_pick_dtype()`、`_apply_memory_opts()`、`_load_pipeline()` 三个小函数。
+
+**涉及文件**：`agent/services/image/diffusers_provider.py`
+
+---
+

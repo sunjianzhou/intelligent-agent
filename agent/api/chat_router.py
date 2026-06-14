@@ -18,7 +18,7 @@ from api.roles_router import (
 )
 from config.settings import settings
 from personas.prompt_builder import PromptBuilder as _PromptBuilder
-from services.base_provider import ChatMessage, LLMConfig
+from services.base_provider import ChatMessage, LLMConfig, MULTIMODAL_IMAGE_PREFIX
 
 router = APIRouter()
 
@@ -83,9 +83,12 @@ async def chat(request: ChatRequest, http_req: Request):
                 )
                 _now = datetime.now().isoformat()
                 _sid = request.session_id or user_id
+                _user_msg: Dict[str, Any] = {"role": "user", "content": request.message, "timestamp": _now}
+                if request.image_base64:
+                    _user_msg["images_b64"] = [request.image_base64]
                 _append_messages(user_id, _sid, [
-                    {"role": "user",      "content": request.message,       "timestamp": _now},
-                    {"role": "assistant", "content": result["content"],      "timestamp": _now},
+                    _user_msg,
+                    {"role": "assistant", "content": result["content"], "timestamp": _now},
                 ])
                 return {
                     "response":         result["content"],
@@ -104,7 +107,7 @@ async def chat(request: ChatRequest, http_req: Request):
                     max_tokens=request.max_tokens or settings.ollama_max_tokens,
                     top_p=request.top_p or settings.ollama_top_p,
                 )
-                _img_prefix = "[图片已附加，请结合图片回答]\n" if request.image_base64 else ""
+                _img_prefix = MULTIMODAL_IMAGE_PREFIX if request.image_base64 else ""
                 messages = [
                     ChatMessage(role="system", content=(
                         f"你是一个有帮助的AI助手，请用中文回答。"
@@ -177,9 +180,14 @@ async def chat_stream_endpoint(request: ChatRequest, http_req: Request):
                             _full_reply.append(data.get("content", ""))
                     if _full_reply:
                         _now = datetime.now().isoformat()
+                        _stream_user_msg: Dict[str, Any] = {
+                            "role": "user", "content": request.message, "timestamp": _now
+                        }
+                        if request.image_base64:
+                            _stream_user_msg["images_b64"] = [request.image_base64]
                         _append_messages(user_id, _session_id, [
-                            {"role": "user",      "content": request.message, "timestamp": _now},
-                            {"role": "assistant", "content": _full_reply[0],  "timestamp": _now},
+                            _stream_user_msg,
+                            {"role": "assistant", "content": _full_reply[0], "timestamp": _now},
                         ])
 
                 elif user_provider:
@@ -189,7 +197,7 @@ async def chat_stream_endpoint(request: ChatRequest, http_req: Request):
                         max_tokens=request.max_tokens or settings.ollama_max_tokens,
                         top_p=request.top_p or settings.ollama_top_p,
                     )
-                    _img_prefix_s = "[图片已附加，请结合图片回答]\n" if request.image_base64 else ""
+                    _img_prefix_s = MULTIMODAL_IMAGE_PREFIX if request.image_base64 else ""
                     chat_messages = [
                         ChatMessage(role="system", content=(
                             f"你是一个有帮助的AI助手，请用中文回答。"
