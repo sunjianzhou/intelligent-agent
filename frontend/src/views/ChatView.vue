@@ -169,6 +169,13 @@
               >
                 <i class="fas fa-thumbs-down" />
               </button>
+              <button
+                class="bact-btn"
+                title="从此处分支对话"
+                @click="branchFromMessage(index)"
+              >
+                <i class="fas fa-code-branch" />
+              </button>
             </div>
           </div>
           <div v-if="msg.role === 'user'" class="avatar user-avatar">
@@ -285,7 +292,11 @@
                 <i class="fas fa-trash-alt" />
               </button>
             </div>
-            <div class="history-item-preview">{{ sess.preview || '新对话' }}</div>
+            <div class="history-item-preview">
+              <span v-if="sess.parent_session_id" class="branch-badge">
+                <i class="fas fa-code-branch" /> 分支
+              </span>{{ sess.preview || '新对话' }}
+            </div>
             <div class="history-item-count">{{ sess.message_count }} 条消息</div>
           </div>
         </div>
@@ -440,6 +451,7 @@ import { useProjectStore }      from '@/stores/project'
 import {
   submitFeedback as apiFeedback,
   listConversations, getConversation, deleteConversation,
+  branchConversation as apiBranchConversation,
 } from '@/services/api'
 import { formatTime, formatForFilename } from '@/utils/date'
 import { genId } from '@/utils/string'
@@ -973,6 +985,22 @@ const deleteSession = async (sessionId) => {
     } else {
       handleNewConversation()
     }
+  }
+}
+
+const branchFromMessage = async (index) => {
+  const seedMsgs = messages.value.slice(0, index + 1).map(m => ({
+    role:      m.role,
+    content:   m.content || '',
+    timestamp: m.timestamp || new Date().toISOString(),
+  }))
+  try {
+    const res = await apiBranchConversation(seedMsgs, store.currentSessionId)
+    if (!res?.session_id) throw new Error('no session_id')
+    await loadSession(res.session_id)
+    ElMessage({ message: '分支对话已创建，继续输入即可', type: 'success', duration: 2000 })
+  } catch {
+    ElMessage({ message: '创建分支失败，请重试', type: 'error', duration: 2000 })
   }
 }
 
@@ -1728,6 +1756,13 @@ onUnmounted(() => {
   margin-bottom: 3px;
 }
 .history-item-count { font-size: 0.74rem; color: #bbb; }
+.branch-badge {
+  display: inline-flex; align-items: center; gap: 2px;
+  font-size: 0.7rem; color: #6c6fff; background: #ededff;
+  border-radius: 3px; padding: 0 4px; margin-right: 4px; vertical-align: middle;
+  font-weight: 600; line-height: 1.5;
+}
+[data-theme="dark"] .branch-badge { color: #a5b4fc; background: #2a2a5a; }
 .history-slide-enter-active, .history-slide-leave-active { transition: transform 0.25s ease; }
 .history-slide-enter-from, .history-slide-leave-to { transform: translateX(-100%); }
 .clear-float-btn {

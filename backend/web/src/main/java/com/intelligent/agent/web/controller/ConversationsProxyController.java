@@ -8,6 +8,7 @@ import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import org.springframework.web.bind.annotation.RequestBody;
 
 /**
  * 对话历史代理端点（转发到 Python Agent /api/conversations/*）。
@@ -53,5 +54,11 @@ public class ConversationsProxyController extends AbstractProxyController {
     @DeleteMapping("/api/conversations")
     public ResponseEntity<Map<String, Object>> clearAllConversations(HttpServletRequest req) {
         return proxyDelete("/api/conversations", req);
+    }
+
+    @PostMapping("/api/conversations/branch")
+    public ResponseEntity<Map<String, Object>> branchConversation(
+            @RequestBody Map<String, Object> body, HttpServletRequest req) {
+        return proxyPost("/api/conversations/branch", body, req);
     }
 }

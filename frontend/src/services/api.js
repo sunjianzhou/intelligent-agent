@@ -204,6 +204,12 @@ export const listConversations   = () => request(`${BASE}/conversations`)
 export const getConversation     = (id) => request(`${BASE}/conversations/${encodeURIComponent(id)}`)
 export const deleteConversation  = (id) => request(`${BASE}/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' })
 export const clearConversations  = () => request(`${BASE}/conversations`, { method: 'DELETE' })
+export const branchConversation  = (messages, parentSessionId) =>
+  request(`${BASE}/conversations/branch`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ messages, parent_session_id: parentSessionId }),
+  })
 
 // ── Roles ─────────────────────────────────────────────────────────────────────
 

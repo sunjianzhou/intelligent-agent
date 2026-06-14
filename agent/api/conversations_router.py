@@ -76,13 +76,16 @@ def _list_sessions_meta(user_id: str) -> List[Dict[str, Any]]:
                 (m["content"][:80] for m in data.get("messages", []) if m.get("role") == "user"),
                 "",
             )
-            sessions.append({
-                "session_id": sid,
-                "created_at": data.get("created_at", ""),
-                "updated_at": data.get("updated_at", ""),
+            entry: Dict[str, Any] = {
+                "session_id":   sid,
+                "created_at":   data.get("created_at", ""),
+                "updated_at":   data.get("updated_at", ""),
                 "message_count": len(data.get("messages", [])),
-                "preview": first_user,
-            })
+                "preview":      first_user,
+            }
+            if data.get("parent_session_id"):
+                entry["parent_session_id"] = data["parent_session_id"]
+            sessions.append(entry)
         except Exception as e:
             logger.warning(f"读取会话元数据失败 [{sid}]: {e}")
     sessions.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
@@ -147,6 +150,36 @@ async def clear_all_conversations(request: Request):
             count += 1
     logger.info(f"清空会话: user={user_id}, 删除 {count} 条")
     return {"success": True, "deleted": count}
+
+
+@router.post("/api/conversations/branch")
+async def branch_conversation(request: Request):
+    """从指定消息列表创建分支会话，返回新的 session_id。"""
+    user_id = getattr(request.state, "user_id", "default")
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"success": False, "message": "请求体无效"})
+
+    messages          = body.get("messages", [])
+    parent_session_id = body.get("parent_session_id")
+
+    new_session_id = str(uuid.uuid4())
+    now = datetime.now().isoformat()
+    session: Dict[str, Any] = {
+        "session_id":        new_session_id,
+        "user_id":           user_id,
+        "created_at":        now,
+        "updated_at":        now,
+        "parent_session_id": parent_session_id,
+        "messages":          messages[-_MAX_MESSAGES_PER_SESSION:],
+    }
+    _save_session(user_id, session)
+    logger.info(
+        f"分支会话已创建: user={user_id}, new={new_session_id}, "
+        f"parent={parent_session_id}, msgs={len(messages)}"
+    )
+    return {"success": True, "session_id": new_session_id}
 
 
 @router.post("/api/conversations/append")
