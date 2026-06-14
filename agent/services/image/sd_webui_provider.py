@@ -17,15 +17,15 @@ from services.image.base_image_provider import BaseImageProvider, ImageRequest, 
 
 class SDWebUIProvider(BaseImageProvider):
     """
-    调用 SD WebUI /sdapi/v1/txt2img 接口。
+    调用 SD WebUI /sdapi/v1/txt2img 或 /sdapi/v1/img2img 接口。
     API 文档：http://localhost:7860/docs（WebUI 启动后访问）
     """
 
     def __init__(self, base_url: str, model: str = "",
                  username: str = "", password: str = ""):
-        self._base_url  = base_url.rstrip("/")
-        self._model     = model or "stable-diffusion-xl"
-        self._auth      = (username, password) if username else None
+        self._base_url = base_url.rstrip("/")
+        self._model    = model or "stable-diffusion-xl"
+        self._auth     = (username, password) if username else None
 
     @property
     def provider_name(self) -> str:
@@ -76,43 +76,71 @@ class SDWebUIProvider(BaseImageProvider):
             logger.error(f"[SDWebUI] 切换模型失败: {e}")
             return False, str(e)
 
+    async def get_progress(self) -> dict:
+        """查询当前生成进度（0.0~1.0）。SD WebUI 未在出图时返回 progress=0。"""
+        try:
+            async with httpx.AsyncClient(timeout=5, auth=self._auth) as client:
+                r = await client.get(f"{self._base_url}/sdapi/v1/progress",
+                                     params={"skip_current_image": "true"})
+                r.raise_for_status()
+                data = r.json()
+                return {
+                    "progress":   data.get("progress", 0.0),
+                    "eta":        data.get("eta_relative", 0.0),
+                    "state":      data.get("state", {}),
+                    "job":        data.get("state", {}).get("job", ""),
+                    "step":       data.get("state", {}).get("sampling_step", 0),
+                    "total_step": data.get("state", {}).get("sampling_steps", 0),
+                }
+        except Exception as e:
+            logger.debug(f"[SDWebUI] 进度查询失败: {e}")
+            return {"progress": 0.0, "eta": 0.0, "state": {}, "job": "", "step": 0, "total_step": 0}
+
     async def generate(self, req: ImageRequest) -> ImageResult:
-        # 将 WxH 格式解析为整数
         try:
             w, h = (int(x) for x in req.size.split("x"))
         except ValueError:
             w, h = 1024, 1024
 
-        payload = {
-            "prompt":          f"{req.prompt}, {req.style}" if req.style else req.prompt,
+        sampler = req.sampler_name or "DPM++ 2M Karras"
+        full_prompt = f"{req.prompt}, {req.style}" if req.style else req.prompt
+
+        base_payload = {
+            "prompt":          full_prompt,
             "negative_prompt": req.negative_prompt or "",
             "steps":           req.steps or 20,
             "cfg_scale":       req.guidance_scale or 7.5,
             "width":           w,
             "height":          h,
-            "sampler_name":    "DPM++ 2M Karras",
+            "sampler_name":    sampler,
             "batch_size":      1,
         }
-        payload.update(req.extra)
+        base_payload.update(req.extra)
 
-        logger.info(f"[SDWebUI] 生成请求 size={req.size} "
-                    f"prompt={payload['prompt'][:60]}")
+        # img2img 模式
+        if req.init_image_base64:
+            endpoint = f"{self._base_url}/sdapi/v1/img2img"
+            payload  = {
+                **base_payload,
+                "init_images":        [req.init_image_base64],
+                "denoising_strength": req.denoising_strength,
+                "resize_mode":        0,
+            }
+            logger.info(f"[SDWebUI] img2img 请求 size={req.size} sampler={sampler}")
+        else:
+            endpoint = f"{self._base_url}/sdapi/v1/txt2img"
+            payload  = base_payload
+            logger.info(f"[SDWebUI] txt2img 请求 size={req.size} sampler={sampler} prompt={full_prompt[:60]}")
+
         try:
-            async with httpx.AsyncClient(
-                timeout=300,  # 本地出图可能较慢
-                auth=self._auth,
-            ) as client:
-                resp = await client.post(
-                    f"{self._base_url}/sdapi/v1/txt2img",
-                    json=payload,
-                )
+            async with httpx.AsyncClient(timeout=300, auth=self._auth) as client:
+                resp = await client.post(endpoint, json=payload)
                 resp.raise_for_status()
                 data   = resp.json()
                 images = data.get("images") or []
                 if not images:
                     return self.unavailable_result("SD WebUI 返回空结果")
 
-                # WebUI 返回 base64 编码的 PNG
                 img_bytes = base64.b64decode(images[0])
                 logger.info(f"[SDWebUI] 生成成功，图片大小: {len(img_bytes)} bytes")
                 return ImageResult(

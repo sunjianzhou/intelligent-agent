@@ -26,9 +26,16 @@
           {{ item.label }}
         </router-link>
 
-        <!-- 聊天页：历史会话快捷入口 -->
+        <!-- 聊天页：历史会话 + 新对话快捷入口 -->
         <template v-if="route.name === 'chat'">
           <div class="mobile-nav-divider" />
+          <div
+            class="mobile-nav-item mobile-nav-option"
+            @click="store.triggerNewSession(); showMobileMenu = false"
+          >
+            <i class="fas fa-plus" />
+            新对话
+          </div>
           <div
             class="mobile-nav-item mobile-nav-option"
             @click="store.triggerOpenHistory(); showMobileMenu = false"

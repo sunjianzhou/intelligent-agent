@@ -10,9 +10,12 @@ class ImageRequest:
     size: str = "1024x1024"
     steps: int = 20
     guidance_scale: float = 7.5
-    style: Optional[str] = None       # 附加风格词，如 "oil painting"
-    negative_prompt: str = ""         # 负面提示词（SD 系列支持）
-    extra: dict = field(default_factory=dict)  # Provider 专属扩展参数
+    style: Optional[str] = None              # 附加风格词，如 "oil painting"
+    negative_prompt: str = ""                # 负面提示词（SD 系列支持）
+    sampler_name: str = "DPM++ 2M Karras"   # 采样器（SD WebUI / ComfyUI 支持）
+    init_image_base64: Optional[str] = None  # img2img 底图（纯 base64，不含前缀）
+    denoising_strength: float = 0.75         # img2img 去噪强度 0~1
+    extra: dict = field(default_factory=dict)
 
 
 @dataclass

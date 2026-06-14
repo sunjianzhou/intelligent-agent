@@ -6,21 +6,30 @@
 
 ## 图片生成模块（本地优先）— 已建框架，待逐步完善
 
-> **框架状态（2026-06-14 完成）：**
-> - `services/image/` 新增 `ComfyUIProvider`（轮询模式骨架）、`DiffusersProvider`（进程内推理骨架）
-> - `SDWebUIProvider` 已可用（轮询 /sdapi/v1/txt2img）
+> **框架状态（2026-06-14 更新）：**
+> - `ComfyUIProvider` 已全量实现：txt2img / img2img / 采样器映射 / WS 进度 / HTTP 轮询降级 / 底图上传
+> - `SDWebUIProvider` 已可用：txt2img / img2img / 进度 / 采样器 / 模型切换
+> - `DiffusersProvider` 骨架，进程内推理（可选，无需外部服务）
+> - **默认 provider 已切换为 `comfyui`（端口 8188）**；SD WebUI 用 7860
 > - `ImageGenerationTool` 注册逻辑修复：本地 Provider 无需 API Key 即可激活
-> - `settings.py` 新增 comfyui / diffusers 相关配置项，默认 provider 改为 `sd_webui`
 > - 图片输出目录改为配置驱动（`IMAGE_GEN_OUTPUT_DIR`），默认 `agent/data/images`
 >
-> **快速体验**：
-> 1. 安装并启动 AUTOMATIC1111 SD WebUI（`python launch.py --api --listen`）
-> 2. 在 `.env` 中设置 `IMAGE_GEN_PROVIDER=sd_webui`（默认值，可不填）
+> **快速体验（ComfyUI）**：
+> 1. 安装并启动 ComfyUI：`python main.py --listen 0.0.0.0 --port 8188`
+> 2. 无需修改 `.env`（默认 `IMAGE_GEN_PROVIDER=comfyui`）
 > 3. 重启 Python 服务，对话中说"画一只猫"即可触发
+>
+> **切换回 SD WebUI**：`.env` 设置 `IMAGE_GEN_PROVIDER=sd_webui IMAGE_GEN_BASE_URL=http://localhost:7860`
 
 ---
 
-### TODO-IMG-1：SD WebUI Provider 增强（P1 — 功能完善）
+### ~~TODO-IMG-1：SD WebUI Provider 增强~~ ✅ 已完成（2026-06-14）
+
+**结果**：img2img / 进度轮询 / 采样器选择 / 模型切换均已实现。
+
+---
+
+### TODO-IMG-1（归档）：SD WebUI Provider 增强（P1 — 功能完善）
 
 **目标**：让 SD WebUI 接入体验达到生产可用
 
@@ -36,16 +45,19 @@
 
 ---
 
-### TODO-IMG-2：ComfyUI Provider 完整实现（P1 — 替代方案）
+### ~~TODO-IMG-2：ComfyUI Provider 完整实现~~ ✅ 已完成（2026-06-14）
 
-**目标**：ComfyUI 比 SD WebUI 更灵活（原生支持 FLUX / SDXL / ControlNet 工作流）
+**结果**：
+- txt2img / img2img 均已实现（img2img 先上传底图至 `/upload/image`，再用 LoadImage 节点）
+- 采样器名称自动映射（SD WebUI 风格 → ComfyUI 原生格式）
+- WebSocket 实时进度追踪（模块级 `_progress_state`，降级 HTTP 轮询时按耗时估算）
+- 内置 txt2img / img2img 两套默认工作流；自定义工作流由 `IMAGE_GEN_COMFYUI_WORKFLOW` 指定
+- 前端采样器列表根据 provider 自动切换（SD/ComfyUI 各自选项）
 
-**待完成：**
-- [x] **WebSocket 实时进度**：`_ws_wait_and_download()` 监听 WS 事件，降级为 HTTP 轮询 `_poll_and_download()` ✅
-- [x] **ComfyUI 模型列表**：调用 `/object_info/CheckpointLoaderSimple` 获取可用模型 ✅
-- [ ] **工作流热重载**：支持通过 API 动态上传/切换工作流 JSON（PUT /api/image/comfyui-workflow）
-- [ ] **内置多个工作流模板**：SD1.5_txt2img、SDXL_txt2img、FLUX_txt2img，按模型类型自动选择
-- [ ] **LoRA/Embedding 注入**：在工作流 LoRALoader 节点动态注入用户指定的 LoRA 文件
+**遗留（P3）**：
+- 工作流热重载 API（PUT /api/image/comfyui-workflow）
+- LoRA/Embedding 节点注入
+- 多模型类型自动匹配（SDXL/FLUX 用不同工作流模板）
 
 **涉及文件**：`agent/services/image/comfyui_provider.py`
 

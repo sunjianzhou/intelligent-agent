@@ -109,6 +109,33 @@ async def list_image_models():
     return {"success": True, "provider": provider_name, "models": [], "note": "云端 Provider 模型列表不支持"}
 
 
+@router.get("/api/image/progress")
+async def get_image_progress():
+    """查询当前生成进度（SD WebUI / ComfyUI 均支持，其他返回 0）。"""
+    provider_name = settings.image_gen_provider.lower()
+    if provider_name == "sd_webui":
+        from services.image.sd_webui_provider import SDWebUIProvider
+        p = SDWebUIProvider(
+            base_url=settings.image_gen_base_url,
+            model=settings.image_gen_model,
+            username=settings.image_gen_sd_user,
+            password=settings.image_gen_sd_pass,
+        )
+        data = await p.get_progress()
+        return {"success": True, "provider": "sd_webui", **data}
+    if provider_name == "comfyui":
+        from services.image.comfyui_provider import ComfyUIProvider
+        p = ComfyUIProvider(
+            base_url=settings.image_gen_base_url,
+            workflow_path=settings.image_gen_comfyui_workflow,
+            model=settings.image_gen_model,
+        )
+        data = p.get_progress()
+        return {"success": True, "provider": "comfyui", **data}
+    return {"success": True, "provider": provider_name, "progress": 0.0, "eta": 0.0,
+            "note": f"{provider_name} 不支持进度查询"}
+
+
 @router.post("/api/image/switch-model")
 async def switch_image_model(request: Request):
     try:
@@ -162,12 +189,15 @@ async def generate_image(request: Request):
 
     from services.image.base_image_provider import ImageRequest
     req = ImageRequest(
-        prompt          = prompt,
-        size            = body.get("size")            or settings.image_gen_size,
-        steps           = int(body.get("steps", 0))   or settings.image_gen_steps,
-        guidance_scale  = float(body.get("cfg", 0))   or 7.5,
-        negative_prompt = body.get("negative_prompt") or "",
-        style           = body.get("style")           or None,
+        prompt             = prompt,
+        size               = body.get("size")               or settings.image_gen_size,
+        steps              = int(body.get("steps", 0))      or settings.image_gen_steps,
+        guidance_scale     = float(body.get("cfg", 0))      or 7.5,
+        negative_prompt    = body.get("negative_prompt")    or "",
+        style              = body.get("style")              or None,
+        sampler_name       = body.get("sampler_name")       or "DPM++ 2M Karras",
+        init_image_base64  = body.get("init_image_base64")  or None,
+        denoising_strength = float(body.get("denoising_strength", 0.75)),
     )
 
     logger.info(f"[image_router] 生成请求: prompt={prompt[:60]} size={req.size}")

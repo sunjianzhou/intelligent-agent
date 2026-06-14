@@ -61,6 +61,14 @@ public class ImageProxyController extends AbstractProxyController {
         return proxyGet("/api/image/provider-status", req, fallback);
     }
 
+    @GetMapping("/api/image/progress")
+    public ResponseEntity<Map<String, Object>> getProgress(HttpServletRequest req) {
+        Map<String, Object> fallback = new HashMap<>();
+        fallback.put("progress", 0.0);
+        fallback.put("eta", 0.0);
+        return proxyGet("/api/image/progress", req, fallback);
+    }
+
     @GetMapping("/api/image/models")
     public ResponseEntity<Map<String, Object>> listModels(HttpServletRequest req) {
         Map<String, Object> fallback = new HashMap<>();

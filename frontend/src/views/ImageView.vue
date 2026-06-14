@@ -16,6 +16,15 @@
       <span v-else-if="statusLoaded" class="current-model">{{ currentModel || '服务当前模型' }}</span>
     </div>
 
+    <!-- ComfyUI 离线时的启动引导横幅 -->
+    <div v-if="providerName === 'comfyui' && !providerOk && statusLoaded" class="comfyui-hint">
+      <i class="fas fa-info-circle" />
+      <span>
+        ComfyUI 未就绪，请在本地启动：
+        <code>python main.py --listen 0.0.0.0 --port 8188</code>
+      </span>
+    </div>
+
     <!-- 主体：左侧参数面板 + 右侧结果区 -->
     <div class="main-layout">
 
@@ -87,6 +96,39 @@
           <input type="range" v-model.number="form.cfg" min="1" max="20" step="0.5" class="steps-slider" />
         </div>
 
+        <!-- 采样器（SD WebUI / ComfyUI 均支持，选项因 provider 不同） -->
+        <div class="param-section" v-if="providerName === 'sd_webui' || providerName === 'comfyui'">
+          <label class="param-label">
+            采样器
+            <span class="en-tip">{{ providerName === 'comfyui' ? '（ComfyUI 原生名称）' : '（SD WebUI）' }}</span>
+          </label>
+          <select v-model="form.sampler" class="sampler-select">
+            <option v-for="s in SAMPLER_OPTIONS" :key="s" :value="s">{{ s }}</option>
+          </select>
+        </div>
+
+        <!-- img2img -->
+        <div class="param-section">
+          <label class="param-label">
+            <span>图生图（img2img）</span>
+            <span class="en-tip">可选，上传底图后以此为基础生成</span>
+          </label>
+          <div v-if="form.initImagePreview" class="img2img-preview-wrap">
+            <img :src="form.initImagePreview" class="img2img-preview" />
+            <button class="img2img-clear" @click="clearImg2img" title="移除底图">
+              <i class="fas fa-times" />
+            </button>
+            <div class="param-section denoising-row">
+              <label class="param-label">去噪强度 <span class="param-val">{{ form.denoisingStrength }}</span></label>
+              <input type="range" v-model.number="form.denoisingStrength" min="0.1" max="1" step="0.05" class="steps-slider" />
+            </div>
+          </div>
+          <label v-else class="img2img-upload-btn">
+            <i class="fas fa-upload" /> 上传底图
+            <input type="file" accept="image/*" style="display:none" @change="onImg2imgFile" />
+          </label>
+        </div>
+
         <!-- 生成按钮 -->
         <button
           class="gen-btn"
@@ -127,6 +169,13 @@
           </div>
           <p>正在生成图片，请稍候…</p>
           <p class="gen-hint">本地模型首次生成可能需要 30 秒以上</p>
+          <!-- 进度条（SD WebUI 实时进度） -->
+          <div v-if="progressPct > 0" class="progress-wrap">
+            <div class="progress-bar" :style="{ width: progressPct + '%' }" />
+            <span class="progress-text">{{ progressPct }}%
+              <span v-if="progressEta > 0"> · {{ Math.ceil(progressEta) }}s</span>
+            </span>
+          </div>
         </div>
 
         <div v-else-if="!lastResult" class="gen-placeholder empty">
@@ -187,16 +236,29 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   getImageProviderStatus, listImageModels, switchImageModel,
   generateImage, listGeneratedImages, deleteGeneratedImage,
+  getImageProgress,
 } from '@/services/api'
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
 const SIZE_OPTIONS = ['512x512', '768x512', '512x768', '768x768', '1024x1024']
+
+// SD WebUI 采样器（显示友好名称）
+const SAMPLER_OPTIONS_SD = [
+  'DPM++ 2M Karras', 'DPM++ SDE Karras', 'DPM++ 2S a Karras',
+  'Euler a', 'Euler', 'Heun', 'DDIM', 'UniPC',
+]
+
+// ComfyUI 采样器（原生名称，后端自动映射 SD 名称兼容）
+const SAMPLER_OPTIONS_COMFY = [
+  'euler', 'euler_ancestral', 'dpmpp_2m', 'dpmpp_sde',
+  'dpmpp_2s_ancestral', 'dpmpp_3m_sde', 'heun', 'ddim', 'uni_pc', 'lcm',
+]
 
 const STYLE_PRESETS = [
   { label: '写实',       value: 'photorealistic, hyperdetailed' },
@@ -210,12 +272,16 @@ const STYLE_PRESETS = [
 // ── 状态 ─────────────────────────────────────────────────────────────────────
 
 const form = ref({
-  prompt:         '',
-  negativePrompt: 'ugly, blurry, low quality, watermark, text',
-  style:          '',
-  size:           '512x512',
-  steps:          20,
-  cfg:            7,
+  prompt:            '',
+  negativePrompt:    'ugly, blurry, low quality, watermark, text',
+  style:             '',
+  size:              '512x512',
+  steps:             20,
+  cfg:               7,
+  sampler:           'euler',          // ComfyUI 默认；切换到 sd_webui 时会重置
+  initImagePreview:  null,             // Data URL for display
+  initImageB64:      null,             // pure base64 for API
+  denoisingStrength: 0.75,
 })
 
 const providerOk    = ref(false)
@@ -226,13 +292,27 @@ const unavailableMsg = ref('')
 const models        = ref([])
 const selectedModel = ref('')
 const switching     = ref(false)
-const generating    = ref(false)
-const lastResult    = ref(null)
-const gallery       = ref([])
+const generating     = ref(false)
+const lastResult     = ref(null)
+const gallery        = ref([])
 const galleryLoading = ref(false)
-const previewImg    = ref(null)
+const previewImg     = ref(null)
+const progressPct    = ref(0)
+const progressEta    = ref(0)
+let   _progressTimer = null
 
 // ── 计算 ─────────────────────────────────────────────────────────────────────
+
+// 动态采样器列表：根据 provider 切换
+const SAMPLER_OPTIONS = computed(() =>
+  providerName.value === 'sd_webui' ? SAMPLER_OPTIONS_SD : SAMPLER_OPTIONS_COMFY
+)
+
+// 切换 provider 时重置采样器默认值
+watch(providerName, (name) => {
+  if (name === 'sd_webui') form.value.sampler = 'DPM++ 2M Karras'
+  else form.value.sampler = 'euler'
+})
 
 const providerClass = computed(() => ({
   'badge-ok':      providerOk.value,
@@ -258,6 +338,8 @@ const statusLabel = computed(() => {
 onMounted(async () => {
   await Promise.all([loadStatus(), loadGallery()])
 })
+
+onUnmounted(() => stopProgressPoll())
 
 const loadStatus = async () => {
   try {
@@ -301,6 +383,49 @@ const doSwitchModel = async () => {
   }
 }
 
+// ── 进度轮询 ──────────────────────────────────────────────────────────────────
+
+const startProgressPoll = () => {
+  // SD WebUI 和 ComfyUI 均支持进度查询
+  if (!['sd_webui', 'comfyui'].includes(providerName.value)) return
+  progressPct.value = 0
+  progressEta.value = 0
+  const interval = providerName.value === 'comfyui' ? 1500 : 1000
+  _progressTimer = setInterval(async () => {
+    const data = await getImageProgress().catch(() => null)
+    if (!data) return
+    progressPct.value = Math.round((data.progress || 0) * 100)
+    progressEta.value = data.eta || 0
+  }, interval)
+}
+
+const stopProgressPoll = () => {
+  if (_progressTimer) { clearInterval(_progressTimer); _progressTimer = null }
+  progressPct.value = 0
+}
+
+// ── img2img ───────────────────────────────────────────────────────────────────
+
+const onImg2imgFile = (e) => {
+  const file = e.target.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = (ev) => {
+    const dataUrl = ev.target.result
+    form.value.initImagePreview = dataUrl
+    // strip "data:image/xxx;base64," prefix
+    form.value.initImageB64 = dataUrl.split(',')[1] || null
+  }
+  reader.readAsDataURL(file)
+}
+
+const clearImg2img = () => {
+  form.value.initImagePreview = null
+  form.value.initImageB64     = null
+}
+
+// ── 生成 ─────────────────────────────────────────────────────────────────────
+
 const doGenerate = async () => {
   if (generating.value) return
   const prompt = form.value.prompt.trim()
@@ -315,14 +440,18 @@ const doGenerate = async () => {
 
   generating.value = true
   lastResult.value  = null
+  startProgressPoll()
   try {
     const res = await generateImage({
-      prompt:          prompt,
-      negative_prompt: form.value.negativePrompt,
-      style:           form.value.style || undefined,
-      size:            form.value.size,
-      steps:           form.value.steps,
-      cfg:             form.value.cfg,
+      prompt:             prompt,
+      negative_prompt:    form.value.negativePrompt,
+      style:              form.value.style || undefined,
+      size:               form.value.size,
+      steps:              form.value.steps,
+      cfg:                form.value.cfg,
+      sampler_name:       form.value.sampler,
+      init_image_base64:  form.value.initImageB64 || undefined,
+      denoising_strength: form.value.denoisingStrength,
     })
     if (res?.success) {
       lastResult.value = res
@@ -334,6 +463,7 @@ const doGenerate = async () => {
   } catch {
     ElMessage({ message: '网络错误，请重试', type: 'error', duration: 2000 })
   } finally {
+    stopProgressPoll()
     generating.value = false
   }
 }
@@ -401,6 +531,17 @@ const formatDate = (iso) => {
 }
 .switch-tip { font-size: 0.78rem; color: #90a4ae; }
 .current-model { font-size: 0.82rem; color: #78909c; }
+
+/* ── ComfyUI 提示横幅 ─────────────────────────────────────── */
+.comfyui-hint {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 20px; background: #fffbeb; border-bottom: 1px solid #fde68a;
+  font-size: 0.82rem; color: #92400e; flex-shrink: 0;
+}
+.comfyui-hint code {
+  background: #fef3c7; padding: 1px 6px; border-radius: 4px;
+  font-family: monospace; font-size: 0.8rem;
+}
 
 /* ── 主体布局 ──────────────────────────────────────────────── */
 .main-layout {
@@ -499,6 +640,48 @@ const formatDate = (iso) => {
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 .gen-hint { font-size: 0.78rem; color: #ccc; margin-top: 6px; }
 .gen-placeholder.empty i { color: #d0d7de; }
+
+/* 进度条 */
+.progress-wrap {
+  width: 100%; max-width: 320px; margin: 16px auto 0;
+  background: #e8eaf0; border-radius: 6px; height: 10px; position: relative;
+}
+.progress-bar {
+  height: 100%; border-radius: 6px; transition: width 0.4s ease;
+  background: linear-gradient(90deg, #1976d2, #6c3af7);
+}
+.progress-text {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  font-size: 0.75rem; color: #78909c; white-space: nowrap;
+}
+
+/* 采样器 */
+.sampler-select {
+  border: 1px solid #e0e3e8; border-radius: 8px; padding: 6px 8px;
+  font-size: 0.82rem; background: white; cursor: pointer; width: 100%;
+}
+
+/* img2img */
+.img2img-upload-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 7px; border: 1px dashed #c0cfe8;
+  color: #5c6bc0; font-size: 0.82rem; cursor: pointer;
+  transition: all 0.2s;
+}
+.img2img-upload-btn:hover { border-color: #1976d2; color: #1976d2; background: #f0f4ff; }
+.img2img-preview-wrap { position: relative; margin-top: 4px; }
+.img2img-preview { width: 100%; border-radius: 8px; border: 1px solid #e0e3e8; display: block; }
+.img2img-clear {
+  position: absolute; top: 6px; right: 6px;
+  background: rgba(0,0,0,0.5); border: none; color: white;
+  border-radius: 50%; width: 24px; height: 24px;
+  cursor: pointer; font-size: 0.75rem;
+  display: flex; align-items: center; justify-content: center;
+}
+.denoising-row { margin-top: 8px; }
+
+/* 暗色补充 */
+[data-theme="dark"] .sampler-select { background: #0d1117; border-color: #2d3451; color: #c9d1d9; }
 
 /* ── Gallery ───────────────────────────────────────────────── */
 .gallery-section { flex: 1; }

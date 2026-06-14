@@ -144,9 +144,9 @@ class Settings(BaseSettings):
     #   comfyui    — ComfyUI（本地，工作流驱动）
     #   diffusers  — HuggingFace diffusers 直接加载（本地，无需外部服务）
     #   siliconflow — 云端（需 API Key）
-    image_gen_provider: str = "sd_webui"
+    image_gen_provider: str = "comfyui"
     image_gen_api_key: str = ""            # 仅云端 provider 使用
-    image_gen_base_url: str = "http://localhost:7860"   # sd_webui / comfyui 服务地址
+    image_gen_base_url: str = "http://localhost:8188"   # comfyui 默认端口；sd_webui 用 7860
     image_gen_model: str = ""              # 留空=使用服务当前加载的模型
     image_gen_size: str = "512x512"        # 本地算力有限，默认较小
     image_gen_steps: int = 20

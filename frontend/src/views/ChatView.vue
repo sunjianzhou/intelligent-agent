@@ -321,6 +321,12 @@
             {{ r.roleCard?.name || r.roleId }}
           </option>
         </select>
+        <!-- 角色激活徽章：有激活角色时醒目提示 -->
+        <span v-if="activeRoleId" class="role-active-badge">
+          <i class="fas fa-circle-dot" />
+          {{ availableRoles.find(r => r.roleId === activeRoleId)?.roleCard?.name || activeRoleId }}
+        </span>
+        <i v-if="roleActivating" class="fas fa-circle-notch fa-spin config-icon" style="color:#a0aec0" />
       </div>
 
       <div class="config-model" ref="configSwitcherRef">
@@ -923,6 +929,9 @@ const closeExportMenu = (e) => {
 // ── 历史会话面板 ──────────────────────────────────────────
 const showHistory    = ref(false)
 const sessions       = ref([])
+
+// 搜索关键词变化时触发搜索
+watch(searchKeyword, doMessageSearch)
 
 // 响应移动端汉堡菜单里的「历史会话」快捷入口
 watch(() => store.openHistorySignal, () => toggleHistory())
@@ -1835,6 +1844,23 @@ onUnmounted(() => {
   gap: 5px;
   position: relative;
 }
+.role-active-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #eef2ff;
+  color: #4f46e5;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid #c7d2fe;
+}
+.role-active-badge i { font-size: 0.6rem; color: #6366f1; }
 .config-icon { color: #bbb; font-size: 0.78rem; flex-shrink: 0; }
 .config-select {
   border: 1px solid #e0e3e8;

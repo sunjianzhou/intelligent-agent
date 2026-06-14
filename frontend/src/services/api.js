@@ -214,6 +214,7 @@ export const branchConversation  = (messages, parentSessionId) =>
 // ── Image generation ──────────────────────────────────────────────────────────
 
 export const getImageProviderStatus = () => request(`${BASE}/image/provider-status`)
+export const getImageProgress       = () => request(`${BASE}/image/progress`)
 export const listImageModels        = () => request(`${BASE}/image/models`)
 export const switchImageModel       = (model) =>
   request(`${BASE}/image/switch-model`, {
