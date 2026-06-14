@@ -138,16 +138,26 @@ class Settings(BaseSettings):
     db_database: str = ""
     db_charset: str = "utf8mb4"
 
-    # 图片生成配置
-    # image_gen_provider: siliconflow（默认，云端）| sd_webui（本地 SD WebUI）
-    image_gen_provider: str = "siliconflow"
-    image_gen_api_key: str = ""           # SiliconFlow API Key（sd_webui 时留空）
-    image_gen_base_url: str = "https://api.siliconflow.cn"  # sd_webui 时改为 http://host.docker.internal:7860
-    image_gen_model: str = "black-forest-labs/FLUX.1-schnell"
-    image_gen_size: str = "1024x1024"
+    # ── 图片生成配置（本地优先）────────────────────────────────────────────────
+    # image_gen_provider 可选值：
+    #   sd_webui   — AUTOMATIC1111 SD WebUI（本地，推荐）
+    #   comfyui    — ComfyUI（本地，工作流驱动）
+    #   diffusers  — HuggingFace diffusers 直接加载（本地，无需外部服务）
+    #   siliconflow — 云端（需 API Key）
+    image_gen_provider: str = "sd_webui"
+    image_gen_api_key: str = ""            # 仅云端 provider 使用
+    image_gen_base_url: str = "http://localhost:7860"   # sd_webui / comfyui 服务地址
+    image_gen_model: str = ""              # 留空=使用服务当前加载的模型
+    image_gen_size: str = "512x512"        # 本地算力有限，默认较小
     image_gen_steps: int = 20
-    image_gen_sd_user: str = ""           # SD WebUI --api-auth 用户名（可选）
-    image_gen_sd_pass: str = ""           # SD WebUI --api-auth 密码（可选）
+    image_gen_sd_user: str = ""            # SD WebUI --api-auth 用户名（可选）
+    image_gen_sd_pass: str = ""            # SD WebUI --api-auth 密码（可选）
+    image_gen_output_dir: str = ""         # 留空=自动用 data/images 目录
+    # ComfyUI 专属
+    image_gen_comfyui_workflow: str = ""   # workflow JSON 文件路径（留空=内置默认流程）
+    # diffusers 专属
+    image_gen_diffusers_model: str = "runwayml/stable-diffusion-v1-5"
+    image_gen_diffusers_device: str = "auto"   # auto | cuda | cpu | mps
 
     model_config = ConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 

@@ -8,7 +8,21 @@ from loguru import logger
 
 from tools.base_tool import BaseTool
 
-_IMAGE_DIR = Path("/app/data/images")
+
+def _get_image_dir() -> Path:
+    """图片输出目录，优先读配置，回退到 agent/data/images（兼容 Docker /app/data/images）。"""
+    try:
+        from config.settings import settings
+        if settings.image_gen_output_dir:
+            p = Path(settings.image_gen_output_dir)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+    except Exception:
+        pass
+    # 回退：与脚本同层级的 data/images
+    fallback = Path(__file__).parent.parent.parent / "data" / "images"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
 
 
 class ImageGenerationTool(BaseTool):
@@ -63,8 +77,8 @@ class ImageGenerationTool(BaseTool):
             return f"❌ 图片生成失败（{result.provider}）：{result.error}"
 
         # 统一持久化到本地，确保图片在历史对话中长期可访问
-        filename = f"gen_{uuid.uuid4().hex[:12]}.png"
-        local_url = await _persist_image(result, filename)
+        filename  = f"gen_{uuid.uuid4().hex[:12]}.png"
+        local_url = await _persist_image(result, filename, _get_image_dir())
 
         short_prompt = prompt[:40] + ("..." if len(prompt) > 40 else "")
         provider_tag = f"`{result.provider}/{result.model}`" if result.model else f"`{result.provider}`"
@@ -84,13 +98,12 @@ class ImageGenerationTool(BaseTool):
         return asyncio.run(self.execute_async(prompt, size, negative_prompt, style))
 
 
-async def _persist_image(result, filename: str) -> str:
+async def _persist_image(result, filename: str, image_dir: Path) -> str:
     """
     将 ImageResult 保存到本地并返回可访问的相对 URL。
     优先使用 image_bytes；若只有 image_url 则下载后保存。
     """
-    _IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-    dest = _IMAGE_DIR / filename
+    dest = image_dir / filename
 
     try:
         if result.image_bytes:

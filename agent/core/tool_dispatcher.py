@@ -291,14 +291,24 @@ class ToolDispatcherMixin:
         from tools.builtin_tools.shell_tool import ShellTool
         self.tool_manager.register_tool(ShellTool(), "system")
 
-        # ImageGenerationTool：仅在配置了 image_gen_api_key 时注册
+        # ImageGenerationTool：本地 provider 无需 API Key，始终尝试注册
+        # 注册后由 ImageGenerationTool.execute_async 内部调用 is_available() 判断能否实际生成
         try:
             from tools.builtin_tools.image_tool import ImageGenerationTool
-            if settings.image_gen_api_key:
+            _local_providers = {"sd_webui", "comfyui", "diffusers"}
+            _is_local = settings.image_gen_provider.lower() in _local_providers
+            if _is_local or settings.image_gen_api_key:
                 self.tool_manager.register_tool(ImageGenerationTool(), "image")
-                logger.info("ImageGenerationTool 已注册（模型: {}）", settings.image_gen_model)
+                logger.info(
+                    "ImageGenerationTool 已注册（provider={}, model={}）",
+                    settings.image_gen_provider,
+                    settings.image_gen_model or "服务当前模型",
+                )
             else:
-                logger.debug("image_gen_api_key 未配置，跳过 ImageGenerationTool 注册")
+                logger.debug(
+                    "图片生成未配置（provider=%s，api_key 为空），跳过注册",
+                    settings.image_gen_provider,
+                )
         except Exception as _img_err:
             logger.warning(f"ImageGenerationTool 注册失败（将跳过）: {_img_err}")
 
