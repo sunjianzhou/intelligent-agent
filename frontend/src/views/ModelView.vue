@@ -66,6 +66,7 @@
           </div>
           <div class="card-tags">
             <span class="tag tag-llm">LLM</span>
+            <span v-for="ut in modelUsageTags(p.model)" :key="ut.label" class="tag" :class="ut.cls">{{ ut.label }}</span>
             <span class="tag" :class="p.api_key_masked !== '****' ? 'tag-key-ok' : 'tag-key-missing'">
               <i :class="p.api_key_masked !== '****' ? 'fas fa-key' : 'fas fa-exclamation-triangle'" />
               {{ p.api_key_masked !== '****' ? 'KEY 已配置' : 'KEY 缺失' }}
@@ -137,6 +138,7 @@
           </div>
           <div class="card-tags">
             <span class="tag tag-llm">LLM</span>
+            <span v-for="ut in modelUsageTags(m.name)" :key="ut.label" class="tag" :class="ut.cls">{{ ut.label }}</span>
             <span class="tag" :class="m.loaded ? 'tag-loaded' : 'tag-unloaded'">
               <i :class="m.loaded ? 'fas fa-memory' : 'fas fa-hdd'" />
               {{ m.loaded ? '显存已加载' : '未加载' }}
@@ -208,6 +210,16 @@ import {
   listCloudProviders, createCloudProvider, updateCloudProvider, deleteCloudProvider,
   activateCloudProvider, deactivateCloudProviders,
 } from '@/services/api'
+
+// 根据模型名猜测用途标签
+function modelUsageTags(name = '') {
+  const n = name.toLowerCase()
+  const tags = []
+  if (/tts|voice|speech|audio|whisper/.test(n)) tags.push({ label: '语音', cls: 'tag-voice' })
+  else if (/vision|vl|img|image|multimodal|4o|claude-3/.test(n)) tags.push({ label: '图片', cls: 'tag-img' })
+  else tags.push({ label: '对话', cls: 'tag-chat' })
+  return tags
+}
 
 // ── 服务商标签映射（与 cloud_router.py 保持一致）─────────────
 const PROVIDER_LABELS = {
@@ -530,6 +542,9 @@ onMounted(loadData)
 .tag-key-missing { background: #fff7ed; color: #ea580c; }
 .tag-loaded   { background: #ecfdf5; color: #059669; }
 .tag-unloaded { background: #f9fafb; color: #9ca3af; }
+.tag-chat     { background: #eff6ff; color: #2563eb; }
+.tag-img      { background: #fdf4ff; color: #9333ea; }
+.tag-voice    { background: #fff7ed; color: #ea580c; }
 
 .card-actions { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
 .btn-activate {

@@ -99,6 +99,7 @@
         <el-form :model="form.coreIdentity" label-width="90px">
           <el-form-item label="性格标签">
             <TagInput v-model="form.coreIdentity.personality" placeholder="如：温柔、理性…" />
+            <div class="field-hint"><i class="fas fa-keyboard" /> 输入标签后按 <kbd>Enter</kbd> 添加，点击 × 删除</div>
           </el-form-item>
 
           <el-form-item label="核心原则">
@@ -321,8 +322,9 @@ import {
   ElCard,
   ElText,
   ElUpload,
-  ElMessage, ElMessageBox,
+  ElMessage,
 } from 'element-plus'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { saveRole, loadRole, listRoles, deleteRole, newRoleConfig } from '@/services/roleStorage'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -368,16 +370,62 @@ const TagInput = defineComponent({
 
 // ── 后端 API（可选） ──────────────────────────────────────────────────────
 async function apiRequest(method, path, body) {
+  const token = localStorage.getItem('agent_token')
   const res = await fetch(`/api/roles${path}`, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) throw new Error(`API ${method} ${path} 返回 ${res.status}`)
   return res.json()
 }
 
+// camelCase 前端表单 → snake_case Python RoleConfig
+function formToApiPayload(f) {
+  const p = JSON.parse(JSON.stringify(f))
+  return {
+    role_id: p.roleId,
+    role_card: {
+      name:       p.roleCard?.name ?? '',
+      avatar_url: p.roleCard?.avatarUrl ?? '',
+      signature:  p.roleCard?.signature ?? '',
+      tags:       p.roleCard?.tags ?? [],
+    },
+    core_identity: {
+      personality:    p.coreIdentity?.personality ?? [],
+      principles:     p.coreIdentity?.principles ?? [],
+      redlines:       p.coreIdentity?.redlines ?? [],
+      language_style: p.coreIdentity?.languageStyle ?? '',
+    },
+    user_profile: {
+      nickname:      p.userProfile?.nickname ?? '',
+      background:    p.userProfile?.background ?? '',
+      relationship:  p.userProfile?.relationship ?? '',
+      preferences:   p.userProfile?.preferences ?? { tone: 'casual', detail: 'moderate' },
+      disclosed_info: p.userProfile?.disclosedInfo ?? [],
+    },
+    role_memory: {
+      commitments: p.roleMemory?.commitments ?? [],
+      retrieval_rule: {
+        similarity_threshold: p.roleMemory?.retrievalRule?.similarityThreshold ?? 0.7,
+        top_k:                p.roleMemory?.retrievalRule?.topK ?? 5,
+        recency_weight:       p.roleMemory?.retrievalRule?.recencyWeight ?? 0.3,
+      },
+      short_term_size: p.roleMemory?.shortTermSize ?? 20,
+    },
+    knowledge_journal: {
+      recent_journal_entries: p.knowledgeJournal?.recentJournalEntries ?? [],
+      retrieval_strategy:     p.knowledgeJournal?.retrievalStrategy ?? 'hybrid',
+      knowledge_sources:      p.knowledgeJournal?.knowledgeSources ?? [],
+    },
+  }
+}
+
 // ── 响应式状态 ────────────────────────────────────────────────────────────
+const confirmDialog = useConfirmDialogStore()
 const syncEnabled = ref(false)
 const saving = ref(false)
 const activating = ref(false)
@@ -421,13 +469,14 @@ async function handleSave() {
   }
   saving.value = true
   try {
-    await saveRole({ ...form })
+    await saveRole(JSON.parse(JSON.stringify(form)))
     if (syncEnabled.value) {
+      const payload = formToApiPayload(form)
       const exists = roleList.value.some(r => r.roleId === form.roleId)
       if (exists) {
-        await apiRequest('PUT', `/${form.roleId}`, form)
+        await apiRequest('PUT', `/${form.roleId}`, payload)
       } else {
-        await apiRequest('POST', '', form)
+        await apiRequest('POST', '', payload)
       }
     }
     roleList.value = await listRoles()
@@ -441,21 +490,24 @@ async function handleSave() {
 }
 
 // ── 删除 ─────────────────────────────────────────────────────────────────
-async function handleDelete() {
-  await ElMessageBox.confirm(
-    `确认删除角色「${form.roleCard.name}」？此操作不可撤销。`,
-    '删除确认',
-    { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
-  )
-  await deleteRole(form.roleId)
-  if (syncEnabled.value) {
-    await apiRequest('DELETE', `/${form.roleId}`).catch(() => {})
-  }
-  const blank = newRoleConfig()
-  Object.assign(form, blank)
-  currentRoleId.value = ''
-  roleList.value = await listRoles()
-  ElMessage.success('已删除')
+function handleDelete() {
+  confirmDialog.open({
+    title: '删除角色',
+    message: `确认删除角色「${form.roleCard.name}」？此操作不可撤销。`,
+    confirmText: '删除',
+    confirmType: 'danger',
+    onConfirm: async () => {
+      await deleteRole(form.roleId)
+      if (syncEnabled.value) {
+        await apiRequest('DELETE', `/${form.roleId}`).catch(() => {})
+      }
+      const blank = newRoleConfig()
+      Object.assign(form, blank)
+      currentRoleId.value = ''
+      roleList.value = await listRoles()
+      ElMessage.success('已删除')
+    },
+  })
 }
 
 // ── 激活 / 停用 ───────────────────────────────────────────────────────────
@@ -463,8 +515,8 @@ async function handleActivate() {
   if (!currentRoleId.value) return
   activating.value = true
   try {
-    // 确保角色已同步到后端
-    await apiRequest('PUT', `/${form.roleId}`, { ...form })
+    // 确保角色已同步到后端（使用 snake_case payload）
+    await apiRequest('PUT', `/${form.roleId}`, formToApiPayload(form))
     await apiRequest('POST', '/activate', { role_id: form.roleId })
     activeRoleId.value = form.roleId
     ElMessage.success(`已激活角色「${form.roleCard.name}」，AI 将使用此角色配置`)
@@ -668,6 +720,23 @@ const previewHtml = computed(() => {
   align-items: center;
   gap: 12px;
   margin-top: 4px;
+}
+
+.field-hint {
+  font-size: 0.75rem;
+  color: #aaa;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.field-hint kbd {
+  background: #f0f2f5;
+  border: 1px solid #d0d3da;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 0.7rem;
+  color: #555;
 }
 
 .badge-blue {

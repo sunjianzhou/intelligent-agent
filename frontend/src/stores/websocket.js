@@ -518,9 +518,11 @@ export const useWebSocketStore = defineStore('websocket', () => {
     currentSessionId.value = _newSessionId()
   }
 
-  // ── UI 事件信号（Header → 子视图跨层通信）──────────────────
-  const openHistorySignal = ref(0)
+  // ── UI 事件信号（Sidebar/Header → 子视图跨层通信）──────────────────
+  const openHistorySignal  = ref(0)
+  const newSessionSignal   = ref(0)
   const triggerOpenHistory = () => { openHistorySignal.value++ }
+  const triggerNewSession  = () => { newSessionSignal.value++ }
 
   return {
     // 状态
@@ -537,5 +539,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     switchModel, loadModels, startNewSession,
     // UI 信号
     openHistorySignal, triggerOpenHistory,
+    newSessionSignal, triggerNewSession,
   }
 })

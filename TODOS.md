@@ -29,21 +29,9 @@
 
 ---
 
-## TODO-20: Docker 中间无前缀卷清理（LOW）
+## ~~TODO-20: Docker 中间无前缀卷清理~~ ✅ 已完成（2026-06-14）
 
-**什么**: ChromaDB 迁移过程（2026-06-09）创建了两个无项目前缀的中间卷：`agent_chroma_data` 和 `agent_chroma_data_longterm`。数据已迁移到正式卷（`intelligent_agent_agent_chroma_data` / `intelligent_agent_agent_chroma_data_longterm`），中间卷空间仍占用。
-
-**如何清理**:
-```bash
-docker volume rm agent_chroma_data agent_chroma_data_longterm
-```
-
-**注意**: 执行前先确认无容器正在挂载这两个卷：
-```bash
-docker ps -a --filter volume=agent_chroma_data
-```
-
-**代价**: Human ~5min / CC ~2min
+`agent_chroma_data` 和 `agent_chroma_data_longterm` 两个中间卷已删除。正式卷 `intelligent_agent_agent_chroma_data` / `intelligent_agent_agent_chroma_data_longterm` 保留正常。
 
 ---
 

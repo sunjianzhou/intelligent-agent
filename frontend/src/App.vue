@@ -217,7 +217,10 @@ body {
 [data-theme="dark"] .memory-view,
 [data-theme="dark"] .tasks-view,
 [data-theme="dark"] .stats-view,
-[data-theme="dark"] .system-view          { background: #25262b !important; }
+[data-theme="dark"] .system-view,
+[data-theme="dark"] .mcp-view,
+[data-theme="dark"] .model-view,
+[data-theme="dark"] .role-editor          { background: #25262b !important; }
 
 /* 白色卡片 → 深色卡片 */
 [data-theme="dark"] .stat-card,
@@ -229,7 +232,72 @@ body {
 [data-theme="dark"] .task-card,
 [data-theme="dark"] .ov-card,
 [data-theme="dark"] .config-card,
-[data-theme="dark"] .model-card           { background: #2c2d32 !important; border-color: #373a40 !important; }
+[data-theme="dark"] .model-card,
+[data-theme="dark"] .current-card         { background: #2c2d32 !important; border-color: #373a40 !important; }
+
+/* 文字 — 次级标题与正文 */
+[data-theme="dark"] .section-title,
+[data-theme="dark"] .config-title,
+[data-theme="dark"] .card-name,
+[data-theme="dark"] .current-name,
+[data-theme="dark"] .rc-section-label,
+[data-theme="dark"] .rc-group-title       { color: #d0d1d5 !important; }
+
+[data-theme="dark"] .card-sub,
+[data-theme="dark"] .current-provider,
+[data-theme="dark"] .card-model,
+[data-theme="dark"] .rc-range,
+[data-theme="dark"] .rc-field label,
+[data-theme="dark"] .param-item label,
+[data-theme="dark"] .cfg-label,
+[data-theme="dark"] .cfg-desc,
+[data-theme="dark"] .cfg-tip,
+[data-theme="dark"] .config-hint,
+[data-theme="dark"] .tools-footer-hint    { color: #909296 !important; }
+
+/* 表单控件 */
+[data-theme="dark"] .form-input,
+[data-theme="dark"] .rc-num,
+[data-theme="dark"] select.config-select  { background: #373a40 !important; border-color: #4a4d55 !important; color: #c1c2c5 !important; }
+
+/* 按钮 — 次级 */
+[data-theme="dark"] .add-btn,
+[data-theme="dark"] .switch-local-btn,
+[data-theme="dark"] .btn-activate:not(.btn-active),
+[data-theme="dark"] .btn-icon,
+[data-theme="dark"] .btn-cancel,
+[data-theme="dark"] .rc-save-btn          { background: #373a40 !important; border-color: #4a4d55 !important; color: #c1c2c5 !important; }
+
+/* 标签/Badge */
+[data-theme="dark"] .tag-llm             { background: #1e2040 !important; color: #818cf8 !important; }
+[data-theme="dark"] .tag-chat            { background: #172554 !important; color: #60a5fa !important; }
+[data-theme="dark"] .tag-img             { background: #2e1065 !important; color: #d8b4fe !important; }
+[data-theme="dark"] .tag-voice           { background: #431407 !important; color: #fb923c !important; }
+[data-theme="dark"] .active-badge        { background: #1e2040 !important; color: #818cf8 !important; }
+
+/* 悬浮按钮（ChatView） */
+[data-theme="dark"] .export-float-btn,
+[data-theme="dark"] .clear-float-btn,
+[data-theme="dark"] .history-float-btn:not(.active)  { background: #2c2d32 !important; border-color: #4a4d55 !important; color: #c1c2c5 !important; }
+
+/* 历史面板 */
+[data-theme="dark"] .history-panel       { background: #2c2d32 !important; border-color: #4a4d55 !important; }
+[data-theme="dark"] .history-title       { color: #909296 !important; }
+[data-theme="dark"] .history-item-preview { color: #c1c2c5 !important; }
+[data-theme="dark"] .history-item:hover  { background: #373a40 !important; }
+
+/* 配置栏（ChatView 底部） */
+[data-theme="dark"] .config-bar          { background: #25262b !important; border-color: #373a40 !important; }
+[data-theme="dark"] .config-select,
+[data-theme="dark"] .config-model-btn    { background: #373a40 !important; color: #c1c2c5 !important; }
+[data-theme="dark"] .config-model-dropdown { background: #2c2d32 !important; border-color: #4a4d55 !important; }
+[data-theme="dark"] .config-dropdown-item { color: #c1c2c5 !important; }
+[data-theme="dark"] .config-dropdown-item:hover { background: #373a40 !important; }
+
+/* 角色编辑器 */
+[data-theme="dark"] .md-preview          { background: #2c2d32 !important; border-color: #373a40 !important; color: #c1c2c5 !important; }
+[data-theme="dark"] .field-hint          { color: #6b6c75 !important; }
+[data-theme="dark"] .field-hint kbd      { background: #373a40 !important; border-color: #4a4d55 !important; color: #c1c2c5 !important; }
 
 /* 文字颜色 */
 [data-theme="dark"] .stat-num,

@@ -98,7 +98,7 @@ agent/
 ├── config/
 │   └── settings.py             Pydantic-settings 全量配置（含 .env 读取）
 ├── data/                       运行时数据目录（runtime_config.json、user 偏好等）
-└── tests/                      pytest 测试套件（152 个测试，含角色、记忆、调度等）
+└── tests/                      pytest 单元测试套件（155 个，含角色、记忆、调度等）
 ```
 
 ---
@@ -267,7 +267,7 @@ pip install -e ".[dev]"               # 含 black/isort/pylint/mypy
 conda activate python310
 python -m uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000 --reload
 
-# 运行测试（152 个测试，< 30s）
+# 运行单元测试（155 个，< 30s）
 pytest tests/ -v
 
 # 代码质量

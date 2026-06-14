@@ -14,9 +14,14 @@
     <!-- 服务状态 -->
     <div class="card-row">
       <div class="status-card">
-        <div class="card-label">前端</div>
+        <div class="card-label">Client 客户端</div>
+        <div class="status-badge ok"><i class="fas fa-check-circle" /> 已连接</div>
+        <div class="card-sub">Vue 3 · 当前浏览器</div>
+      </div>
+      <div class="status-card">
+        <div class="card-label">前端服务</div>
         <div class="status-badge ok"><i class="fas fa-check-circle" /> 运行中</div>
-        <div class="card-sub">Vue 3 · localhost:3000</div>
+        <div class="card-sub">Vite Dev · localhost:3000</div>
       </div>
       <div class="status-card">
         <div class="card-label">Java 后端</div>
@@ -113,7 +118,9 @@
           <div class="gpu-name">{{ resources.gpu.name }}</div>
         </template>
         <div v-else-if="resources.gpu === null || resources.gpu === undefined" class="gpu-empty">
+          <i class="fas fa-info-circle" style="font-size:1rem;color:#aaa;display:block;margin-bottom:4px" />
           未检测到独立 GPU
+          <div class="gpu-empty-sub">集成显卡或无显卡环境，LLM 使用 CPU 推理</div>
         </div>
       </div>
 
@@ -448,14 +455,9 @@
       </div>
     </div>
 
-    <!-- 内存优化建议（可折叠，默认收起） -->
-    <div class="detail-card mem-tips-card">
-      <div class="detail-title collapsible-title" @click="showMemTips = !showMemTips" style="cursor:pointer;user-select:none">
-        <i class="fas fa-lightbulb" /> 内存优化建议
-        <span class="rc-tip">可操作的降内存手段</span>
-        <i :class="showMemTips ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" style="margin-left:auto;font-size:0.75rem;color:#bbb" />
-      </div>
-      <div v-if="showMemTips" class="tips-grid">
+    <!-- 内存优化建议已移除（功能冗余） -->
+    <div v-if="false" class="detail-card mem-tips-card">
+      <div class="tips-grid">
 
         <div class="tip-group">
           <div class="tip-group-title"><i class="fab fa-node-js" style="color:#68a063"/> 前端 (当前 ~{{ frontendMemMb }} MB)</div>
@@ -1107,6 +1109,7 @@ onUnmounted(() => { clearInterval(timer); clearInterval(clockTimer) })
 .gpu-bar  { background: #667eea; }
 .gpu-name  { font-size: 0.72rem; color: #bbb; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gpu-empty { font-size: 0.78rem; color: #bbb; margin-top: 8px; text-align: center; }
+.gpu-empty-sub { font-size: 0.72rem; color: #ccc; margin-top: 3px; }
 
 .detail-row  { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .detail-card { background: white; border-radius: 12px; border: 0.5px solid #e8eaed; padding: 18px; }

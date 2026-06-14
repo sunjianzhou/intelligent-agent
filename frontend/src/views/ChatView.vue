@@ -896,6 +896,8 @@ const sessions       = ref([])
 
 // 响应移动端汉堡菜单里的「历史会话」快捷入口
 watch(() => store.openHistorySignal, () => toggleHistory())
+// 响应侧边栏加号按钮（新开对话）
+watch(() => store.newSessionSignal, () => handleNewConversation())
 const historyLoading = ref(false)
 
 const toggleHistory = async () => {
@@ -1555,11 +1557,11 @@ onUnmounted(() => {
 .bact-btn.dislike.active { color: #e53935; }
 .bact-btn:disabled { cursor: default; opacity: 0.5; }
 
-/* ── 悬浮导出按钮 ── */
+/* ── 悬浮导出按钮（左侧，不遮挡右侧停止按钮） ── */
 .export-float {
   position: absolute;
   bottom: 90px;
-  right: 20px;
+  left: 16px;
   z-index: 10;
 }
 .export-float-btn {
@@ -1578,7 +1580,7 @@ onUnmounted(() => {
 .export-menu {
   position: absolute;
   bottom: calc(100% + 6px);
-  right: 0;
+  left: 0;
   background: white;
   border: 1px solid #e0e3e8;
   border-radius: 10px;
@@ -1602,7 +1604,7 @@ onUnmounted(() => {
 .clear-float {
   position: absolute;
   bottom: 46px;
-  right: 20px;
+  left: 16px;
   z-index: 10;
 }
 
@@ -1610,7 +1612,7 @@ onUnmounted(() => {
 .history-float {
   position: absolute;
   bottom: 134px;
-  right: 20px;
+  left: 16px;
   z-index: 10;
 }
 .history-float-btn {
@@ -1848,9 +1850,9 @@ onUnmounted(() => {
   .chat-input        { font-size: 16px !important; } /* 防止 iOS 自动缩放 */
   .input-area        { padding: 8px !important; }
   .message-row.user  { justify-content: flex-end; }
-  .export-float      { bottom: 70px; right: 10px; }
-  .clear-float       { bottom: 26px; right: 10px; }
-  .history-float     { bottom: 114px; right: 10px; }
+  .export-float      { bottom: 70px; left: 8px; }
+  .clear-float       { bottom: 26px; left: 8px; }
+  .history-float     { bottom: 114px; left: 8px; }
   .history-panel     { width: min(240px, 85vw); }
   .tool-calls-card,
   .tool-running-card { max-width: 95% !important; }

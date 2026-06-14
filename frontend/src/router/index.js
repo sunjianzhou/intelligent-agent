@@ -12,6 +12,7 @@ const SkillView      = () => import('@/views/SkillView.vue')
 const ProjectView    = () => import('@/views/ProjectView.vue')
 const RoleEditorView = () => import('@/views/RoleEditorView.vue')
 const ModelView      = () => import('@/views/ModelView.vue')
+const MCPView        = () => import('@/views/MCPView.vue')
 
 const routes = [
   { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
@@ -27,6 +28,7 @@ const routes = [
   // ── 管理后台路由 ────────────────────────────────────────
   { path: '/admin/tools',  name: 'admin-tools',  component: ToolsView,  meta: { title: '工具管理', admin: true } },
   { path: '/admin/skills', name: 'admin-skills', component: SkillView,  meta: { title: 'Skill 管理', admin: true } },
+  { path: '/admin/mcp',    name: 'admin-mcp',    component: MCPView,    meta: { title: 'MCP 配置', admin: true } },
   { path: '/admin/tasks',  name: 'admin-tasks',  component: TasksView,  meta: { title: '任务管理', admin: true } },
   { path: '/admin/system', name: 'admin-system', component: SystemView, meta: { title: '系统信息', admin: true } },
   { path: '/admin/stats',  name: 'admin-stats',  component: () => import('@/views/StatsView.vue'), meta: { title: '统计分析', admin: true } },

@@ -94,20 +94,27 @@ import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useLocalSessionStore } from '@/stores/localSession'
+import { useWebSocketStore } from '@/stores/websocket'
 import { NAV_ITEMS, CONFIG_ITEMS, SYSTEM_ITEMS } from '@/config/routes.config'
 
 const authStore    = useAuthStore()
 const router       = useRouter()
 const sessionStore = useLocalSessionStore()
+const wsStore      = useWebSocketStore()
 
 const logout = () => {
   authStore.logout()
   router.push('/login')
 }
 
-const newSession = async () => {
-  await sessionStore.startNewSession()
-  router.push('/chat')
+const newSession = () => {
+  // 若已在聊天页，用信号通知 ChatView 执行完整的新开对话逻辑（清消息+清记忆+新会话）
+  // 若不在聊天页，先导航过去再触发
+  if (router.currentRoute.value.path === '/chat') {
+    wsStore.triggerNewSession()
+  } else {
+    router.push('/chat').then(() => wsStore.triggerNewSession())
+  }
 }
 
 const openSession = async (id) => {

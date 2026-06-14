@@ -114,11 +114,12 @@
 |------|------|
 | `/chat` | 流式聊天，Markdown 渲染，工具进度卡片，历史会话侧边栏；config-bar 内嵌角色选择器 + 模型切换 |
 | `/roles/editor` | 角色编辑器：六标签表单（基本信息/核心身份/用户画像/场景知识/限制条件/提示预览）|
-| `/memory` | 短期/长期记忆查看，语义搜索（500ms 防抖），导出 |
+| `/memory` | 短期/长期记忆查看，语义搜索（500ms 防抖），导入/导出/批量清空 |
 | `/project` | 项目列表 · Spec 编辑器 · 任务树（`[TASK_DONE]` 自动勾选） |
-| `/admin/tasks` | 定时任务 CRUD，cron 支持，running/pending 状态区分 |
+| `/skills` | Skill 管理：触发词路由、步骤定义、强制工具约束、启用/禁用、MD 导入 |
+| `/admin/tasks` | 定时任务 CRUD，五种调度类型（immediate/delay/interval/datetime/cron） |
 | `/admin/tools` | 工具列表，API Key 在线配置 |
-| `/admin/system` | CPU/RAM/GPU/磁盘实时监控，推理参数滑块调节 |
+| `/admin/system` | CPU/RAM/GPU/磁盘实时监控，推理参数滑块调节，云端服务商管理 |
 | `/admin/stats` | 满意度 / 响应时间 / 工具调用排名统计 |
 
 **关键体验**：
@@ -414,9 +415,10 @@ Web 界面 → 系统页（⚙ 图标 → 系统）可在线调节温度、最�
 
 | 层 | 测试框架 | 覆盖范围 |
 |------|------|------|
-| Agent | pytest | 记忆系统、工具调用、调度器持久化、角色加载、上下文提取、项目接口等 |
-| Backend | JUnit | WebSocket 消息序列化、JWT 工具类、JSON 工具类 |
-| Frontend | Vitest | JWT 处理逻辑等关键工具函数 |
+| Agent 单元测试 | pytest（155 个） | 记忆系统、工具调用、调度器持久化、角色加载、上下文提取、项目接口等 |
+| Backend 单元测试 | JUnit 5 | WebSocket 消息序列化、JWT 工具类、JSON 工具类 |
+| Frontend 单元测试 | Vitest | JWT 处理逻辑等关键工具函数 |
+| E2E 端到端测试 | pytest + httpx（63 个） | 从客户端发起 HTTP 请求打通 Java:8080 → Python:8000，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知全链路 |
 
 ### 离线与移动端体验
 
@@ -475,6 +477,24 @@ intelligent_agent/
 │   ├── repl.py                     交互式 REPL（Rich 增强显示）
 │   ├── session.py                  会话持久化（JSON 文件）
 │   └── config.yaml                 客户端配置
+│
+├── tests/e2e/                      端到端测试套件（63 个用例，pytest + httpx）
+│   ├── conftest.py                 公共 fixture：Java/Python 服务探活、JWT 鉴权、slow_client
+│   ├── test_auth.py                认证（登录/登出/无 token 鉴权）
+│   ├── test_health.py              服务健康检测
+│   ├── test_chat.py                3 个聊天维度（云端/本地/dolphin 无限制）
+│   ├── test_memory.py              记忆增删改查、语义搜索、导出、提炼
+│   ├── test_tasks.py               调度任务 CRUD + 取消
+│   ├── test_projects.py            项目 CRUD + Spec + 任务列表
+│   ├── test_roles.py               角色列表/激活/停用
+│   ├── test_skills.py              Skill CRUD + toggle
+│   ├── test_cloud.py               云端服务商 CRUD + 激活/停用
+│   ├── test_models.py              模型列表/切换
+│   ├── test_conversations.py       历史会话
+│   ├── test_analytics.py           统计/反馈
+│   ├── test_notifications.py       通知轮询
+│   ├── test_tools.py               工具列表
+│   └── test_config.py              运行时配置读写
 │
 ├── nginx/                          HTTPS Nginx 配置 + 证书生成脚本
 ├── docker-compose.yml              容器编排（local/https/tunnel 三个 profile）

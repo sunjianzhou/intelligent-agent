@@ -13,8 +13,9 @@ export const NAV_ITEMS = [
 
 // 低频配置区（侧边栏第二区）
 export const CONFIG_ITEMS = [
-  { name: 'admin-tools',  label: '工具管理',   icon: 'fas fa-tools', path: '/admin/tools' },
-  { name: 'admin-skills', label: 'Skill 管理', icon: 'fas fa-magic', path: '/admin/skills' },
+  { name: 'admin-tools',  label: '工具管理',   icon: 'fas fa-tools',     path: '/admin/tools' },
+  { name: 'admin-skills', label: 'Skill 管理', icon: 'fas fa-magic',     path: '/admin/skills' },
+  { name: 'admin-mcp',    label: 'MCP 配置',   icon: 'fas fa-plug',      path: '/admin/mcp' },
 ]
 
 // 系统与数据区（侧边栏第三区）
@@ -36,6 +37,7 @@ export const PAGE_CONFIGS = {
   project:        { title: '项目文件',     icon: 'fas fa-folder-open' },
   'admin-tools':  { title: '工具管理',     icon: 'fas fa-tools' },
   'admin-skills': { title: 'Skill 管理',  icon: 'fas fa-magic' },
+  'admin-mcp':    { title: 'MCP 配置',    icon: 'fas fa-plug' },
   'admin-tasks':  { title: '任务管理',     icon: 'fas fa-tasks' },
   'admin-system': { title: '系统信息',     icon: 'fas fa-info-circle' },
   'admin-stats':  { title: '统计分析',     icon: 'fas fa-chart-bar' },

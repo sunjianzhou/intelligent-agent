@@ -61,68 +61,18 @@
       <span>加载中...</span>
     </div>
 
-    <!-- API Key 配置面板 -->
-    <div class="config-card">
-      <div class="config-title"><i class="fas fa-key" /> 工具 API Key 配置</div>
-      <div class="config-hint">配置后写入 .env 文件，重启服务后生效</div>
-      <div class="config-grid">
-        <div class="config-item" v-for="cfg in apiKeyConfigs" :key="cfg.key">
-          <label class="cfg-label">{{ cfg.label }}</label>
-          <div class="cfg-input-row">
-            <input
-              :type="cfg.show ? 'text' : 'password'"
-              v-model="cfg.value"
-              :placeholder="cfg.placeholder"
-              class="cfg-input"
-            />
-            <button class="cfg-eye" @click="cfg.show = !cfg.show">
-              <i :class="cfg.show ? 'fas fa-eye-slash' : 'fas fa-eye'" />
-            </button>
-          </div>
-          <span class="cfg-desc">{{ cfg.desc }}</span>
-        </div>
-      </div>
-      <div class="config-footer">
-        <button class="cfg-save-btn" :disabled="saving" @click="saveApiKeys">
-          <i v-if="saving" class="fas fa-circle-notch fa-spin" />
-          <i v-else class="fas fa-save" />
-          {{ saving ? '保存中...' : '保存配置' }}
-        </button>
-        <span class="cfg-tip">保存后需重启 Python Agent 生效</span>
-      </div>
-    </div>
-
-    <!-- 模型推理参数调节 -->
-    <div class="config-card">
-      <div class="config-title"><i class="fas fa-sliders-h" /> 推理参数调节</div>
-      <div class="config-hint">调节 LLM 生成行为，即时生效（不需要重启）</div>
-      <div class="param-grid">
-        <div class="param-item">
-          <label>Temperature（温度）<span class="param-val">{{ temperature }}</span></label>
-          <input type="range" v-model.number="temperature" min="0" max="2" step="0.05"
-                 class="param-slider" @change="saveParams" />
-          <div class="param-range"><span>0 精确</span><span>2 创意</span></div>
-        </div>
-        <div class="param-item">
-          <label>Max Tokens（最大长度）<span class="param-val">{{ maxTokens }}</span></label>
-          <input type="range" v-model.number="maxTokens" min="256" max="8192" step="256"
-                 class="param-slider" @change="saveParams" />
-          <div class="param-range"><span>256</span><span>8192</span></div>
-        </div>
-        <div class="param-item">
-          <label>Top-P（核采样）<span class="param-val">{{ topP }}</span></label>
-          <input type="range" v-model.number="topP" min="0.1" max="1" step="0.05"
-                 class="param-slider" @change="saveParams" />
-          <div class="param-range"><span>0.1</span><span>1.0</span></div>
-        </div>
-      </div>
+    <!-- API Key 和推理参数已移至「MCP 配置」页面 -->
+    <div class="tools-footer-hint">
+      <i class="fas fa-plug" />
+      API Key 配置和推理参数调节已移至
+      <router-link to="/admin/mcp" class="mcp-link">MCP 配置</router-link>
+      页面
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
 import { getTools } from '@/services/api'
 
 const tools            = ref([])
@@ -166,80 +116,6 @@ const loadTools = async () => {
     }
   } finally {
     loading.value = false
-  }
-}
-
-// ── API Key 配置 ──────────────────────────────────────────
-const saving = ref(false)
-const apiKeyConfigs = ref([
-  {
-    key: 'GITHUB_TOKEN',
-    label: 'GitHub Token',
-    placeholder: 'ghp_xxxxxxx 或 github_pat_xxxxxx',
-    desc: '用于 GitHub 工具：搜索仓库、查看代码、PR/Issue 等',
-    value: '',
-    show: false,
-  },
-  {
-    key: 'WEB_SEARCH_API_KEY',
-    label: 'WebSearch API Key',
-    placeholder: '搜索引擎 API Key',
-    desc: '用于 WebSearchTool：联网搜索最新信息',
-    value: '',
-    show: false,
-  },
-])
-
-const saveApiKeys = async () => {
-  saving.value = true
-  try {
-    const updates = {}
-    apiKeyConfigs.value.forEach(c => { if (c.value) updates[c.key] = c.value })
-    if (!Object.keys(updates).length) {
-      ElMessage({ message: '未填写任何 Key', type: 'warning', duration: 2000 })
-      return
-    }
-    const res = await fetch('/api/config/env', {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('agent_token') || ''}`,
-      },
-      body: JSON.stringify(updates),
-    })
-    if (res.ok) {
-      ElMessage({ message: '配置已保存，重启服务后生效', type: 'success', duration: 3000 })
-      apiKeyConfigs.value.forEach(c => { c.value = '' })
-    } else {
-      ElMessage({ message: '保存失败，请检查服务状态', type: 'error', duration: 3000 })
-    }
-  } finally {
-    saving.value = false
-  }
-}
-
-// ── 推理参数 ──────────────────────────────────────────────
-const temperature = ref(0.7)
-const maxTokens   = ref(2048)
-const topP        = ref(0.9)
-
-const saveParams = async () => {
-  try {
-    await fetch('/api/config/params', {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('agent_token') || ''}`,
-      },
-      body: JSON.stringify({
-        temperature: temperature.value,
-        max_tokens:  maxTokens.value,
-        top_p:       topP.value,
-      }),
-    })
-    ElMessage({ message: `参数已更新`, type: 'success', duration: 1500 })
-  } catch {
-    ElMessage({ message: '参数保存失败', type: 'error', duration: 2000 })
   }
 }
 
@@ -424,6 +300,26 @@ onMounted(loadTools)
 .param-val { background: #f0f2ff; color: #667eea; padding: 1px 8px; border-radius: 8px; font-size: 0.78rem; }
 .param-slider { width: 100%; accent-color: #667eea; }
 .param-range { display: flex; justify-content: space-between; font-size: 0.72rem; color: #bbb; }
+
+/* ── MCP 跳转提示 ─────────────────────────────────────────── */
+.tools-footer-hint {
+  font-size: 0.84rem;
+  color: #aaa;
+  padding: 14px 16px;
+  background: white;
+  border: 1px dashed #e0e3e8;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tools-footer-hint i { color: #667eea; }
+.mcp-link {
+  color: #667eea;
+  font-weight: 500;
+  text-decoration: none;
+}
+.mcp-link:hover { text-decoration: underline; }
 
 @media (max-width: 768px) {
   .config-grid { grid-template-columns: 1fr; }
