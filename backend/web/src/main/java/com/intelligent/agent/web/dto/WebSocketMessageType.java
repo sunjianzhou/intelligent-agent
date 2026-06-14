@@ -43,6 +43,8 @@ public final class WebSocketMessageType {
     public static final String TASK_BLOCKED    = "task_blocked";
     /** 定时任务通知推送（Java 主动 push，取代前端 30s 轮询） */
     public static final String NOTIFICATION    = "notification";
+    /** LLM <think>…</think> CoT 思维块（流式，逐片推送） */
+    public static final String THINKING_CHUNK  = "thinking_chunk";
 
     /** 当前协议版本，随协议变更递增 */
     public static final int PROTOCOL_VERSION = 1;

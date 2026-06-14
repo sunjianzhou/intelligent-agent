@@ -194,6 +194,16 @@ export const useWebSocketStore = defineStore('websocket', () => {
         // isThinking 由 ChatView 本地管理；此处无需处理
         break
 
+      case 'thinking_chunk': {
+        // LLM <think>…</think> CoT 块，逐片追加到当前流式消息的 thinkingText 字段
+        if (streamingIndex.value === -1) startStreamMessage()
+        const cur = messages.value[streamingIndex.value].thinkingText || ''
+        if (cur.length < MAX_MSG_CHARS) {
+          messages.value[streamingIndex.value].thinkingText = cur + (data.chunk || '')
+        }
+        break
+      }
+
       case 'tool_call_start':
         // 单个工具启动，追加到进度列表
         activeToolSteps.value.push({
@@ -323,11 +333,12 @@ export const useWebSocketStore = defineStore('websocket', () => {
   // ── 流式消息管理 ──────────────────────────────────────────
   const startStreamMessage = () => {
     messages.value.push({
-      id:          genId(),
-      role:        'assistant',
-      content:     '',
-      isStreaming: true,
-      timestamp:   new Date()
+      id:           genId(),
+      role:         'assistant',
+      content:      '',
+      thinkingText: '',   // CoT <think> 内容，与正文分离存储
+      isStreaming:  true,
+      timestamp:    new Date()
     })
     streamingIndex.value = messages.value.length - 1
     isStreaming.value    = true

@@ -409,6 +409,45 @@ class ConversationFlowMixin:
         return cleaned, events
 
     # ═══════════════════════════════════════════════════════════════
+    # CoT 流分离器
+    # ═══════════════════════════════════════════════════════════════
+
+    async def _stream_with_cot(self, chat_messages, config, cancel_event):
+        """包装 _stream_tokens_async，将 <think>…</think> 块拆分为 'thinking_chunk' 事件。
+
+        支持跨 token 的部分标签（guard 机制：在 buffer 末尾保留可能是标签前缀的字符，
+        等待后续 token 确认再 flush，避免把 '<thi' 误当正文输出）。
+        没有 <think> 标签的模型（如 dolphin）不受影响，行为与原来完全相同。
+        """
+        _OPEN  = '<think>'
+        _CLOSE = '</think>'
+        _GUARD = max(len(_OPEN), len(_CLOSE)) - 1  # 末尾保留字符数
+
+        buf      = ""
+        in_think = False
+
+        async for raw in self._stream_tokens_async(chat_messages, config, cancel_event):
+            buf += raw
+            while True:
+                tag = _CLOSE if in_think else _OPEN
+                idx = buf.find(tag)
+                if idx >= 0:
+                    head = buf[:idx]
+                    if head:
+                        yield ('thinking_chunk' if in_think else 'token'), head
+                    in_think = not in_think
+                    buf = buf[idx + len(tag):]
+                else:
+                    safe = max(0, len(buf) - _GUARD)
+                    if safe:
+                        yield ('thinking_chunk' if in_think else 'token'), buf[:safe]
+                        buf = buf[safe:]
+                    break
+
+        if buf:
+            yield ('thinking_chunk' if in_think else 'token'), buf
+
+    # ═══════════════════════════════════════════════════════════════
     # ReAct 主循环 — chat_stream()
     # ═══════════════════════════════════════════════════════════════
 
@@ -454,9 +493,10 @@ class ConversationFlowMixin:
                 for m in messages
             ]
             full_response = ""
-            async for token in self._stream_tokens_async(chat_messages, config, cancel_event):
-                full_response += token
-                yield ('token', token)
+            async for etype, chunk in self._stream_with_cot(chat_messages, config, cancel_event):
+                if etype == 'token':
+                    full_response += chunk
+                yield (etype, chunk)
             if use_memory and full_response:
                 # 短期记忆存储完整响应（in-process deque，无存储压力）
                 # 长文本在 _build_messages 注入时截取前 300 字符，平衡上下文长度
@@ -571,9 +611,10 @@ class ConversationFlowMixin:
 
         full_response = ""
         try:
-            async for token in self._stream_tokens_async(chat_messages, config, cancel_event):
-                full_response += token
-                yield ('token', token)
+            async for etype, chunk in self._stream_with_cot(chat_messages, config, cancel_event):
+                if etype == 'token':
+                    full_response += chunk
+                yield (etype, chunk)
         except Exception as e:
             logger.warning(f"流式输出异常（已收到部分内容）: {e}")
 

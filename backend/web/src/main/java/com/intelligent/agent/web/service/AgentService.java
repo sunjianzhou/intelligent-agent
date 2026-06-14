@@ -250,6 +250,12 @@ public class AgentService {
                             log.info("工具调用完成 #{}, requestId: {}", toolCallCount, requestId);
                             break;
 
+                        case "thinking_chunk":
+                            wsMsg.put("type",  WebSocketMessageType.THINKING_CHUNK);
+                            wsMsg.put("chunk", String.valueOf(eventData));
+                            JsonUtil.sendJsonMessageQuiet(session, wsMsg);
+                            break;
+
                         case "token":
                             String token = String.valueOf(eventData);
                             fullMsg.append(token);

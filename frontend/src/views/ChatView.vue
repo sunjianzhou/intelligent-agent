@@ -110,6 +110,24 @@
           </div>
           <div class="bubble-wrap" :class="{ 'search-match': searchMatches.includes(index), 'search-current': searchMatches[searchCurrentIdx] === index }">
             <div class="bubble" :class="[msg.role, { 'notif': msg.notif }]">
+              <!-- CoT 思维过程（仅 assistant 气泡，有 thinkingText 时才显示）-->
+              <details
+                v-if="msg.role === 'assistant' && msg.thinkingText"
+                class="cot-block"
+                :open="msg.isStreaming"
+              >
+                <summary class="cot-summary">
+                  <i class="fas fa-brain cot-icon" />
+                  <span>思维过程</span>
+                  <i v-if="msg.isStreaming" class="fas fa-circle-notch fa-spin cot-spin" />
+                  <span v-else class="cot-len">{{ msg.thinkingText.length }} 字</span>
+                </summary>
+                <div
+                  class="cot-content"
+                  v-html="renderMarkdown(msg.thinkingText, msg.isStreaming)"
+                />
+              </details>
+              <!-- 正式回答 -->
               <div
                 v-if="msg.role === 'assistant'"
                 class="md-content"
@@ -1858,4 +1876,49 @@ onUnmounted(() => {
   .tool-running-card { max-width: 95% !important; }
   .search-bar-input  { font-size: 16px !important; }
 }
+
+/* ── CoT 思维过程块 ──────────────────────────────────────────*/
+.cot-block {
+  margin-bottom: 10px;
+  border: 1px solid #e0e3e8;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f8f9ff;
+}
+.cot-summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #5569d0;
+  background: #eef0ff;
+  list-style: none;
+  user-select: none;
+}
+.cot-summary::-webkit-details-marker { display: none; }
+.cot-summary::before {
+  content: '▶';
+  font-size: 0.65rem;
+  transition: transform 0.2s;
+}
+details[open] .cot-summary::before { transform: rotate(90deg); }
+.cot-icon { font-size: 0.82rem; }
+.cot-spin { font-size: 0.75rem; color: #667eea; }
+.cot-len  { margin-left: auto; font-size: 0.72rem; color: #aaa; font-weight: 400; }
+.cot-content {
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: #666;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.cot-content p { margin: 0 0 6px; }
+
+[data-theme="dark"] .cot-block { border-color: #3a3b42; background: #252630; }
+[data-theme="dark"] .cot-summary { background: #2a2b38; color: #9ea8f0; }
+[data-theme="dark"] .cot-content { color: #8e8f9a; }
 </style>
