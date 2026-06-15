@@ -46,10 +46,9 @@ class SoulLoader:
                 raise FileNotFoundError(f"必选灵魂文件缺失: {path}")
             parts[name.lower()] = path.read_text(encoding="utf-8")
 
-        whisper_path = self._soul_dir / "whisper.md"
-        parts["whisper"] = (
-            whisper_path.read_text(encoding="utf-8") if whisper_path.exists() else ""
-        )
+        for name in self.OPTIONAL:
+            opt_path = self._soul_dir / f"{name}.md"
+            parts[name.lower()] = opt_path.read_text(encoding="utf-8") if opt_path.exists() else ""
 
         self._data = SoulData(
             soul=parts["soul"],

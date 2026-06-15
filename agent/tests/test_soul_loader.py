@@ -3,6 +3,7 @@ import os
 import sys
 import pytest
 from pathlib import Path
+from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -11,7 +12,7 @@ from soul.loader import SoulLoader, SoulData
 REQUIRED_FILES = ["SOUL", "USER", "MEMORY", "IDENTITY", "HEARTBEAT"]
 
 
-def _make_soul_dir(tmp_path: Path, skip: str = None, with_whisper: bool = False) -> Path:
+def _make_soul_dir(tmp_path: Path, skip: Optional[str] = None, with_whisper: bool = False) -> Path:
     for name in REQUIRED_FILES:
         if name != skip:
             (tmp_path / f"{name}.md").write_text(f"{name} content 中文", encoding="utf-8")
@@ -101,3 +102,9 @@ def test_utf8_chinese_content(tmp_path):
         (tmp_path / f"{name}.md").write_text(name, encoding="utf-8")
     loader = SoulLoader(soul_dir=str(tmp_path))
     assert chinese in loader.data.soul
+
+
+def test_default_soul_dir_raises_when_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(SoulLoader, "_DEFAULT_SOUL_DIR", tmp_path / "nonexistent")
+    with pytest.raises(FileNotFoundError):
+        SoulLoader()
