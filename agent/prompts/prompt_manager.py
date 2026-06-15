@@ -79,6 +79,20 @@ class PromptManager:
 
         return self._FALLBACK
 
+    def get_overlay(self, model_name: str = "") -> str:
+        """只返回 overlay 字段，供 SystemPromptBuilder 作为独立 tool_overlay 注入。"""
+        model_lower = (model_name or "").lower()
+        matched_data = None
+        for pattern, data in self._templates.items():
+            if pattern != "default" and pattern in model_lower:
+                matched_data = data
+                break
+        if matched_data is None:
+            matched_data = self._templates.get("default")
+        if matched_data:
+            return matched_data.get("overlay", "").strip()
+        return ""
+
     def reload(self) -> None:
         """热重载所有模板（无需重启服务）。"""
         self._templates.clear()
