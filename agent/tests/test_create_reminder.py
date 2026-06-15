@@ -42,8 +42,6 @@ def test_parameter_extraction():
         print(f"   参数: {param_name}, 类型: {param.annotation}, "
               f"必需: {required}, 默认值: {default}")
 
-    return True
-
 
 async def test_agent_tools():
     """测试智能体工具"""

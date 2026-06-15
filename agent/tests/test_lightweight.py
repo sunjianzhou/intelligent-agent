@@ -3,6 +3,8 @@
 import sys
 import os
 
+import pytest
+
 # 添加项目根目录到路径
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -19,7 +21,7 @@ def test_basic_fixes():
         print("   ✅ IntelligentAgent 导入成功")
     except Exception as e:
         print(f"   ❌ 导入失败: {e}")
-        return False
+        pytest.fail(f"IntelligentAgent 导入失败: {e}")
 
     # 测试2: 工具管理器导入
     print("\n2. 测试工具管理器导入:")
@@ -29,7 +31,7 @@ def test_basic_fixes():
         print(f"   工具管理器类型: {type(tool_manager)}")
     except Exception as e:
         print(f"   ❌ 导入失败: {e}")
-        return False
+        pytest.fail(f"tool_manager 导入失败: {e}")
 
     # 测试3: 记忆管理器导入
     print("\n3. 测试记忆管理器导入:")
@@ -38,7 +40,7 @@ def test_basic_fixes():
         print("   ✅ MemoryManager 导入成功")
     except Exception as e:
         print(f"   ❌ 导入失败: {e}")
-        return False
+        pytest.fail(f"MemoryManager 导入失败: {e}")
 
     # 测试4: 创建简单的记忆管理器（跳过嵌入模型）
     print("\n4. 测试记忆管理器创建（跳过嵌入模型）:")
@@ -61,9 +63,7 @@ def test_basic_fixes():
         print(f"   ❌ 创建失败: {e}")
         import traceback
         traceback.print_exc()
-        return False
-
-    return True
+        pytest.fail(f"记忆管理器创建失败: {e}")
 
 
 def test_agent_creation():
@@ -93,8 +93,7 @@ def test_agent_creation():
         print("2. 检查智能体属性...")
 
         # 检查必要属性
-        required_attrs = ['model', 'base_url', 'conversation_history',
-                          'system_prompt', 'tool_manager', 'memory']
+        required_attrs = ['model', 'provider', 'tool_manager', 'memory']
 
         missing_attrs = []
         for attr in required_attrs:
@@ -103,11 +102,11 @@ def test_agent_creation():
 
         if missing_attrs:
             print(f"   ❌ 缺少属性: {missing_attrs}")
-            return False
+            pytest.fail(f"智能体缺少必要属性: {missing_attrs}")
 
         print(f"   ✅ 所有必要属性存在")
         print(f"   模型: {agent.model}")
-        print(f"   Ollama服务器: {agent.base_url}")
+        print(f"   Provider: {type(agent.provider).__name__}")
         print(f"   工具数量: {len(agent.tool_manager.get_all_tools())}")
 
         # 恢复设置
@@ -117,13 +116,11 @@ def test_agent_creation():
         import shutil
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-        return True
-
     except Exception as e:
         print(f"❌ 智能体创建测试失败: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        pytest.fail(f"智能体创建测试失败: {e}")
 
 
 def test_tool_manager_directly():
@@ -152,11 +149,9 @@ def test_tool_manager_directly():
         except Exception as e:
             print(f"   工具执行失败: {e}")
 
-        return True
-
     except Exception as e:
         print(f"❌ 工具管理器测试失败: {e}")
-        return False
+        pytest.fail(f"工具管理器测试失败: {e}")
 
 
 def main():
