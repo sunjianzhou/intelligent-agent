@@ -98,8 +98,8 @@ def stream_response(
     message: str,
     use_tools: bool,
     use_memory: bool,
-) -> str:
-    """Send message with streaming; print tokens live. Returns full response text."""
+) -> Tuple[str, list]:
+    """Send message with streaming; print tokens live. Returns (text, tool_calls)."""
     full_text = ""
     tool_calls: list = []
     in_tool_phase = False
@@ -303,8 +303,8 @@ def run_repl(
                     try:
                         result = client.switch_persona(arg)
                         if result.get("success"):
-                            session.persona = arg
-                            _print(f"Switched to persona: {arg}", "green")
+                            session.persona = result.get("persona", arg)
+                            _print(f"Switched to persona: {session.persona}", "green")
                         else:
                             _print(f"Failed: {result.get('message', '?')}", "red")
                     except Exception as e:

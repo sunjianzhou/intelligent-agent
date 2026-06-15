@@ -1,8 +1,11 @@
 """HTTP client for the Python Agent REST API."""
 import json
+import logging
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Generator, Optional
+
+_log = logging.getLogger(__name__)
 
 import requests
 
@@ -144,4 +147,4 @@ class AgentClient:
                 try:
                     yield json.loads(payload)
                 except json.JSONDecodeError:
-                    pass
+                    _log.debug("Skipping malformed SSE payload: %r", payload)

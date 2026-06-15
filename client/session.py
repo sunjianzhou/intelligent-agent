@@ -50,6 +50,7 @@ class ChatSession:
             "content": content,
             "timestamp": datetime.now().isoformat(),
         })
+        self._persist()
 
     def clear(self) -> None:
         self.messages.clear()
@@ -82,11 +83,11 @@ class ChatSession:
             pass
 
     @classmethod
-    def load(cls, path: str, data_dir: str = "./datas") -> "ChatSession":
+    def load(cls, path: str, data_dir: str = "./datas", save: bool = True) -> "ChatSession":
         """Load a previous session from a JSON file."""
         p = Path(path)
         data = json.loads(p.read_text(encoding="utf-8"))
-        s = cls(data_dir=data_dir, save=True)
+        s = cls(data_dir=data_dir, save=save)
         s.session_id = data.get("session_id", s.session_id)
         s.started_at = data.get("started_at", s.started_at)
         s.model = data.get("model", "")
