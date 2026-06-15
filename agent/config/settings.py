@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     project_root: Path = Path(__file__).parent.parent.parent
 
     # 灵魂层配置
-    soul_dir: Optional[str] = None  # None = 使用 SoulLoader 默认路径（项目根/soul/）
+    soul_dir: Optional[Path] = None  # None = 使用 SoulLoader 默认路径（项目根/soul/）
 
     # 对话历史配置
     conversation_max_messages: int = 200  # 单会话最大消息条数（超出截断最旧的）
