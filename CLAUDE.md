@@ -52,6 +52,18 @@ npm run build    # production build
 npm run preview  # preview build
 ```
 
+### CLI Client (`client/`)
+```bash
+# Run tests (requires conda python310 env)
+cd client && conda run -n python310 python -m pytest tests/ -v
+
+# Run a single test file
+conda run -n python310 python -m pytest tests/test_session.py -v
+
+# Install test dependencies (one-time)
+conda run -n python310 pip install pytest-mock responses
+```
+
 ## Architecture
 
 ### Python Agent internals
