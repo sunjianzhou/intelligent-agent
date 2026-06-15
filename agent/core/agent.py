@@ -33,6 +33,8 @@ from core._context_vars import (
 from core.memory_writer import MemoryWriterMixin
 from core.tool_dispatcher import ToolDispatcherMixin
 from core.conversation_flow import ConversationFlowMixin
+from soul.loader import SoulLoader
+from core.system_prompt_builder import SystemPromptBuilder
 
 
 class IntelligentAgent(ConversationFlowMixin, ToolDispatcherMixin, MemoryWriterMixin):
@@ -79,6 +81,10 @@ class IntelligentAgent(ConversationFlowMixin, ToolDispatcherMixin, MemoryWriterM
                 "persist_dir": settings.chroma_persist_dir,
             }
         )
+
+        # 灵魂层
+        self.soul = SoulLoader(soul_dir=str(settings.soul_dir) if settings.soul_dir else None)
+        self.prompt_builder = SystemPromptBuilder()
 
         # 调度器：初始化失败不影响主流程
         self.task_manager = None

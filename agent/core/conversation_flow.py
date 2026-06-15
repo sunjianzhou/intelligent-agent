@@ -34,12 +34,24 @@ class ConversationFlowMixin:
 
     @property
     def system_prompt(self) -> str:
-        """从 prompts/ 目录 YAML 模板加载 system prompt，按模型名匹配。
-        若当前请求设置了角色覆盖，则使用 角色内容 + 模型 overlay 组合。
-        """
+        """灵魂层驱动的 system prompt：SOUL→USER→MEMORY→HEARTBEAT→persona→whisper→tool_overlay。"""
         _, eff_model = self._get_eff_provider()
         persona_content = self._get_eff_persona()
-        return prompt_manager.get(eff_model or "", persona_content=persona_content)
+        role_ctx = self._get_role_ctx_for_prompt(persona_content)
+        tool_overlay = prompt_manager.get_overlay(eff_model or "")
+        return self.prompt_builder.build(
+            soul=self.soul,
+            role_ctx=role_ctx,
+            tool_overlay=tool_overlay,
+        )
+
+    def _get_role_ctx_for_prompt(
+        self, persona_content: Optional[str]
+    ) -> Optional[Dict[str, Any]]:
+        """有激活角色时返回 role_ctx，否则 None。多角色接入时扩展此方法。"""
+        if not persona_content:
+            return None
+        return {"persona_md": persona_content}
 
     # ═══════════════════════════════════════════════════════════════
     # 消息构建
