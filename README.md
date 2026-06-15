@@ -68,9 +68,11 @@
 | 角色系统 | `personas/*.md` 热加载，新增角色无需重启 |
 | 项目系统 | 每个项目含规格文档（Spec）+ 任务树，LLM 回复中 `[TASK_DONE]` 自动更新状态 |
 | 云端 Fallback | Ollama 不可用时自动切换到 DashScope / DeepSeek / ZhipuAI / Moonshot 等 |
-| 图片生成 | SiliconFlow API 或本地 SD WebUI |
+| 图片生成 | ComfyUI（默认）/ SD WebUI / diffusers 进程内推理 / SiliconFlow 云端四种 Provider |
+| 知识库 | 上传 .txt/.md/.pdf/.json 文件，段落/句子边界分块，ChromaDB 向量索引，聊天时自动语义检索注入上下文 |
+| 多模态输入 | 聊天输入区支持图片附件/粘贴，base64 全链路透传至 Ollama images 字段（llava / qwen-vl 等） |
 
-**内置工具**：计算器 · 时间查询 · 文件读写 · DuckDuckGo 搜索 · Shell 命令 · MySQL 查询 · 图片生成 · 记忆存储/检索 · 定时提醒创建
+**内置工具**：计算器 · 时间查询 · 文件读写 · DuckDuckGo 搜索 · Shell 命令 · MySQL 查询 · 图片生成 · 记忆存储/检索 · 定时提醒创建 · 知识库上传/检索
 
 ---
 
@@ -112,10 +114,12 @@
 
 | 路由 | 功能 |
 |------|------|
-| `/chat` | 流式聊天，Markdown 渲染，工具进度卡片，历史会话侧边栏；config-bar 内嵌角色选择器 + 模型切换 |
+| `/chat` | 流式聊天，Markdown 渲染，工具进度卡片，历史会话侧边栏；config-bar 内嵌角色选择器 + 模型切换；支持图片附件/粘贴多模态输入 |
 | `/roles/editor` | 角色编辑器：六标签表单（基本信息/核心身份/用户画像/场景知识/限制条件/提示预览）|
 | `/memory` | 短期/长期记忆查看，语义搜索（500ms 防抖），导入/导出/批量清空 |
+| `/knowledge` | 知识库管理：拖拽上传、分块统计、文件列表（含描述/大小/创建时间）、删除 |
 | `/project` | 项目列表 · Spec 编辑器 · 任务树（`[TASK_DONE]` 自动勾选） |
+| `/image` | 图片生成：Prompt/风格预设/尺寸/步数/CFG 参数面板；Provider 状态徽章；生成结果 + 历史 Gallery |
 | `/admin/skills` | Skill 管理：触发词路由、步骤定义、强制工具约束、启用/禁用、MD 导入 |
 | `/admin/tasks` | 定时任务 CRUD，五种调度类型（immediate/delay/interval/datetime/cron） |
 | `/admin/tools` | 工具列表（按分类过滤），点击查看参数说明 |
@@ -148,7 +152,9 @@ python main.py --model qwen2.5:7b       # 指定模型
 python main.py --url http://host:8000   # 自定义服务地址
 ```
 
-**REPL 内置命令**：`!model` 切换模型 · `!persona` 切换角色 · `!history` 查看历史 · `!clear` 清空会话
+**REPL 内置命令**：`!models` 列出模型 · `!model <name>` 切换模型 · `!personas` 列出角色 · `!persona <name>` 切换角色 · `!history` 查看历史 · `!sessions` 列出已保存会话 · `!clear` 清空会话
+
+**命令行参数**：`--model <name>` 指定模型 · `--persona <name>` 指定角色 · `--no-stream` 等完整响应后输出
 
 配置文件：`client/config.yaml`（服务器地址、jwt_secret、超时、流式开关）
 
@@ -288,6 +294,7 @@ cd frontend && npm install && npm run dev       # http://localhost:5173
 | `CLOUD_API_KEY` | 空 | 云端 LLM API Key |
 | `CORS_ALLOWED_ORIGINS` | `*` | 生产环境应改为具体域名 |
 | `LOG_LEVEL` | `WARNING` | 日志级别（`DEBUG` 用于开发调试） |
+| `CONVERSATION_MAX_MESSAGES` | `200` | 单会话保存的最大消息条数，超出后截断最旧消息 |
 
 ### 客户端配置（`client/config.yaml`）
 
@@ -440,8 +447,10 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 intelligent_agent/
 ├── agent/                          Python FastAPI AI 核心服务
 │   ├── api/fastapi_app.py          入口：所有 REST/SSE 端点（启动、健康、模型、聊天）
+│   ├── api/chat_router.py          /api/chat/* 聊天（含多模态 image_base64 透传）
 │   ├── api/roles_router.py         /api/roles/* 角色完整 CRUD
-│   ├── api/conversations_router.py /api/conversations/* 历史会话
+│   ├── api/conversations_router.py /api/conversations/* 历史会话（JSON 持久化）
+│   ├── api/knowledge_router.py     /api/knowledge/* 知识库上传/检索/删除
 │   ├── api/projects_router.py      /api/project/* 规格/任务/上下文
 │   ├── api/cloud_router.py         /api/cloud/* 云端服务商 CRUD + 激活切换
 │   ├── core/agent.py               IntelligentAgent 门面（继承三个 Mixin，~320行）
@@ -526,6 +535,7 @@ intelligent_agent/
 ```json
 {
   "message": "用户消息",
+  "image_base64": "base64编码的图片（可选，多模态输入）",
   "use_tools": true,
   "use_memory": true,
   "project_id": "proj-uuid",
@@ -569,6 +579,24 @@ intelligent_agent/
 | POST | `/api/cloud/providers` | 新建云端服务商配置 |
 | POST | `/api/cloud/providers/{id}/activate` | 激活指定服务商（切换全局 provider）|
 | POST | `/api/cloud/deactivate` | 停用云端，切回 Ollama |
+
+### 知识库
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/knowledge/upload` | 上传文件（.txt/.md/.pdf/.json，≤10MB），自动段落/句子边界分块写入 ChromaDB |
+| GET | `/api/knowledge/files` | 列出当前用户已入库文件（含文件名/分块数/大小/创建时间）|
+| DELETE | `/api/knowledge/files/{file_id}` | 删除文件及其所有向量块 |
+
+### 历史会话
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/conversations` | 列出用户所有会话（元数据 + 首条消息预览，最多 100 条）|
+| GET | `/api/conversations/{session_id}` | 获取某会话完整消息列表 |
+| DELETE | `/api/conversations/{session_id}` | 删除指定会话 |
+| DELETE | `/api/conversations` | 清空用户所有会话 |
+| POST | `/api/conversations/branch` | 从指定消息列表创建分支会话 |
 
 ---
 

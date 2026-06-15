@@ -1,19 +1,23 @@
 # Intelligent Agent 项目完整分析文档
 
-> 生成日期: 2026-05-19 | 最后更新: 2026-06-14
+> 生成日期: 2026-05-19 | 最后更新: 2026-06-15
 > 目的: 供另一个 Claude 实例在不接触源码的情况下进行后续设计与规划
 > 覆盖范围: 三层的完整源码分析，包括所有模块的数据结构、接口、业务逻辑和当前状态
 
-> ⚠️ **重要更新（2026-06-14）**：本文档自 2026-05-24 起有大量功能变化，关键差异摘要如下：
+> ⚠️ **重要更新（2026-06-15）**：本文档自 2026-05-24 起有大量功能变化，关键差异摘要如下：
 > - **Agent 核心重构**：`core/agent.py` 已从 ~1800 行 God Class 拆分为 4 个文件（门面 ~320 行 + 3 个 Mixin）
-> - **新 API Router**：`api/roles_router.py`（角色完整 CRUD）、`api/conversations_router.py`（历史会话）、`api/cloud_router.py`（云端服务商）
-> - **角色系统全栈**：`personas/` 目录（role_manager / role_models / prompt_builder），前端 `/roles/editor` 六标签编辑器
-> - **前端新页面**：`/admin/mcp`（MCP 配置+资源参数）、`/admin/models`（模型管理+云端服务商）、`/admin/logs`（操作日志时间线）
+> - **新 API Router**：`api/roles_router.py`（角色完整 CRUD）、`api/conversations_router.py`（历史会话）、`api/cloud_router.py`（云端服务商）、`api/knowledge_router.py`（知识库上传/检索）、`api/chat_router.py`（含多模态 image_base64 透传）
+> - **角色系统全栈**：`personas/` 目录（role_manager / role_models / prompt_builder），前端 `/roles/editor` 六标签编辑器；**CLI 客户端同步支持** `!personas`/`!persona`/`--persona`
+> - **前端新页面**：`/admin/mcp`（MCP 配置+资源参数）、`/admin/models`（模型管理+云端服务商）、`/admin/logs`（操作日志时间线）、`/knowledge`（知识库管理）、`/image`（图片生成）
+> - **图片生成**：ComfyUI（默认 8188）/ SD WebUI（7860）/ diffusers 进程内推理（含进度/img2img/热切换）/ SiliconFlow 云端四种 Provider；`ImageView.vue` 独立页面
+> - **多模态输入**：聊天支持图片附件/粘贴，base64 全链路透传至 Ollama images 字段（llava/qwen-vl 等）
+> - **知识库**：上传 .txt/.md/.pdf/.json，段落/句子边界分块，ChromaDB 向量索引，聊天时自动语义检索注入上下文
 > - **Java 新 Controller**：`AbstractProxyController`（所有代理 Controller 的统一基类）、`RoleController`、`ConversationsProxyController`、`CloudProxyController`
 > - **Java 通知推送**：`AgentService` 增加 `@Scheduled(5000ms)` 主动推送通知 WS 事件
 > - **系统重构**：SystemView 移除重复的模型/云端面板；参数配置移至 MCPView；侧边栏三分区导航（routes.config.js 单一来源）
 > - **测试**：Agent 单元测试 152 个（原 ~50），E2E 端到端测试 63 个（全新）
 > - **路线图进度**：下文 §9 所有规划项均已完成
+> - **待解决高优先级 bug（TODO-60~73）**：多模态图片持久化、前端 API 无全局超时、知识库分块质量等
 >
 > 快速了解最新状态请优先阅读 `AI_PROJECT_CONTEXT.md`（实时维护）。
 
@@ -898,10 +902,12 @@ auth:
 
 ```javascript
 /login            → LoginView (public)
-/chat             → ChatView
+/chat             → ChatView（流式聊天 + 图片附件/粘贴多模态输入）
 /roles/editor     → RoleEditorView（六标签角色配置）
 /memory           → MemoryView
+/knowledge        → KnowledgeView（知识库：拖拽上传/分块统计/文件列表/删除）
 /project          → ProjectView（项目/Spec/任务树）
+/image            → ImageView（图片生成：Prompt/风格/尺寸/步数/CFG/Provider徽章/Gallery）
 /admin/tools      → ToolsView（工具列表）
 /admin/skills     → SkillView
 /admin/mcp        → MCPView（API Key + 推理参数 + 系统资源配置）
@@ -985,8 +991,10 @@ Mock WebSocket 实现，用于离线开发，实现与真实 WebSocket 相同的
 | 视图 | 功能描述 |
 |------|----------|
 | **LoginView** | 用户名/密码输入，渐变色背景，登录后跳转 /chat |
-| **ChatView** | 聊天主界面：流式渲染、工具进度卡片、思考计时器（3s后），历史会话侧边栏，config-bar 内嵌模型/角色切换，悬停气泡操作（复制/点赞/踩） |
+| **ChatView** | 聊天主界面：流式渲染、工具进度卡片、思考计时器（3s后），历史会话侧边栏，config-bar 内嵌模型/角色切换，悬停气泡操作（复制/点赞/踩）；图片附件/粘贴多模态输入（base64 透传） |
 | **RoleEditorView** | 角色编辑器：六标签表单（基本信息/核心身份/用户画像/场景知识/限制条件/提示预览），保存/激活/删除 |
+| **KnowledgeView** | 知识库管理：拖拽+点击上传（.txt/.md/.pdf/.json，≤10MB），填描述，文件列表（分块数/大小/时间），删除 |
+| **ImageView** | 图片生成：左侧参数面板（Prompt/negative_prompt/风格预设/尺寸/步数/CFG/Provider徽章），右侧结果卡片+Gallery（hover 显示下载/删除） |
 | **ToolsView** | 工具卡片网格，按分类过滤；API Key 配置已移至 MCPView |
 | **MCPView** | 三卡片：① 工具 API Key（写入 .env）② 推理参数滑块（即时生效）③ 系统资源配置（并发/缓存/记忆上限，立即生效） |
 | **ModelView** | 当前激活模型卡、云端服务商 CRUD（添加/编辑/删除/激活/停用）、本地 Ollama 模型列表（含用途标签推断） |
@@ -1077,21 +1085,40 @@ vite 4.4, @vitejs/plugin-vue 4.3
 9. **反馈闭环**: like/dislike 收集 + 统计分析面板
 10. **Docker 化**: 一命令启动全部服务
 
-### 8.2 待完善/可扩展点（截至 2026-06-15 全部已处理）
+### 8.2 待完善/可扩展点
+
+**已全部处理（历史遗留）**：
 
 1. ✅ **aPScheduler 冗余**: `requirements.txt` 从未包含 apscheduler，文档描述有误，已更正
 2. ✅ **Task 持久化**: 任务状态保存到 `data/tasks.json`，重启恢复
-3. ✅ **Memory Embedding 依赖**: `requirements-docker.txt` 已移除 `sentence-transformers`（~1GB PyTorch）；`long_term.py` 已有自动降级逻辑：检测到 sentence_transformers 不可用时，自动切换到 ChromaDB 内置 ONNX embedding（all-MiniLM-L6-v2），效果相当
+3. ✅ **Memory Embedding 依赖**: 已移除大依赖，长期记忆自动降级到 ChromaDB 内置 ONNX embedding
 4. ✅ **JWT 密钥**: 已通过 `JWT_SECRET` 环境变量注入，不再硬编码
 5. ✅ **HTTPS**: `nginx/nginx-https.conf` 配置模板已提供，`docker compose --profile https` 启用
-6. ✅ **WebSocket 重连**: `onclose` 回调已检测 `isTokenExpired(token)` → 调用 `redirectToLogin()`，token 过期时立即跳登录页，不进入无限重连死循环
-7. ✅ **多用户隔离**: 模型/角色已通过 ContextVar per-request 隔离；用户 ID 经 Java `X-User-Id` 头透传到 Python
-8. ✅ **数据库工具动态切换**: `GET/PUT /api/config/database` 端点已实现（Python `config_router.py` + Java `ConfigProxyController` + MCPView 第四卡片）；支持运行时更新 DB 连接配置并立即重连，无需重启
-9. ✅ **ToolManager 冗余代码**: `load_tools_from_module` 方法早已不存在，文档描述有误，已更正
-10. ✅ **日志混用**: `fastapi_app.py` 中唯一一行 `logging.getLogger("uvicorn.access")` 是必要的第三方库控制，不属于混用问题，已更正文档
-11. ✅ **TimerTool**: 已删除，`test_timer_tool_removed.py` 回归测试确认
-12. ✅ **Java 用户 ID 透传**: `AbstractProxyController` + `X-User-Id` 已实现
-13. ✅ **WebSocket 握手鉴权**: `JwtHandshakeInterceptor` 已在握手阶段验证 token
+6. ✅ **WebSocket 重连**: token 过期时立即跳登录页，不进入无限重连死循环
+7. ✅ **多用户隔离**: ContextVar per-request 隔离；`X-User-Id` 透传
+8. ✅ **数据库工具动态切换**: `GET/PUT /api/config/database` 端点已实现
+9. ✅ **TimerTool**: 已删除，回归测试确认
+10. ✅ **Java 用户 ID 透传**: `AbstractProxyController` + `X-User-Id` 已实现
+11. ✅ **WebSocket 握手鉴权**: `JwtHandshakeInterceptor` 已在握手阶段验证 token
+
+**当前待处理（TODO-60~73，截至 2026-06-15）**：
+
+| 编号 | 问题描述 | 优先级 | 文件 |
+|------|---------|--------|------|
+| TODO-60 | 多模态图片未持久化到对话历史（`_append_messages()` 未存 `images_b64`） | 高 | `conversation_flow.py`, `short_term_memory.py` |
+| TODO-61 | 前端历史会话加载丢弃图片数据（`loadSession()` 不恢复 `imagePreview`） | 高 | `ChatView.vue`, `conversations_router.py` |
+| TODO-62 | diffusers `_progress_state` 无锁全局变量，并发时进度信息错乱 | 高 | `diffusers_provider.py` |
+| TODO-63 | `knowledge_router` 上传日志泄露物理路径（安全） | 高 | `knowledge_router.py` |
+| TODO-64 | 多模态"图片前缀"文本两处重复硬编码 | 中 | `chat_router.py`, `conversation_flow.py` |
+| TODO-65 | diffusers 裸 `except Exception` 吞掉加载异常 | 高 | `diffusers_provider.py` |
+| TODO-66 | `project_id` 未写入对话历史 metadata | 高 | `conversation_flow.py`, `short_term_memory.py` |
+| TODO-67 | `api.js` 所有 fetch 无全局超时，UI 可能冻结 | 高 | `api.js` |
+| TODO-68 | `websocket.js` 遗留 6 条 `console.log` | 中 | `websocket.js` |
+| TODO-69 | 反馈提交失败无用户提示 | 中 | `ChatView.vue` |
+| TODO-70 | 附图按钮上传中无禁用态 | 中 | `ChatView.vue` |
+| TODO-71 | `knowledge_router` 先 read 再检查大小 | 中 | `knowledge_router.py` |
+| TODO-72 | `uploadKnowledgeFile` 绕过通用 `request()`，无统一错误处理 | 中 | `api.js` |
+| TODO-73 | 分支对话丢弃附图数据 | 中 | `ChatView.vue` |
 
 ### 8.3 关键数值配置速查
 
@@ -1118,14 +1145,14 @@ vite 4.4, @vitejs/plugin-vue 4.3
 ---
 
 > 本文档覆盖了项目全部源码文件 (包括 `__init__.py`、`__pycache__` 以外的所有功能性文件)。
-> 总计分析源文件: ~50 个 Python 文件, ~15 个 Java 文件, ~20 个前端文件。
+> 总计分析源文件: ~60 个 Python 文件, ~15 个 Java 文件, ~25 个前端文件（含 ImageView/KnowledgeView）。
 > 后续规划时可直接引用本文档中的模块名、类名、方法签名和数据结构。
 
 ---
 
-## 9. 能力路线图（截至 2026-06-14：全部完成）
+## 9. 能力路线图（截至 2026-06-15：原规划全部完成，新功能已落地）
 
-> 本节原记录规划中能力方向。截至 2026-06-14，以下所有项均已实现并部署。
+> 本节原记录规划中能力方向。截至 2026-06-15，以下所有项均已实现并部署。
 
 | 编号 | 能力 | 原优先级 | 状态 | 完成说明 |
 |------|------|----------|------|----------|

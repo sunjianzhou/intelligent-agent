@@ -1,7 +1,7 @@
 # 智能体项目 — AI 上下文速查文档
 
 > **本文档专为大模型阅读设计**。新对话开始时先读此文件，5 分钟内建立完整项目认知，无需再反复询问基础背景。
-> 最后更新：2026-06-14
+> 最后更新：2026-06-15
 
 ---
 
@@ -70,7 +70,7 @@ intelligent_agent/
 | `ToolDispatcherMixin` | `core/tool_dispatcher.py` | 工具注册/意图/LLM调用（~1130行） |
 | `MemoryWriterMixin` | `core/memory_writer.py` | 预热/MCP/蒸馏/清理（~310行） |
 | `_context_vars` | `core/_context_vars.py` | 共享 ContextVar（避免循环导入） |
-| `OllamaProvider` | `services/ollama_provider.py` | LLM 推理，原生 Function Calling + text-tool 两种模式 |
+| `OllamaProvider` | `services/ollama_provider.py` | LLM 推理，原生 Function Calling + text-tool 两种模式，支持 images 字段（多模态） |
 | `OpenAIProvider` | `services/openai_provider.py` | 云端 LLM（DashScope/DeepSeek/ZhipuAI/Moonshot 等） |
 | `MemoryManager` | `memory/manager.py` | 路由短/长期记忆 |
 | `ShortTermMemory` | `memory/short_term.py` | 进程内双端队列，TTL 24h，max 100 条 |
@@ -122,9 +122,13 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 | WebSearchTool | `web_search.py` | DuckDuckGo 搜索 |
 | ShellTool | `shell_tool.py` | Shell 命令（受目录白名单限制） |
 | DatabaseTool | `database/` | MySQL 查询 |
-| ImageGenerationTool | `image_tool.py` | 图片生成（SiliconFlow API 或本地 SD WebUI） |
+| ImageGenerationTool | `image_tool.py` | 图片生成（ComfyUI/SD WebUI/diffusers/SiliconFlow 四种 Provider） |
 
 另有通过 `FunctionTool` 动态注册的工具：`store_memory`、`search_memories`、`create_reminder`、`create_periodic_reminder` 等。
+
+**知识库**（`api/knowledge_router.py`）：独立 FastAPI 路由，上传 .txt/.md/.pdf/.json（≤10MB），按段落/句子边界分块后写入 ChromaDB 独立集合（`knowledge_{user_id}`）。每次 `_build_messages_async()` 时语义检索注入 `[KNOWLEDGE]` 区块。
+
+**多模态输入**：`chat_router.py` 接收 `image_base64` 字段，`conversation_flow.py` 在构建 LLM 消息时附加 `images` 列表，OllamaProvider 将其透传给 Ollama API（llava / qwen-vl 等模型可直接理解图片内容）。
 
 ### 3.6 任务调度系统
 
@@ -225,10 +229,12 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 
 | 路径 | 视图 | 说明 |
 |------|------|------|
-| `/chat` | ChatView | 主聊天页，流式渲染，工具卡片，历史会话侧边栏 |
+| `/chat` | ChatView | 主聊天页，流式渲染，工具卡片，历史会话侧边栏，图片附件/粘贴多模态输入 |
 | `/roles/editor` | RoleEditorView | 六标签角色配置表单（保存/激活/删除） |
 | `/memory` | MemoryView | 短期/长期记忆，搜索，导出 |
+| `/knowledge` | KnowledgeView | 知识库管理：拖拽上传、分块统计、文件列表（含描述/大小/创建时间）、删除 |
 | `/project` | ProjectView | 三栏：项目列表 / SpecEditor / TaskTree |
+| `/image` | ImageView | 图片生成：Prompt/风格预设/尺寸/步数/CFG 参数面板；Provider 状态徽章；生成结果 + 历史 Gallery |
 | `/admin/tools` | ToolsView | 工具列表（按分类过滤），跳转链接至 MCP 配置 |
 | `/admin/skills` | SkillView | 技能管理（MD 导入） |
 | `/admin/mcp` | MCPView | 工具 API Key + 推理参数 + 系统资源配置（三个卡片） |
@@ -278,11 +284,13 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 
 | 文件 | 说明 |
 |------|------|
-| `main.py` | CLI 入口（argparse，单次问答 / REPL 两种模式） |
-| `api.py` | AgentClient（HTTP + SSE + JWT 自动续签） |
-| `session.py` | ChatSession（内存 + JSON 持久化到 `datas/`） |
-| `repl.py` | 交互式 REPL（Rich 可选，支持 `!model`/`!persona`/`!history` 等命令） |
+| `main.py` | CLI 入口（argparse，单次问答 / REPL 两种模式；`--model`/`--persona` 启动时直接指定） |
+| `api.py` | AgentClient（HTTP + SSE + JWT 自动续签；含 `get_personas()`/`switch_persona()` 角色 API） |
+| `session.py` | ChatSession（内存 + JSON 持久化到 `datas/`，记录当前 model/persona） |
+| `repl.py` | 交互式 REPL（Rich 可选，支持 `!models`/`!model`/`!personas`/`!persona`/`!history`/`!sessions`/`!clear` 命令） |
 | `config.yaml` | 服务器地址、jwt_secret、用户名、超时 |
+
+**角色支持**：CLI 完整支持角色切换，`!personas` 列出所有可用角色（当前激活角色标星号），`!persona <name>` 立即切换，等价于 Web 端角色选择器。`main.py --persona <name>` 可在进入 REPL 前预设角色。
 
 ---
 
@@ -297,6 +305,15 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 | D-03 | `_TEXT_TOOL_CALLING_PATTERNS` 硬编码，新模型需改源码 | 低 |
 | D-04 | ✅ L1 缓存 key 已包含 persona 维度 | — |
 | D-05 | `asyncio.ensure_future` 在模块级别调用，依赖 uvicorn 复用事件循环 | 低 |
+| TODO-60 | 多模态图片未持久化到对话历史（`_append_messages()` 未存 `images_b64`） | 高 |
+| TODO-62 | diffusers `_progress_state` 无锁全局变量，多用户并发时进度信息错乱 | 高 |
+| TODO-63 | `knowledge_router` 上传日志泄露物理路径 | 高(安全) |
+| TODO-64 | 多模态"图片前缀"文本两处重复硬编码 | 中 |
+| TODO-65 | diffusers 模型加载裸 `except Exception` 吞掉异常 | 高 |
+| TODO-66 | `project_id` 未写入对话历史 metadata | 高 |
+| TODO-71 | `knowledge_router` 先读文件再检查大小，大文件先占内存再拒绝 | 中 |
+| TODO-74 | `knowledge_router` 按固定字符数分块，不考虑句子/段落边界 | 中 |
+| TODO-75 | 缺少请求 traceID，三层链路无法关联追踪 | 中 |
 
 ### Java 后端
 
@@ -314,6 +331,13 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 | F-02 | 角色文件标题与"角色设定"功能名歧义 | 低 |
 | F-04 | 会话历史标题更新依赖异步 `_persist()`，Sidebar 可能延迟刷新 | 低 |
 | F-05 | `api.js` 中 `switchModel` 动态 import 与静态 import 混用 | 低 |
+| TODO-61 | 前端历史会话加载丢弃图片数据（loadSession 不恢复 imagePreview） | 高 |
+| TODO-67 | `api.js` 所有 fetch 无全局超时，网络卡顿时 UI 冻结 | 高 |
+| TODO-68 | `websocket.js` 遗留 6 条 console.log 未清理 | 中 |
+| TODO-69 | 反馈提交失败无用户提示（仅 console.error） | 中 |
+| TODO-70 | 附图按钮上传中无禁用态，用户可重复点击覆盖 | 中 |
+| TODO-72 | `uploadKnowledgeFile` 绕过通用 request()，无统一错误处理 | 中 |
+| TODO-73 | 分支对话丢弃附图数据 | 中 |
 
 ### 基础设施
 
@@ -345,16 +369,20 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 | 操作日志页（LogView） | 2026-06-14 |
 | SystemView 重构（移除重复面板） | 2026-06-14 |
 | 全局 UX 优化 12 项 | 2026-06-14 |
+| 知识库 UI 全栈（KnowledgeView + knowledge_router） | 2026-06-15 |
+| 多模态聊天输入（图片附件/粘贴，全链路 base64 透传） | 2026-06-15 |
+| diffusers 进程内推理增强（进度/img2img/热切换/锁） | 2026-06-15 |
+| LOW 级安全/质量问题全部清零（路径遍历/消息上限配置/函数拆分） | 2026-06-15 |
 
 ---
 
-## 九、当前运行状态（2026-06-14）
+## 九、当前运行状态（2026-06-15）
 
-- **已提交到 GitHub**：所有修改均已推送 master 分支（最新 commit `c0199f2`）
+- **已提交到 GitHub**：所有修改均已推送 master 分支（最新 commit `9cb8bc9`）
 - **测试覆盖**：152 个 Agent 单元测试 + 63 个 E2E 测试，全部通过
 - **使用的模型**：`dolphin:latest`（无限制人格），支持切换到 qwen2.5:7b 等
 - **Python 环境**：conda `python310`（Python 3.10）
-- **待办**：TODO-1（HTTPS 生产部署）/ TODO-21（Feishu Bot）/ TODO-12（性能优化待触发条件）
+- **待办**：TODO-1（HTTPS 生产部署）/ TODO-21（Feishu Bot）/ TODO-12（性能优化待触发条件）/ TODO-60~73（多模态持久化/前端超时/知识库质量等高中优先级 bug）
 
 ---
 
@@ -377,6 +405,14 @@ docker compose up -d
 
 # 强杀 Windows 上卡住的 Python agent
 wmic process where "commandline like '%uvicorn%'" delete
+
+# 知识库迁移（ChromaDB schema 问题时）
+cd agent && python tools/migrate_chromadb.py --dry-run
+cd agent && python tools/migrate_chromadb.py
+
+# CLI 客户端角色切换
+cd client && python main.py --persona "技术专家"  # 启动时指定角色
+# 进入 REPL 后：!personas 列出角色，!persona 创意写手 切换
 
 # 前端构建 + 热更新容器
 cd frontend && npm run build
