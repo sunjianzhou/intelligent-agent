@@ -51,3 +51,6 @@ agent/data/runtime_config.json
 agent/data/feedback/
 agent/data/skill_logs/
 agent/data/tool_calls/
+
+# 灵魂私密档案（不入版本控制）
+soul/whisper.md
