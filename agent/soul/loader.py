@@ -8,7 +8,7 @@ from typing import Optional
 from loguru import logger
 
 
-@dataclass
+@dataclass(frozen=True)
 class SoulData:
     soul: str
     user: str
@@ -37,12 +37,12 @@ class SoulLoader:
 
     def load(self) -> SoulData:
         """加载（或热重载）全部灵魂文件。必选文件缺失时抛 FileNotFoundError。"""
-        self._data = None  # 失败时状态明确
         parts: dict[str, str] = {}
 
         for name in self.REQUIRED:
             path = self._soul_dir / f"{name}.md"
             if not path.exists():
+                self._data = None  # 明确失败状态
                 raise FileNotFoundError(f"必选灵魂文件缺失: {path}")
             parts[name.lower()] = path.read_text(encoding="utf-8")
 
@@ -50,7 +50,7 @@ class SoulLoader:
             opt_path = self._soul_dir / f"{name}.md"
             parts[name.lower()] = opt_path.read_text(encoding="utf-8") if opt_path.exists() else ""
 
-        self._data = SoulData(
+        new_data = SoulData(
             soul=parts["soul"],
             user=parts["user"],
             memory=parts["memory"],
@@ -58,6 +58,7 @@ class SoulLoader:
             heartbeat=parts["heartbeat"],
             whisper=parts["whisper"],
         )
+        self._data = new_data  # 原子赋值，最小化并发窗口
         logger.info("灵魂加载成功")
         return self._data
 

@@ -59,6 +59,9 @@ class SystemPromptBuilder:
             sections.append(tool_overlay.strip())
 
         result = self._SEP.join(s for s in sections if s)
+        if not result:
+            result = "你是一个有帮助的AI助手，请用中文回答。"
+            logger.warning("system prompt assembled to empty string, using fallback")
         logger.debug("final prompt: %d chars", len(result))
         return result
 

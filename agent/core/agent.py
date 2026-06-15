@@ -82,8 +82,15 @@ class IntelligentAgent(ConversationFlowMixin, ToolDispatcherMixin, MemoryWriterM
             }
         )
 
-        # 灵魂层
-        self.soul = SoulLoader(soul_dir=str(settings.soul_dir) if settings.soul_dir else None)
+        # 灵魂层（初始化失败降级为空白灵魂，不阻断主流程）
+        try:
+            self.soul = SoulLoader(soul_dir=str(settings.soul_dir) if settings.soul_dir else None)
+        except FileNotFoundError as e:
+            logger.warning(f"灵魂文件缺失，使用空白灵魂降级: {e}")
+            from soul.loader import SoulData
+            class _EmptySoul:
+                data = SoulData(soul="", user="", memory="", identity="", heartbeat="", whisper="")
+            self.soul = _EmptySoul()
         self.prompt_builder = SystemPromptBuilder()
 
         # 调度器：初始化失败不影响主流程
