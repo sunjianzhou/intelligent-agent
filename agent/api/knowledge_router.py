@@ -220,7 +220,7 @@ async def upload_knowledge_file(
     }
     _save_manifest(user_id, manifest)
 
-    logger.info(f"文件入库完成: user={user_id}, file={filename}, chunks={len(chunks)}, file_id={file_id}")
+    logger.info(f"文件入库完成: user={user_id}, file={Path(filename).name}, chunks={len(chunks)}")
     return {
         "success":     True,
         "file_id":     file_id,

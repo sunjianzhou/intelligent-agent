@@ -92,8 +92,8 @@ def _apply_memory_opts(pipe: Any, device: str) -> Any:
         try:
             pipe.enable_xformers_memory_efficient_attention()
             logger.info("[Diffusers] xformers 内存优化已启用")
-        except Exception:
-            logger.debug("[Diffusers] xformers 不可用（pip install xformers 可进一步提速）")
+        except Exception as e:
+            logger.debug("[Diffusers] xformers 不可用（pip install xformers 可进一步提速）", exc_info=True)
 
     return pipe
 
@@ -175,8 +175,8 @@ class DiffusersProvider(BaseImageProvider):
                     import torch
                     if self._device == "cuda":
                         torch.cuda.empty_cache()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"[Diffusers] 清除 GPU 缓存失败: {e}", exc_info=True)
                 logger.info(f"[Diffusers] 模型缓存已清除: {self._model_id}")
         self._model_id = new_model_id
         return True, f"已切换到 {new_model_id}（下次生成时加载）"
@@ -198,7 +198,7 @@ class DiffusersProvider(BaseImageProvider):
         except RuntimeError as e:
             return self.unavailable_result(str(e))
         except Exception as e:
-            logger.error(f"[Diffusers] 生成失败: {e}")
+            logger.error(f"[Diffusers] 生成失败: {e}", exc_info=True)
             return self.unavailable_result(str(e))
 
     def _generate_sync(self, req: ImageRequest) -> bytes:
@@ -212,7 +212,8 @@ class DiffusersProvider(BaseImageProvider):
 
         full_prompt   = f"{req.prompt}, {req.style}" if req.style else req.prompt
         total_steps   = req.steps or 20
-        _progress_state["max"] = total_steps
+        with _progress_lock:
+            _progress_state["max"] = total_steps
 
         def _step_callback(pipeline, step: int, timestep: int, kwargs: dict) -> dict:
             with _progress_lock:
@@ -273,7 +274,8 @@ class DiffusersProvider(BaseImageProvider):
             )
             buf = io.BytesIO()
             result.images[0].save(buf, format="PNG")
-            _progress_state["progress"] = 1.0
+            with _progress_lock:
+                _progress_state["progress"] = 1.0
             return buf.getvalue()
 
         result = img2img_pipe(
@@ -287,5 +289,6 @@ class DiffusersProvider(BaseImageProvider):
         )
         buf = io.BytesIO()
         result.images[0].save(buf, format="PNG")
-        _progress_state["progress"] = 1.0
+        with _progress_lock:
+            _progress_state["progress"] = 1.0
         return buf.getvalue()
