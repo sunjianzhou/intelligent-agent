@@ -887,7 +887,10 @@ const sendMessage = () => {
     ...(imgPreview ? { imagePreview: imgPreview } : {}),
   }
   store.addMessage(userMsg)
-  sessionStore.addMessage({ role: 'user', content: text, timestamp: new Date().toISOString() })
+  sessionStore.addMessage({
+    role: 'user', content: text, timestamp: new Date().toISOString(),
+    ...(imgB64 ? { images_b64: [imgB64] } : {}),
+  })
 
   inputText.value = ''
   nextTick(() => { if (inputRef.value) inputRef.value.style.height = 'auto' })
@@ -1183,12 +1186,20 @@ onMounted(async () => {
     await sessionStore.startNewSession()
   } else if (sessionStore.messages.length > 0 && store.messages.length === 0) {
     // 刷新页面或重新挂载时，从 localSession 恢复当前会话消息
-    sessionStore.messages.forEach(m => store.messages.push({
-      id:        m.id || genId(),
-      role:      m.role,
-      content:   m.content,
-      timestamp: m.timestamp || new Date().toISOString(),
-    }))
+    sessionStore.messages.forEach(m => {
+      const entry = {
+        id:        m.id || genId(),
+        role:      m.role,
+        content:   m.content,
+        timestamp: m.timestamp || new Date().toISOString(),
+      }
+      // 还原多模态图片预览（IndexedDB 中存了 images_b64）
+      if (m.images_b64?.length) {
+        entry.images_b64  = m.images_b64
+        entry.imagePreview = `data:image/jpeg;base64,${m.images_b64[0]}`
+      }
+      store.messages.push(entry)
+    })
   }
 
   scrollToBottom()
