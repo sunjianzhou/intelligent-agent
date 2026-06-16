@@ -33,6 +33,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             "/api/auth/login",
             "/api/auth/logout",
             "/api/health",
+            "/feishu/",         // 飞书卡片回调，由 FeishuCrypto.verifyEventSignature 鉴权
             "/ws",
             // 前端静态资源（生产模式由 Java 直接提供）
             "/index.html",

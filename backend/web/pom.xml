@@ -116,6 +116,21 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- 飞书 WS 长连接（纯手写，无官方 SDK） -->
+        <dependency>
+            <groupId>org.java-websocket</groupId>
+            <artifactId>Java-WebSocket</artifactId>
+            <version>1.5.4</version>
+        </dependency>
+
+        <!-- 集成测试用 MockWebServer（仅 test scope） -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>mockwebserver</artifactId>
+            <version>4.12.0</version>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>
