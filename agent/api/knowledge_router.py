@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from loguru import logger
 
@@ -159,17 +159,21 @@ async def upload_knowledge_file(
             content={"success": False, "message": f"不支持 {ext}，可用: {', '.join(sorted(_ALLOWED_EXT))}"},
         )
 
-    # 先检查文件大小（无需全量读取内容）
-    file.file.seek(0, 2)
-    file_size = file.file.tell()
-    file.file.seek(0)
-    if file_size > _MAX_BYTES:
-        return JSONResponse(
-            status_code=400,
-            content={"success": False, "message": "文件超过 10 MB 上限"},
+    # 先尝试用 size 属性快速检查（Content-Length 已知时可提前拒绝，节省内存）
+    if file.size is not None and file.size > _MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"文件过大，最大允许 {_MAX_BYTES // 1024 // 1024}MB",
         )
 
     content = await file.read()
+
+    # 读完后再次验证（处理 size=None / Content-Length 未提供的情况）
+    if len(content) > _MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"文件过大，最大允许 {_MAX_BYTES // 1024 // 1024}MB",
+        )
 
     try:
         text = _extract_text(filename, content)
