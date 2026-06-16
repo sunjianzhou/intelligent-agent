@@ -456,167 +456,99 @@ ModelView.vue 已集成：云端服务商 CRUD（添加/编辑/删除/激活）+
 
 ---
 
-## TODO-60: [BUG-HIGH] 多模态图片未持久化到对话历史
+## ~~TODO-60: [BUG-HIGH] 多模态图片未持久化到对话历史~~ ✅ 已完成（2026-06-16）
 
-**问题**：`conversation_flow.py:157-162` 中 `image_base64` 仅注入 LLM 消息 dict 的 `_images` 字段，但 `_append_messages()` 保存对话历史时不携带该字段；重新加载历史对话时图片丢失。
-
-**修复方向**：
-- `_append_messages()` 保存 user 消息时，若消息 dict 有 `_images`，将 base64 一同写入 ChromaDB metadata（`images_b64` 字段）
-- `get_context_for_query()` / 对话历史 API 返回时带上 `images_b64`
-
-**涉及文件**：`agent/core/conversation_flow.py`, `agent/memory/short_term_memory.py`
+Python 侧图片早已存入 JSON；修复前端 sendMessage 缺少 images_b64 字段 + onMounted 恢复路径不携带图片。commit `98f69d6`
 
 ---
 
-## TODO-61: [BUG-HIGH] 前端历史会话加载丢弃图片数据
+## ~~TODO-61: [BUG-HIGH] 前端历史会话加载丢弃图片数据~~ ✅ 已完成（2026-06-16）
 
-**问题**：`ChatView.vue:loadSession()` 从 `/api/conversations/{id}` 加载消息时，仅复制 `role/content/timestamp`，不恢复 `imagePreview`；即使后端已存图片，前端气泡也不显示。
-
-**修复方向**：
-- 后端 `conversations_router.py` 返回消息时携带 `images_b64`（来自 memory metadata）
-- `loadSession()` 将 `images_b64[0]` 还原为 `imagePreview`（加 data URL 前缀）显示在气泡
-
-**涉及文件**：`frontend/src/views/ChatView.vue`, `agent/api/conversations_router.py`
+同 TODO-60，两个前端恢复路径一并修复。commit `98f69d6`
 
 ---
 
-## TODO-62: [BUG-HIGH] diffusers `_progress_state` 无锁全局变量
+## ~~TODO-62: [BUG-HIGH] diffusers `_progress_state` 无锁全局变量~~ ✅ 已完成（2026-06-16）
 
-**问题**：`diffusers_provider.py:28-32` 模块级字典在无锁保护下被并发请求同时读写，多用户并发时进度信息错乱。
-
-**修复方向**：用 `threading.Lock()` 保护 `_progress_state` 的读写操作，或改为 `dict` + `RLock`。
-
-**涉及文件**：`agent/services/image/diffusers_provider.py`
+3 处写操作加 `threading.Lock`。commit `b33b044`
 
 ---
 
-## TODO-63: [SEC-HIGH] knowledge_router 上传日志泄露物理路径
+## ~~TODO-63: [SEC-HIGH] knowledge_router 上传日志泄露物理路径~~ ✅ 已完成（2026-06-16）
 
-**问题**：`knowledge_router.py:174-177` 将用户上传文件的完整磁盘路径输出到日志，生产环境安全隐患。
-
-**修复方向**：日志只记录文件名和 chunk 数，去掉完整路径。
-
-**涉及文件**：`agent/api/knowledge_router.py`
+日志只保留文件名+chunk数，去掉完整路径。commit `b33b044`
 
 ---
 
-## TODO-64: [REFACTOR-HIGH] 多模态"图片前缀"文本两处重复
+## ~~TODO-64: [REFACTOR-HIGH] 多模态"图片前缀"文本两处重复~~ ✅ 已完成（早期实现）
 
-**问题**：`chat_router.py:107` 和 `conversation_flow.py:160` 分别硬编码 `"[图片已附加，请结合图片回答]\n"`，维护不一致风险。
-
-**修复方向**：提取为常量 `MULTIMODAL_IMAGE_PREFIX`，统一在一处定义（`base_provider.py` 或 `chat_router.py`）。
-
-**涉及文件**：`agent/api/chat_router.py`, `agent/core/conversation_flow.py`
+常量 `MULTIMODAL_IMAGE_PREFIX` 已在 `base_provider.py` 定义，两处均 import，早已正确实现。
 
 ---
 
-## TODO-65: [BUG-HIGH] diffusers 模型加载裸 `except Exception` 吞掉异常
+## ~~TODO-65: [BUG-HIGH] diffusers 模型加载裸 `except Exception` 吞掉异常~~ ✅ 已完成（2026-06-16）
 
-**问题**：`diffusers_provider.py:93,100,104` 多处 `except Exception` 未记录异常详情，硬件/网络/权限问题无法快速定位。
-
-**修复方向**：改为 `except Exception as e: logger.error("...", exc_info=True)` 并重新抛出或返回明确错误信息。
-
-**涉及文件**：`agent/services/image/diffusers_provider.py`
+3 处裸 except 补 `exc_info=True`。commit `b33b044`
 
 ---
 
-## TODO-66: [BUG-HIGH] `project_id` 未写入对话历史 metadata
+## ~~TODO-66: [BUG-HIGH] `project_id` 未写入对话历史 metadata~~ ✅ 已完成（2026-06-16）
 
-**问题**：`conversations_router.py` 保存对话时仅存 `role/content/timestamp`，`project_id` 未写入；重新加载后项目上下文丢失。
-
-**修复方向**：`_append_messages()` 接受并存储 `project_id` 到 metadata。
-
-**涉及文件**：`agent/core/conversation_flow.py`, `agent/memory/short_term_memory.py`
+`project_id` 写入会话 JSON 顶层字段，API 返回携带。commit `9cab32b`
 
 ---
 
-## TODO-67: [BUG-HIGH] 前端 API 无全局请求超时
+## ~~TODO-67: [BUG-HIGH] 前端 API 无全局请求超时~~ ✅ 已完成（早期实现）
 
-**问题**：`api.js` 所有 `fetch()` 调用无超时控制，网络卡顿时 UI 冻结无限等待。
-
-**修复方向**：封装 `withTimeout(fetchPromise, 30000)` 或用 `AbortController`，在通用 `request()` 函数中统一处理。
-
-**涉及文件**：`frontend/src/services/api.js`
+AbortController + 30s 超时早已实现；补 `options.timeout` 支持。commit `f8796b0`
 
 ---
 
-## TODO-68: [CLEANUP-MEDIUM] websocket.js 遗留 6 条 console.log
+## ~~TODO-68: [CLEANUP-MEDIUM] websocket.js 遗留 6 条 console.log~~ ✅ 已完成（早期实现）
 
-**问题**：`websocket.js:93,104,111,140,147,171` 调试日志未清理，生产环境输出连接/关闭/模拟模式信息。
-
-**修复方向**：删除或替换为 `import.meta.env.DEV && console.log(...)` 条件输出。
-
-**涉及文件**：`frontend/src/stores/websocket.js`
+早已全用 `console.warn/error`，无 `console.log`，无需改动。
 
 ---
 
-## TODO-69: [UX-MEDIUM] 反馈提交失败无用户提示
+## ~~TODO-69: [UX-MEDIUM] 反馈提交失败无用户提示~~ ✅ 已完成（早期实现）
 
-**问题**：`ChatView.vue:816` 点赞/踩提交失败仅 `console.error()`，用户无感知。
-
-**修复方向**：改为 `ElMessage.error('反馈提交失败，请重试')` 并重置按钮状态。
-
-**涉及文件**：`frontend/src/views/ChatView.vue`
+早已有 `ElMessage.error` + 状态重置，无需改动。
 
 ---
 
-## TODO-70: [UX-MEDIUM] 附图按钮上传中无禁用态
+## ~~TODO-70: [UX-MEDIUM] 附图按钮上传中无禁用态~~ ✅ 已完成（早期实现）
 
-**问题**：`ChatView.vue:391` 图片读取过程中按钮无 `disabled`，用户可重复点击覆盖上一张。
-
-**修复方向**：`_readImageFile()` 读取期间将按钮设为 disabled；`onload` 后恢复。
-
-**涉及文件**：`frontend/src/views/ChatView.vue`
+早已有 `isReadingImage` disabled 绑定，无需改动。
 
 ---
 
-## TODO-71: [PERF-MEDIUM] knowledge_router 先读文件再检查大小
+## ~~TODO-71: [PERF-MEDIUM] knowledge_router 先读文件再检查大小~~ ✅ 已完成（2026-06-16）
 
-**问题**：`knowledge_router.py:118-122` `await file.read()` 后才校验文件大小，大文件先占内存后拒绝。
-
-**修复方向**：通过 `file.size`（UploadFile 属性）先做大小校验，再 `read()`。
-
-**涉及文件**：`agent/api/knowledge_router.py`
+`file.size` 提前检查 + 读后 double-check，状态码改为 413。commit `090d90c`
 
 ---
 
-## TODO-72: [REFACTOR-MEDIUM] uploadKnowledgeFile 绕过通用 request()
+## ~~TODO-72: [REFACTOR-MEDIUM] uploadKnowledgeFile 绕过通用 request()~~ ✅ 已完成（2026-06-16）
 
-**问题**：`api.js:244` 直接 `fetch()` 发送 FormData，未走统一错误处理/令牌刷新逻辑。
-
-**修复方向**：改用通用 `request()` 函数并传入 `{body: formData}`（不设 Content-Type，让浏览器自动设 multipart boundary）。
-
-**涉及文件**：`frontend/src/services/api.js`
+改用通用 `request()`，FormData 时自动跳过 Content-Type，60s 超时。commit `f8796b0`
 
 ---
 
-## TODO-73: [UX-MEDIUM] 分支对话丢弃附图
+## ~~TODO-73: [UX-MEDIUM] 分支对话丢弃附图~~ ✅ 已完成（2026-06-16）
 
-**问题**：`ChatView.vue:1054` `branchFromMessage()` 构造种子消息时丢弃 `imagePreview`/`images`。
-
-**修复方向**：`seedMsgs.push({ ...msg })` 改为完整复制（含图片字段）。
-
-**涉及文件**：`frontend/src/views/ChatView.vue`
+`branchFromMessage` 补 `imagePreview`/`images_b64` 复制。commit `f8796b0`
 
 ---
 
-## TODO-74: [QUALITY-MEDIUM] knowledge_router 固定字符数分块
+## ~~TODO-74: [QUALITY-MEDIUM] knowledge_router 固定字符数分块~~ ✅ 已完成（2026-06-16）
 
-**问题**：`knowledge_router.py:84-96` 仅按固定 500 字符切割，不考虑句子/段落边界，分块质量差，检索相关性下降。
-
-**修复方向**：按句号/换行符先分句，凑满阈值再封块；或引入 `langchain.text_splitter.RecursiveCharacterTextSplitter`。
-
-**涉及文件**：`agent/api/knowledge_router.py`
+新增 `_smart_chunk()`：段落→句子感知分块 + overlap，无需外部库。commit `b1a93fa`
 
 ---
 
-## TODO-75: [OBSERV-MEDIUM] 缺少请求 traceID
+## ~~TODO-75: [OBSERV-MEDIUM] 缺少请求 traceID~~ ✅ 已完成（2026-06-16）
 
-**问题**：`chat_router.py` 等无请求级别 traceID，无法追踪一个请求在三层服务间的完整链路。
-
-**修复方向**：在 `ChatRequest` 加 `request_id`（前端生成 UUID），各层日志携带该字段。
-
-**涉及文件**：`agent/api/chat_router.py`, `frontend/src/stores/websocket.js`
+`ChatRequest.request_id` 字段 + 前端 `crypto.randomUUID()` + 日志携带 traceID。commit `b1a93fa`
 
 ---
 
