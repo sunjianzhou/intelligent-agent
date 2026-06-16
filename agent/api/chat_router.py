@@ -52,6 +52,7 @@ class ChatRequest(BaseModel):
     pending_tasks: Optional[List[Dict[str, Any]]] = None
     session_id: Optional[str] = None
     image_base64: Optional[str] = None  # 前端传来的单张图片 base64（不含 data URL 前缀）
+    request_id: Optional[str] = None    # 前端生成的 traceID，用于日志链路追踪
 
 
 @router.post("/api/chat")
@@ -62,7 +63,8 @@ async def chat(request: ChatRequest, http_req: Request):
             status_code=429,
             content={"success": False, "message": "请求过于频繁，请稍后重试"},
         )
-    logger.info(f"收到聊天请求 [user={user_id}, len={len(request.message)}]")
+    _rid = request.request_id or "no-rid"
+    logger.info(f"[{_rid}] 处理聊天请求 user={user_id} len={len(request.message)}")
 
     user_provider = _state._get_user_provider(user_id)
     user_persona_content = await _get_user_role_persona_content(user_id, request.message)
@@ -147,6 +149,8 @@ async def chat_stream_endpoint(request: ChatRequest, http_req: Request):
             status_code=429,
             content={"success": False, "message": "请求过于频繁，请稍后重试"},
         )
+    _rid = request.request_id or "no-rid"
+    logger.info(f"[{_rid}] 处理流式聊天请求 user={user_id} len={len(request.message)}")
     user_provider = _state._get_user_provider(user_id)
     user_persona_content = await _get_user_role_persona_content(user_id, request.message)
 

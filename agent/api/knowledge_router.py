@@ -99,45 +99,50 @@ def _extract_text(filename: str, content: bytes) -> str:
 
 # ── 分块 ─────────────────────────────────────────────────────────────────────
 
+def _smart_chunk(text: str, chunk_size: int = _CHUNK_SIZE, overlap: int = _CHUNK_OVERLAP) -> List[str]:
+    """按段落→句子边界分块，尽量不切断完整句子。"""
+    # 先按双换行分段
+    paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+    chunks: List[str] = []
+    current = ""
+    for para in paragraphs:
+        # 段落本身就超出 chunk_size，按句子拆
+        if len(para) > chunk_size:
+            sentences = re.split(r'(?<=[。！？.!?])\s*', para)
+            for sent in sentences:
+                if not sent:
+                    continue
+                if len(current) + len(sent) <= chunk_size:
+                    current += sent
+                else:
+                    if current:
+                        chunks.append(current.strip())
+                    current = sent
+        else:
+            if len(current) + len(para) + 2 <= chunk_size:
+                current = (current + "\n\n" + para).strip() if current else para
+            else:
+                if current:
+                    chunks.append(current.strip())
+                current = para
+    if current:
+        chunks.append(current.strip())
+    # 相邻 chunk 之间加 overlap
+    if overlap > 0 and len(chunks) > 1:
+        overlapped = [chunks[0]]
+        for i in range(1, len(chunks)):
+            tail = chunks[i-1][-overlap:] if len(chunks[i-1]) >= overlap else chunks[i-1]
+            overlapped.append(tail + chunks[i])
+        return overlapped
+    return chunks
+
+
 def _chunk_text(text: str) -> List[str]:
-    """按段落/句子边界分块，保证语义完整性。"""
+    """按段落/句子边界分块，保证语义完整性（委托给 _smart_chunk）。"""
     text = text.strip()
     if not text:
         return []
-
-    # 按双换行分段落
-    paragraphs = [p.strip() for p in re.split(r'\n{2,}', text) if p.strip()]
-
-    chunks: List[str] = []
-    current = ""
-
-    for para in paragraphs:
-        if not current:
-            current = para
-        elif len(current) + len(para) + 2 <= _CHUNK_SIZE:
-            current = current + "\n\n" + para
-        else:
-            chunks.append(current)
-            # 段落本身超限则按句子继续拆分
-            if len(para) > _CHUNK_SIZE:
-                sentences = re.split(r'(?<=[。！？.!?…])\s*', para)
-                buf = ""
-                for sen in sentences:
-                    if not buf:
-                        buf = sen
-                    elif len(buf) + len(sen) <= _CHUNK_SIZE:
-                        buf += sen
-                    else:
-                        chunks.append(buf)
-                        buf = sen
-                current = buf
-            else:
-                current = para
-
-    if current:
-        chunks.append(current)
-
-    return chunks
+    return _smart_chunk(text)
 
 
 # ── 端点 ─────────────────────────────────────────────────────────────────────

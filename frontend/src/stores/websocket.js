@@ -374,10 +374,12 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   const sendChatMessage = (message, useTools = true, useMemory = true, projectId = null, pendingTasks = null, imageBase64 = null) => {
+    const requestId = crypto.randomUUID()
     const payload = {
       type: 'chat_message', message,
       use_tools: useTools, use_memory: useMemory,
       session_id: currentSessionId.value,
+      request_id: requestId,
     }
     if (projectId) payload.project_id = projectId
     if (pendingTasks && pendingTasks.length) payload.pending_tasks = pendingTasks
