@@ -323,6 +323,18 @@ class ToolDispatcherMixin:
         except Exception as _db_err:
             logger.warning(f"DatabaseTool 注册失败（将跳过）: {_db_err}")
 
+        # FeishuIMTool：仅在配置了 FEISHU_APP_ID 时注册
+        try:
+            import os as _os
+            if _os.environ.get("FEISHU_APP_ID"):
+                from im.feishu_client import FeishuIMTool
+                self.tool_manager.register_tool(FeishuIMTool(), "im")
+                logger.info("FeishuIMTool 已注册（im_message）")
+            else:
+                logger.debug("FEISHU_APP_ID 未配置，跳过 FeishuIMTool 注册")
+        except Exception as _im_err:
+            logger.warning(f"FeishuIMTool 注册失败（将跳过）: {_im_err}")
+
         logger.info(f"工具注册列表: {list(self.tool_manager.get_all_tools().keys())}")
         self._register_function_tools()
         self._register_memory_tools()
