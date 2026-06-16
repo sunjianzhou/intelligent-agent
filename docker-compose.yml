@@ -67,6 +67,9 @@ services:
       - INFERENCE_CONCURRENCY=${INFERENCE_CONCURRENCY:-1}
       # HuggingFace 离线模式：模型已预缓存至 volume，跳过网络检查加快启动
       - HF_HUB_OFFLINE=1
+      # 飞书消息发送工具（Python im_message Tool）
+      - FEISHU_APP_ID=${FEISHU_APP_ID:-}
+      - FEISHU_APP_SECRET=${FEISHU_APP_SECRET:-}
     volumes:
       - agent_chroma_data:/app/chroma-data
       - agent_chroma_data_longterm:/app/chroma-data-longterm
@@ -105,6 +108,12 @@ services:
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 未设置}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD 未设置}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
+      # 飞书 IM 通道（P2，默认关闭）
+      - FEISHU_ENABLED=${FEISHU_ENABLED:-false}
+      - FEISHU_APP_ID=${FEISHU_APP_ID:-}
+      - FEISHU_APP_SECRET=${FEISHU_APP_SECRET:-}
+      - FEISHU_ENCRYPT_KEY=${FEISHU_ENCRYPT_KEY:-}
+      - FEISHU_VERIFICATION_TOKEN=${FEISHU_VERIFICATION_TOKEN:-}
     depends_on:
       agent:
         condition: service_healthy
