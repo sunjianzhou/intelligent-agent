@@ -14,14 +14,18 @@ const request = async (url, options = {}) => {
   const errorBus  = useErrorBusStore()
   const silent    = SILENT_URLS.some(p => url === p)
 
+  // FormData 传入时不设 Content-Type，让浏览器自动添加 multipart boundary
+  const isFormData = options.body instanceof FormData
   const headers = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(authStore.token ? { 'Authorization': `Bearer ${authStore.token}` } : {}),
     ...(options.headers || {}),
   }
 
+  // 支持调用方通过 options.timeout 自定义超时（ms），默认 30s
+  const timeoutMs = options.timeout || _REQUEST_TIMEOUT_MS
   const controller = new AbortController()
-  const timeoutId  = setTimeout(() => controller.abort(), _REQUEST_TIMEOUT_MS)
+  const timeoutId  = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
     const res = await fetch(url, {
@@ -51,7 +55,7 @@ const request = async (url, options = {}) => {
     clearTimeout(timeoutId)
     const isTimeout = err.name === 'AbortError'
     const msg = isTimeout
-      ? `请求超时：${url.replace(BASE, '')}（${_REQUEST_TIMEOUT_MS / 1000}s）`
+      ? `请求超时：${url.replace(BASE, '')}（${timeoutMs / 1000}s）`
       : `请求失败：${url.replace(BASE, '')} (${err.message})`
     console.error('[API]', msg)
     errorBus.push(msg, 'error', url)
@@ -246,29 +250,13 @@ export const deleteGeneratedImage = (filename) =>
 export const listKnowledgeFiles  = () => request(`${BASE}/knowledge/files`)
 export const deleteKnowledgeFile = (fileId) =>
   request(`${BASE}/knowledge/files/${encodeURIComponent(fileId)}`, { method: 'DELETE' })
-export const uploadKnowledgeFile = async (file, description = '') => {
-  const { useAuthStore } = await import('@/stores/auth')
-  const authStore = useAuthStore()
+export const uploadKnowledgeFile = (file, description = '') => {
   const fd = new FormData()
   fd.append('file', file)
   if (description) fd.append('description', description)
-  const headers = authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {}
-  try {
-    const controller = new AbortController()
-    const timeoutId  = setTimeout(() => controller.abort(), 60000) // 上传允许更长超时
-    const res = await fetch(`${BASE}/knowledge/upload`, { method: 'POST', body: fd, headers, signal: controller.signal })
-    clearTimeout(timeoutId)
-    if (!res.ok) {
-      const errMsg = `上传失败 (${res.status})`
-      ElMessage({ message: errMsg, type: 'error', duration: 4000, showClose: true })
-      return { success: false, message: errMsg }
-    }
-    return res.json()
-  } catch (err) {
-    const msg = err.name === 'AbortError' ? '上传超时（60s），请检查文件大小或网络' : `上传失败: ${err.message}`
-    ElMessage({ message: msg, type: 'error', duration: 4000, showClose: true })
-    return { success: false, message: msg }
-  }
+  // 传入 FormData，request() 内部会跳过 Content-Type 设置，让浏览器自动加 multipart boundary
+  // timeout: 60000 — 文件上传允许更长的超时（是通用 30s 的 2 倍）
+  return request(`${BASE}/knowledge/upload`, { method: 'POST', body: fd, timeout: 60000 })
 }
 
 // ── Roles ─────────────────────────────────────────────────────────────────────

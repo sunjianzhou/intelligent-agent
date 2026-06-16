@@ -1105,8 +1105,13 @@ const deleteSession = async (sessionId) => {
 
 const branchFromMessage = async (index) => {
   const seedMsgs = messages.value.slice(0, index + 1).map(m => {
-    const entry = { role: m.role, content: m.content || '', timestamp: m.timestamp || new Date().toISOString() }
-    if (m.images_b64?.length) entry.images_b64 = m.images_b64
+    const entry = {
+      role:         m.role,
+      content:      m.content || '',
+      timestamp:    m.timestamp || new Date().toISOString(),
+      imagePreview: m.imagePreview || null,
+      images_b64:   m.images_b64  || null,
+    }
     return entry
   })
   try {
