@@ -89,7 +89,7 @@ async def chat(request: ChatRequest, http_req: Request):
                 _append_messages(user_id, _sid, [
                     _user_msg,
                     {"role": "assistant", "content": result["content"], "timestamp": _now},
-                ])
+                ], project_id=request.project_id)
                 return {
                     "response":         result["content"],
                     "tool_calls":       result["tool_calls"],
@@ -188,7 +188,7 @@ async def chat_stream_endpoint(request: ChatRequest, http_req: Request):
                         _append_messages(user_id, _session_id, [
                             _stream_user_msg,
                             {"role": "assistant", "content": _full_reply[0], "timestamp": _now},
-                        ])
+                        ], project_id=request.project_id)
 
                 elif user_provider:
                     logger.warning("Agent 不可用，降级为 Provider 流式直连")

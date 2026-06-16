@@ -86,6 +86,8 @@ def _list_sessions_meta(user_id: str) -> List[Dict[str, Any]]:
             }
             if data.get("parent_session_id"):
                 entry["parent_session_id"] = data["parent_session_id"]
+            if data.get("project_id"):
+                entry["project_id"] = data["project_id"]
             sessions.append(entry)
         except Exception as e:
             logger.warning(f"读取会话元数据失败 [{sid}]: {e}")
@@ -95,7 +97,12 @@ def _list_sessions_meta(user_id: str) -> List[Dict[str, Any]]:
 
 # ── Public helpers (called from fastapi_app.py) ───────────────────────────────
 
-def append_messages(user_id: str, session_id: str, messages: List[Dict[str, Any]]) -> None:
+def append_messages(
+    user_id: str,
+    session_id: str,
+    messages: List[Dict[str, Any]],
+    project_id: Optional[str] = None,
+) -> None:
     """Called internally after each chat turn to persist messages."""
     session = _load_session(user_id, session_id) or {
         "session_id": session_id,
@@ -104,6 +111,9 @@ def append_messages(user_id: str, session_id: str, messages: List[Dict[str, Any]
         "updated_at": datetime.now().isoformat(),
         "messages":   [],
     }
+    # 写入 project_id（仅在首次传入或与已有值不同时更新）
+    if project_id and session.get("project_id") != project_id:
+        session["project_id"] = project_id
     session["messages"].extend(messages)
     # Trim to avoid unbounded growth
     session["messages"] = session["messages"][-settings.conversation_max_messages:]
