@@ -47,6 +47,21 @@ const routes = [
   { path: '/system', redirect: '/admin/system' },
   { path: '/stats',  redirect: '/admin/stats' },
 
+  {
+    path: '/learning',
+    redirect: '/learning/submit',
+  },
+  {
+    path: '/learning/submit',
+    name: 'LearningSubmit',
+    component: () => import('../views/learning/SubmitView.vue'),
+  },
+  {
+    path: '/learning/review',
+    name: 'LearningReview',
+    component: () => import('../views/learning/ReviewView.vue'),
+  },
+
   { path: '/:pathMatch(.*)*', redirect: '/chat' },
 ]
 
