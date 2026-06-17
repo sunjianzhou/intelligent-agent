@@ -47,7 +47,7 @@ def get_today_plan(topic: str) -> DailyPlan:
         topic=topic,
         is_weekend=False,
         questions=selected,
-        commands=_get_weekend_commands(topic),
+        commands=[],
     )
 
 

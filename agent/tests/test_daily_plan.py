@@ -7,7 +7,7 @@ from teaching.daily_plan import get_today_plan, DailyPlan
 
 def _mock_weekday(weekday: int):
     """Return a context manager that patches datetime.now().weekday()."""
-    fake = datetime(2026, 6, 16 + weekday)  # Mon=0 … Sun=6
+    fake = datetime(2026, 6, 15 + weekday)  # Mon=0 … Sun=6
     return patch("teaching.daily_plan.datetime", wraps=datetime,
                  **{"now.return_value": fake})
 
