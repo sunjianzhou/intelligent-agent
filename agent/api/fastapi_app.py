@@ -146,6 +146,13 @@ async def lifespan(app: FastAPI):
     if _state.agent and _state.agent.task_manager:
         _state.agent.task_manager.scheduler.main_loop = _uvicorn_loop
         logger.info("已将 scheduler.main_loop 更新为 uvicorn 事件循环")
+        # Register teaching push schedules from scheduler_config.json
+        # 按 topic 注册到 SimpleTaskScheduler，顺序：morning 07:00 → midmorning 10:00 → review 13:40 → afternoon 15:00
+        try:
+            from teaching.pusher import register as _register_teaching
+            _register_teaching(_state.agent.task_manager.scheduler)
+        except Exception as _te:
+            logger.warning(f"教学推送注册失败（非致命）: {_te}")
 
     # JWT 密钥检查
     if settings.jwt_enabled:
@@ -276,6 +283,9 @@ app.include_router(project_spec_router)
 app.include_router(chat_router)
 app.include_router(knowledge_router)
 app.include_router(image_router)
+
+from api.teaching_router import router as teaching_router
+app.include_router(teaching_router)
 
 app.middleware("http")(metrics_middleware)
 
