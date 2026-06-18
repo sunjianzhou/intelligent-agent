@@ -330,6 +330,13 @@ class ComfyUIProvider(BaseImageProvider):
                                 return await self._download_output(prompt_id)
 
                     except asyncio.TimeoutError:
+                        # 新版 ComfyUI 的 "execution_success" 不通过 WS 广播（broadcast=False），
+                        # 仅靠 "executing node=None" 判断完成在该版本下永不触发；
+                        # 每次心跳超时顺带探测一次 /history 作为兜底，避免误判超时失败。
+                        result = await self._download_output(prompt_id)
+                        if result is not None:
+                            logger.info(f"[ComfyUI WS] 通过 /history 兜底确认完成 prompt_id={prompt_id}")
+                            return result
                         continue
         except Exception as e:
             logger.warning(f"[ComfyUI WS] 连接异常: {e}，降级轮询")
