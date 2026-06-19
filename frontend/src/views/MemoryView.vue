@@ -811,7 +811,7 @@ onUnmounted(() => {
   background: var(--color-surface);
   border: 0.5px solid var(--color-border);
   border-radius: var(--radius-md);
-  padding: 14px 16px;
+  padding: 14px var(--space-4);
   transition: all 0.2s;
 }
 .memory-card:hover   { border-color: #c5caf5; }
@@ -824,7 +824,7 @@ onUnmounted(() => {
 }
 .memory-meta { display: flex; gap: 6px; flex-wrap: wrap; }
 .badge {
-  font-size: 11px; padding: 2px 8px;
+  font-size: 11px; padding: 2px var(--space-2);
   border-radius: var(--radius-sm); font-weight: 500;
 }
 .cat-badge  { background: var(--color-surface-raised); color: var(--color-primary); }
@@ -835,7 +835,7 @@ onUnmounted(() => {
   display: flex; align-items: center; gap: var(--space-2);
 }
 .importance-badge {
-  font-size: 0.75rem; padding: 2px 8px; border-radius: 10px;
+  font-size: 0.75rem; padding: 2px var(--space-2); border-radius: var(--radius-md);
   font-weight: 500; cursor: default;
 }
 .imp-high { background: #fff8e1; color: var(--color-warn); }
@@ -915,14 +915,14 @@ button.export-item { width: 100%; text-align: left; background: none; border: no
   position: relative; padding: 0 0 20px 24px;
 }
 .tl-dot {
-  position: absolute; left: -7px; top: 4px;
+  position: absolute; left: -7px; top: var(--space-1);
   width: 12px; height: 12px; border-radius: 50%;
   background: var(--color-primary); border: 2px solid white;
   box-shadow: 0 0 0 2px var(--color-primary);
 }
 .tl-card {
   background: var(--color-surface); border: 0.5px solid var(--color-border);
-  border-radius: var(--radius-md); padding: 12px 16px;
+  border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
 }
 .tl-time {
   font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 6px;
@@ -943,11 +943,11 @@ button.export-item { width: 100%; text-align: left; background: none; border: no
   border-color: #1976d2; background: #e8f0fd;
 }
 .upload-icon { font-size: 2rem; color: #90a4ae; margin-bottom: var(--space-2); }
-.upload-title { font-size: 1rem; font-weight: 500; color: var(--color-text-secondary); margin: 0 0 4px; }
+.upload-title { font-size: 1rem; font-weight: 500; color: var(--color-text-secondary); margin: 0 0 var(--space-1); }
 .upload-sub   { font-size: 0.82rem; color: var(--color-text-muted); margin: 0; }
 .pending-file {
   background: var(--color-surface); border: 1px solid var(--color-border);
-  border-radius: var(--radius-md); padding: 14px 16px;
+  border-radius: var(--radius-md); padding: 14px var(--space-4);
   display: flex; flex-direction: column; gap: 10px;
 }
 .pending-info { display: flex; align-items: center; gap: var(--space-2); }
@@ -979,10 +979,10 @@ button.export-item { width: 100%; text-align: left; background: none; border: no
 .file-list { display: flex; flex-direction: column; gap: 10px; }
 .file-card {
   background: var(--color-surface); border: 1px solid var(--color-border);
-  border-radius: var(--radius-md); padding: 12px 14px;
+  border-radius: var(--radius-md); padding: var(--space-3) 14px;
 }
 .file-card-top {
-  display: flex; align-items: center; gap: var(--space-2); margin-bottom: 4px;
+  display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1);
 }
 .file-icon { color: #90a4ae; }
 .file-name { flex: 1; font-weight: 500; color: var(--color-text); font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
