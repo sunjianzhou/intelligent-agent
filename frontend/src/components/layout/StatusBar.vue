@@ -35,23 +35,23 @@ const messageCount = computed(() => websocketStore.messages.length)
 <style scoped>
 .status-bar {
   height: 32px;
-  background: #fafbfc;
-  border-top: 1px solid #f0f2f5;
-  padding: 0 20px;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  padding: 0 var(--space-5);
   display: flex;
   align-items: center;
-  gap: 24px;
-  font-size: 0.78rem;
+  gap: var(--space-5);
+  font-size: var(--text-xs);
 }
 
 .status-item {
   display: flex;
   align-items: center;
   gap: 5px;
-  color: #999;
+  color: var(--color-text-secondary);
 }
 
 .status-icon { font-size: 0.7rem; }
-.status-label { color: #bbb; }
-.status-value { color: #666; font-weight: 500; }
+.status-label { color: var(--color-text-muted); }
+.status-value { color: var(--color-text); font-weight: 500; }
 </style>
