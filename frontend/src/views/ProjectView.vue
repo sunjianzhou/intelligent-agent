@@ -236,7 +236,7 @@ async function createProject() {
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  padding: 4px 10px;
+  padding: var(--space-1) 10px;
   font-size: 0.78rem;
   color: var(--color-text-secondary);
   cursor: pointer;
