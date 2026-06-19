@@ -394,9 +394,17 @@ public class AgentService {
     }
 
     public Map<String, Object> getModels() {
+        return getModels(null);
+    }
+
+    public Map<String, Object> getModels(String userId) {
         try {
             String url = pythonServiceBaseUrl + "/api/models";
-            HttpEntity<Void> req = new HttpEntity<>(authHeaders());
+            org.springframework.http.HttpHeaders headers = authHeaders();
+            if (userId != null && !userId.isEmpty()) {
+                headers.set("X-User-Id", userId);
+            }
+            HttpEntity<Void> req = new HttpEntity<>(headers);
             ResponseEntity<String> res = restTemplate.exchange(url, HttpMethod.GET, req, String.class);
             if (res.getStatusCode().is2xxSuccessful()) {
                 return objectMapper.readValue(res.getBody(), Map.class);

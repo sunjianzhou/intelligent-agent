@@ -236,10 +236,11 @@ export const switchImageModel       = (model) =>
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model }),
   })
+// 高步数/CFG 时本地推理可能超过 30s 默认超时，放宽到 5 分钟
 export const generateImage = (params) =>
   request(`${BASE}/image/generate`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
+    body: JSON.stringify(params), timeout: 300000,
   })
 export const listGeneratedImages = () => request(`${BASE}/images`)
 export const deleteGeneratedImage = (filename) =>
