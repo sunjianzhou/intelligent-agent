@@ -272,7 +272,7 @@ onMounted(() => loadFiles())
 <style scoped>
 .knowledge-view {
   height: 100%;
-  padding: var(--space-5);
+  padding: 20px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -298,7 +298,7 @@ onMounted(() => loadFiles())
 .upload-zone {
   border: 2px dashed #c9d1d9;
   border-radius: var(--radius-md);
-  padding: 36px var(--space-5);
+  padding: 36px 20px;
   text-align: center;
   cursor: pointer;
   background: var(--color-bg);
@@ -322,7 +322,7 @@ onMounted(() => loadFiles())
   padding: 14px var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 10px;
 }
 .pending-info {
   display: flex;
@@ -420,7 +420,7 @@ onMounted(() => loadFiles())
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 48px var(--space-5);
+  padding: 48px 20px;
   color: var(--color-text-muted);
   font-size: 0.9rem;
 }
@@ -431,7 +431,7 @@ onMounted(() => loadFiles())
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  padding: 64px var(--space-5);
+  padding: 64px 20px;
   background: var(--color-surface);
   border-radius: var(--radius-md);
   border: 0.5px solid var(--color-border);
