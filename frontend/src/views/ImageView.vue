@@ -514,7 +514,7 @@ const formatDate = (iso) => {
 /* ── 状态栏 ────────────────────────────────────────────────── */
 .status-bar {
   display: flex; align-items: center; gap: var(--space-3);
-  padding: 10px var(--space-5);
+  padding: 10px 20px;
   background: var(--color-surface); border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
@@ -535,7 +535,7 @@ const formatDate = (iso) => {
 /* ── ComfyUI 提示横幅 ─────────────────────────────────────── */
 .comfyui-hint {
   display: flex; align-items: center; gap: 10px;
-  padding: var(--space-2) var(--space-5); background: #fffbeb; border-bottom: 1px solid #fde68a;
+  padding: var(--space-2) 20px; background: #fffbeb; border-bottom: 1px solid #fde68a;
   font-size: 0.82rem; color: #92400e; flex-shrink: 0;
 }
 .comfyui-hint code {
@@ -634,7 +634,7 @@ const formatDate = (iso) => {
 
 .gen-placeholder {
   background: var(--color-surface); border-radius: var(--radius-md); border: 1px solid var(--color-border);
-  padding: 60px var(--space-5); text-align: center; color: var(--color-text-muted);
+  padding: 60px 20px; text-align: center; color: var(--color-text-muted);
 }
 .gen-spinner { animation: pulse 1.5s ease-in-out infinite; color: #1976d2; margin-bottom: var(--space-4); }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
@@ -657,7 +657,7 @@ const formatDate = (iso) => {
 
 /* 采样器 */
 .sampler-select {
-  border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 6px 8px;
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 6px 8px;
   font-size: 0.82rem; background: var(--color-surface); cursor: pointer; width: 100%;
 }
 
@@ -670,7 +670,7 @@ const formatDate = (iso) => {
 }
 .img2img-upload-btn:hover { border-color: #1976d2; color: #1976d2; background: #f0f4ff; }
 .img2img-preview-wrap { position: relative; margin-top: var(--space-1); }
-.img2img-preview { width: 100%; border-radius: var(--radius-md); border: 1px solid var(--color-border); display: block; }
+.img2img-preview { width: 100%; border-radius: var(--radius-sm); border: 1px solid var(--color-border); display: block; }
 .img2img-clear {
   position: absolute; top: 6px; right: 6px;
   background: rgba(0,0,0,0.5); border: none; color: white;
@@ -695,13 +695,13 @@ const formatDate = (iso) => {
 .refresh-btn:hover { color: #1976d2; border-color: #1976d2; }
 .refresh-btn.spinning i { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.gallery-loading, .gallery-empty { text-align: center; padding: var(--space-5); color: var(--color-text-muted); font-size: 0.85rem; }
+.gallery-loading, .gallery-empty { text-align: center; padding: 20px; color: var(--color-text-muted); font-size: 0.85rem; }
 .gallery-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 10px;
 }
 .gallery-item {
-  position: relative; border-radius: var(--radius-md); overflow: hidden;
+  position: relative; border-radius: var(--radius-sm); overflow: hidden;
   cursor: pointer; aspect-ratio: 1;
   border: 1px solid var(--color-border); background: #f0f0f0;
 }
