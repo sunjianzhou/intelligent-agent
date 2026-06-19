@@ -20,34 +20,24 @@
       </router-link>
     </nav>
 
-    <!-- 低频配置区 -->
-    <nav class="nav-section">
-      <div class="nav-section-label">配置</div>
-      <router-link
-        v-for="item in CONFIG_ITEMS"
-        :key="item.name"
-        :to="item.path"
-        class="nav-item"
-        :class="{ active: isActive(item.name) }"
-      >
-        <i :class="item.icon"></i>
-        <span>{{ item.label }}</span>
-      </router-link>
-    </nav>
-
-    <!-- 系统与数据区 -->
-    <nav class="nav-section">
-      <div class="nav-section-label">系统</div>
-      <router-link
-        v-for="item in SYSTEM_ITEMS"
-        :key="item.name"
-        :to="item.path"
-        class="nav-item"
-        :class="{ active: isActive(item.name) }"
-      >
-        <i :class="item.icon"></i>
-        <span>{{ item.label }}</span>
-      </router-link>
+    <!-- 管理后台（可折叠，合并原"配置"+"系统"两组） -->
+    <nav class="nav-section admin-group">
+      <button class="nav-section-toggle" type="button" @click="adminExpanded = !adminExpanded">
+        <span class="nav-section-label">管理后台</span>
+        <i class="fas fa-chevron-right toggle-caret" :class="{ expanded: adminExpanded }"></i>
+      </button>
+      <div v-show="adminExpanded" class="admin-group-items">
+        <router-link
+          v-for="item in ADMIN_ITEMS"
+          :key="item.name"
+          :to="item.path"
+          class="nav-item"
+          :class="{ active: isActive(item.name) }"
+        >
+          <i :class="item.icon"></i>
+          <span>{{ item.label }}</span>
+        </router-link>
+      </div>
     </nav>
 
     <!-- 历史会话 -->
@@ -90,12 +80,12 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useLocalSessionStore } from '@/stores/localSession'
 import { useWebSocketStore } from '@/stores/websocket'
-import { NAV_ITEMS, CONFIG_ITEMS, SYSTEM_ITEMS } from '@/config/routes.config'
+import { NAV_ITEMS, ADMIN_ITEMS } from '@/config/routes.config'
 
 const authStore    = useAuthStore()
 const router       = useRouter()
@@ -132,15 +122,18 @@ onMounted(() => sessionStore.loadSessions())
 
 const route = useRoute()
 
+// 当前路由若属于"管理后台"分组，默认展开该分组，避免选中项被隐藏
+const adminExpanded = ref(ADMIN_ITEMS.some((item) => item.name === route.name))
+
 const isActive = computed(() => (name) => route.name === name)
 </script>
 
 <style scoped>
 .sidebar {
   width: 220px;
-  background: #2c3e50;
-  color: white;
-  padding: 20px 16px;
+  background: var(--color-sidebar-bg);
+  color: var(--color-sidebar-text);
+  padding: var(--space-5) var(--space-4);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -151,8 +144,8 @@ const isActive = computed(() => (name) => route.name === name)
 
 .logo {
   text-align: center;
-  margin-bottom: 16px;
-  padding-bottom: 16px;
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-4);
   border-bottom: 1px solid rgba(255,255,255,0.1);
   flex-shrink: 0;
 }
@@ -161,17 +154,17 @@ const isActive = computed(() => (name) => route.name === name)
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
-.logo i { color: #4fc3a1; }
+.logo i { color: var(--color-accent); }
 
 /* ── 导航分区 ─────────────────────────────────────────── */
 .nav-section {
   flex-shrink: 0;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 .nav-section-label {
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   color: rgba(255,255,255,0.35);
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -180,18 +173,21 @@ const isActive = computed(() => (name) => route.name === name)
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   padding: 9px 12px;
-  color: rgba(255,255,255,0.75);
+  color: var(--color-sidebar-text);
   text-decoration: none;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   margin-bottom: 2px;
+  border-left: 2px solid transparent;
   transition: all 0.2s;
-  font-size: 0.9rem;
+  font-size: var(--text-base);
 }
-.nav-item:hover, .nav-item.active {
+.nav-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
+.nav-item.active {
   background: rgba(255,255,255,0.1);
-  color: white;
+  color: #fff;
+  border-left-color: var(--color-accent);
 }
 .nav-item i {
   width: 18px;
@@ -199,14 +195,30 @@ const isActive = computed(() => (name) => route.name === name)
   font-size: 0.95rem;
   flex-shrink: 0;
 }
-.nav-item.active i { color: #4fc3a1; }
+.nav-item.active i { color: var(--color-accent); }
 
 /* 分区间分隔线 */
 .nav-section + .nav-section {
   border-top: 1px solid rgba(255,255,255,0.06);
-  padding-top: 6px;
-  margin-top: 4px;
+  padding-top: var(--space-2);
+  margin-top: var(--space-1);
 }
+
+/* ── 管理后台折叠分组 ─────────────────────────────────── */
+.nav-section-toggle {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between;
+  background: none; border: none; cursor: pointer;
+  padding: 6px 10px 3px;
+}
+.nav-section-toggle .nav-section-label { padding: 0; }
+.toggle-caret {
+  font-size: 0.65rem;
+  color: rgba(255,255,255,0.35);
+  transition: transform 0.2s;
+}
+.toggle-caret.expanded { transform: rotate(90deg); }
+.admin-group-items { display: flex; flex-direction: column; }
 
 /* ── 历史会话 ─────────────────────────────────────────── */
 .history-section {
