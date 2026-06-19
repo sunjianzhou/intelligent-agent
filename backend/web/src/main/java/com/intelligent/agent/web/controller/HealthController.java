@@ -84,8 +84,9 @@ public class HealthController {
     // ── 模型管理 ──────────────────────────────────────────────
 
     @GetMapping("/models")
-    public ResponseEntity<Map<String, Object>> models() {
-        return ResponseEntity.ok(agentService.getModels());
+    public ResponseEntity<Map<String, Object>> models(HttpServletRequest req) {
+        String userId = proxy.extractUserIdFromRequest(req);
+        return ResponseEntity.ok(agentService.getModels(userId));
     }
 
     // ── 运行时资源配置 ──────────────────────────────────────
