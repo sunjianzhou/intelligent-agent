@@ -609,7 +609,7 @@ const previewHtml = computed(() => {
 <style scoped>
 .role-editor {
   padding: 16px;
-  max-width: 860px;
+  max-width: var(--content-max-width);
   margin: 0 auto;
   /* 让 El Plus 表单背景融入页面灰色背景，避免大面积白块割裂感 */
 }

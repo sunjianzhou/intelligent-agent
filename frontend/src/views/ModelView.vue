@@ -383,7 +383,8 @@ onMounted(loadData)
 <style scoped>
 .model-view {
   padding: 20px;
-  max-width: 1100px;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 24px;

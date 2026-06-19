@@ -35,6 +35,9 @@
   /* 字号 */
   --text-xs: 0.72rem; --text-sm: 0.82rem; --text-base: 0.92rem;
   --text-lg: 1.05rem; --text-xl: 1.3rem;
+
+  /* 页面内容区最大宽度（全屏外壳下，避免页面自身的旧 max-width 在宽屏上留出大片空白） */
+  --content-max-width: 1280px;
 }
 
 /* 颜色 — 深色主题覆盖 */
