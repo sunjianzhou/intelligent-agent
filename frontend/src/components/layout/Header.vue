@@ -63,31 +63,6 @@
     </div>
 
     <div class="header-right">
-      <!-- 模型切换入口 -->
-      <div class="model-entry" ref="modelMenuRef" v-if="availableModels.length > 0 || modelStatus">
-        <button class="model-btn" :class="{ open: modelMenuOpen, cloud: isCloudMode }" @click.stop="modelMenuOpen = !modelMenuOpen" :title="modelStatus">
-          <i :class="isCloudMode ? 'fas fa-cloud' : 'fas fa-cube'" />
-          <span class="model-btn-text">{{ modelStatus }}</span>
-          <i class="fas fa-chevron-down model-chevron" />
-        </button>
-        <div v-if="modelMenuOpen" class="model-dropdown">
-          <div class="dropdown-title">切换模型</div>
-          <div
-            v-for="m in availableModels"
-            :key="m"
-            class="model-drop-item"
-            :class="{ active: m === currentModel, switching: switchingModel === m }"
-            @click="handleSwitch(m)"
-          >
-            <i :class="m === cloudModelName ? 'fas fa-cloud' : 'fas fa-cube'" />
-            <span>{{ m }}</span>
-            <i v-if="m === currentModel && !isCloudMode" class="fas fa-check model-check" />
-            <i v-if="switchingModel === m" class="fas fa-circle-notch fa-spin model-check" />
-          </div>
-          <div v-if="availableModels.length === 0" class="model-drop-empty">暂无可用模型</div>
-        </div>
-      </div>
-
       <!-- 连接状态 -->
       <div class="connection-status">
         <span class="status-dot" :class="isConnected ? 'connected' : wasEverConnected ? 'disconnected-sudden' : 'disconnected-init'" />
@@ -106,7 +81,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { useWebSocketStore } from '@/stores/websocket'
@@ -125,28 +100,6 @@ const toggleTheme = () => {
 
 const route = useRoute()
 const store = useWebSocketStore()
-
-// ── 模型切换 ──────────────────────────────────────────────
-const modelMenuOpen   = ref(false)
-const modelMenuRef    = ref(null)
-const switchingModel  = ref('')
-const modelStatus     = computed(() => store.modelStatus)
-const currentModel    = computed(() => store.currentModel)
-const availableModels = computed(() => store.availableModels)
-const cloudModelName  = computed(() => store.cloudModel)
-const isCloudMode     = computed(() => modelStatus.value?.includes?.('☁') ?? false)
-
-const handleSwitch = async (m) => {
-  if (m === currentModel.value || switchingModel.value) return
-  switchingModel.value = m
-  modelMenuOpen.value  = false
-  await store.switchModel(m)
-  switchingModel.value = ''
-}
-
-const handleClickOutsideModel = (e) => {
-  if (modelMenuRef.value && !modelMenuRef.value.contains(e.target)) modelMenuOpen.value = false
-}
 
 // ── 移动端菜单 ────────────────────────────────────────────
 const showMobileMenu = ref(false)
@@ -168,17 +121,14 @@ const wasEverConnected = computed(() => store.wasEverConnected)
 const connectionStatus = computed(() => store.connectionStatus)
 
 // ── 生命周期 ──────────────────────────────────────────────
+// 模型列表由这里统一预加载，供 ChatView 右下角模型切换控件使用
 onMounted(() => {
-  document.addEventListener('click', handleClickOutsideModel)
   store.loadModels()
   applyTheme(isDark.value)
 })
 
 watch(isConnected, (connected) => {
   if (connected && store.availableModels.length === 0) store.loadModels()
-})
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutsideModel)
 })
 </script>
 
@@ -189,7 +139,7 @@ onUnmounted(() => {
   background: none;
   border: none;
   font-size: 1.2rem;
-  color: #667eea;
+  color: var(--color-primary);
   cursor: pointer;
   padding: 4px 8px;
 }
@@ -217,7 +167,7 @@ onUnmounted(() => {
   position: absolute;
   top: 0; left: 0;
   width: 220px; height: 100%;
-  background: #2c3e50;
+  background: var(--color-sidebar-bg);
   padding: 20px 0;
   display: flex;
   flex-direction: column;
@@ -256,9 +206,10 @@ onUnmounted(() => {
 
 .header {
   height: 60px;
-  background: white;
-  border-bottom: 1px solid #e1e5e9;
-  padding: 0 20px;
+  background: var(--color-surface);
+  border-top: 2px solid var(--color-primary);
+  border-bottom: 1px solid var(--color-border);
+  padding: 0 var(--space-5);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -266,14 +217,14 @@ onUnmounted(() => {
 }
 
 .header-left .page-title {
-  font-size: 1.15rem;
-  color: #333;
+  font-size: var(--text-lg);
+  color: var(--color-text);
   display: flex;
   align-items: center;
   gap: 10px;
   font-weight: 500;
 }
-.header-left .page-title i { color: #667eea; }
+.header-left .page-title i { color: var(--color-primary); }
 
 .header-right {
   display: flex;
@@ -294,73 +245,25 @@ onUnmounted(() => {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.status-dot.connected           { background: #4caf50; }
-.status-dot.disconnected-sudden { background: #f44336; animation: pulse-dot 1.5s infinite; }
-.status-dot.disconnected-init   { background: #bbb; }
-.status-text.connected          { color: #2e7d32; }
-.status-text.disconnected-sudden { color: #c62828; }
-.status-text.disconnected-init   { color: #999; }
+.status-dot.connected           { background: var(--color-success); }
+.status-dot.disconnected-sudden { background: var(--color-danger); animation: pulse-dot 1.5s infinite; }
+.status-dot.disconnected-init   { background: var(--color-text-muted); }
+.status-text.connected           { color: var(--color-success); }
+.status-text.disconnected-sudden { color: var(--color-danger); }
+.status-text.disconnected-init   { color: var(--color-text-muted); }
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.4; }
 }
 
 .theme-btn {
-  width: 34px; height: 34px; border-radius: 8px;
-  border: 1px solid #e0e3e8; background: white;
-  color: #667; cursor: pointer; font-size: 0.9rem;
+  width: 34px; height: 34px; border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border); background: var(--color-surface);
+  color: var(--color-text-secondary); cursor: pointer; font-size: 0.9rem;
   display: flex; align-items: center; justify-content: center;
   transition: all 0.2s;
 }
-.theme-btn:hover { border-color: #667eea; color: #667eea; }
-
-/* ── 模型切换入口 ─────────────────────────────────────── */
-.model-entry { position: relative; }
-.model-btn {
-  height: 34px; padding: 0 10px; border-radius: 8px;
-  border: 1px solid #e0e3e8; background: white;
-  color: #555; cursor: pointer; font-size: 0.82rem;
-  display: flex; align-items: center; gap: 6px;
-  max-width: 160px; transition: all 0.2s;
-}
-.model-btn:hover, .model-btn.open { border-color: #667eea; color: #667eea; }
-.model-btn.cloud { border-color: #c7d2fe; color: #4f46e5; background: #f0f2ff; }
-.model-btn-text {
-  max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.model-chevron { font-size: 0.68rem; opacity: 0.6; flex-shrink: 0; }
-
-.model-dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  min-width: 180px;
-  background: white;
-  border: 1px solid #e0e3e8;
-  border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-  z-index: 100;
-  overflow: hidden;
-}
-.model-drop-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 14px;
-  font-size: 0.85rem;
-  color: #444;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.model-drop-item:hover { background: #f5f6ff; color: #667eea; }
-.model-drop-item.active { background: #f0f2ff; color: #4f46e5; font-weight: 500; }
-.model-drop-item.switching { opacity: 0.7; pointer-events: none; }
-.model-drop-item i:first-child { color: #bbb; font-size: 0.78rem; width: 14px; text-align: center; flex-shrink: 0; }
-.model-drop-item.active i:first-child, .model-drop-item:hover i:first-child { color: #667eea; }
-.model-check { margin-left: auto; font-size: 0.75rem; color: #667eea; flex-shrink: 0; }
-.model-drop-empty { padding: 10px 14px; font-size: 0.82rem; color: #aaa; }
-
-@media (max-width: 768px) { .model-entry { display: none; } }
+.theme-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 
 @media (max-width: 768px) {
   .header { padding: 0 12px; }
