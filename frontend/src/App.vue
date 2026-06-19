@@ -88,7 +88,7 @@ onMounted(() => {
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--color-bg);
   height: 100vh;
   overflow: hidden;
 }
@@ -97,38 +97,13 @@ body {
   width: 100vw;
   height: 100vh;
   display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 20px;
-}
-
-/* 手机端去掉 padding 和圆角，全屏显示 */
-@media (max-width: 768px) {
-  .app {
-    padding: 0;
-  }
 }
 
 .main-layout {
   width: 100%;
-  max-width: 1400px;
   height: 100%;
-  max-height: 900px;
-  background: white;
-  border-radius: 20px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
+  background: var(--color-bg);
   display: flex;
-}
-
-/* 手机端全屏，去掉圆角和阴影 */
-@media (max-width: 768px) {
-  .main-layout {
-    max-width: 100%;
-    max-height: 100%;
-    border-radius: 0;
-    box-shadow: none;
-  }
 }
 
 .main-content {
@@ -139,21 +114,21 @@ body {
 }
 
 .mock-mode-indicator {
-  background: #ffc107;
-  color: #856404;
-  padding: 8px 20px;
+  background: rgba(245, 159, 0, 0.15);
+  color: var(--color-warn);
+  padding: var(--space-2) var(--space-5);
   font-size: 0.9rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  border-bottom: 1px solid #ffeaa7;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .page-container {
   flex: 1;
   overflow: hidden;
-  background: #f8f9fa;
+  background: var(--color-bg);
 }
 
 /* 页面切换动画 */
@@ -201,17 +176,7 @@ body {
 }
 
 /* ── 暗色主题（WANT-011）────────────────────────────── */
-[data-theme="dark"] body {
-  background: linear-gradient(135deg, #2d3561 0%, #1a1b2e 100%);
-}
-
-[data-theme="dark"] .main-layout {
-  background: #1e1f23;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.7);
-}
-
 /* 通用卡片/背景覆盖 */
-[data-theme="dark"] .page-container       { background: #25262b !important; }
 [data-theme="dark"] .chat-view            { background: #1e1f23 !important; }
 [data-theme="dark"] .tools-view,
 [data-theme="dark"] .memory-view,
