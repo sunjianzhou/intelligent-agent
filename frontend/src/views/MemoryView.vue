@@ -727,7 +727,7 @@ onUnmounted(() => {
 .action-btns {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 .search-wrap {
@@ -796,7 +796,7 @@ onUnmounted(() => {
 /* ── 搜索提示 ────────────────────────────────────────────── */
 .search-hint {
   font-size: 0.85rem; color: var(--color-primary);
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
 }
 .search-mode-tip { font-size: 0.78rem; color: var(--color-text-muted); }
 .link-btn {
@@ -987,7 +987,7 @@ button.export-item { width: 100%; text-align: left; background: none; border: no
 .file-icon { color: #90a4ae; }
 .file-name { flex: 1; font-weight: 500; color: var(--color-text); font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-desc { font-size: 0.8rem; color: #777; margin-bottom: 6px; }
-.file-meta { display: flex; gap: 12px; font-size: 0.75rem; color: var(--color-text-muted); }
+.file-meta { display: flex; gap: var(--space-3); font-size: 0.75rem; color: var(--color-text-muted); }
 
 /* 暗色主题适配 */
 [data-theme="dark"] .upload-zone { background: #1a1f2e; border-color: #3a4060; }

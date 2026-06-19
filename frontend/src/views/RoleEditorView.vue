@@ -777,7 +777,7 @@ const previewHtml = computed(() => {
   min-height: 200px;
 }
 .md-preview :deep(h1) { font-size: 1.3rem; font-weight: 600; margin: 0 0 10px; color: var(--color-text); }
-.md-preview :deep(h2) { font-size: 1.05rem; font-weight: 600; margin: 16px 0 8px; color: var(--color-text); border-bottom: 1px solid var(--color-border); padding-bottom: 4px; }
+.md-preview :deep(h2) { font-size: 1.05rem; font-weight: 600; margin: var(--space-4) 0 var(--space-2); color: var(--color-text); border-bottom: 1px solid var(--color-border); padding-bottom: var(--space-1); }
 .md-preview :deep(h3) { font-size: 0.95rem; font-weight: 600; margin: 12px 0 6px; }
 .md-preview :deep(blockquote) { border-left: 3px solid var(--color-primary); padding: 4px 12px; margin: 8px 0; color: var(--color-text-secondary); background: #f8f8ff; border-radius: 0 6px 6px 0; }
 .md-preview :deep(ul), .md-preview :deep(ol) { padding-left: 20px; margin: 6px 0; }
