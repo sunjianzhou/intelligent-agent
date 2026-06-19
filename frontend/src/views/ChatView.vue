@@ -225,37 +225,6 @@
       </div>
     </div>
 
-    <!-- 悬浮导出按钮（仅安全的导出操作） -->
-    <div class="export-float" v-if="messages.length > 0">
-      <button class="export-float-btn" title="导出对话"
-              @click.stop="showExportMenu = !showExportMenu">
-        <i class="fas fa-download" />
-      </button>
-      <div v-if="showExportMenu" class="export-menu" @click.stop>
-        <button @click="exportChat('md'); showExportMenu = false">
-          <i class="fab fa-markdown" /> Markdown
-        </button>
-        <button @click="exportChat('txt'); showExportMenu = false">
-          <i class="fas fa-file-alt" /> TXT
-        </button>
-      </div>
-    </div>
-
-    <!-- 悬浮清空按钮（独立放置，避免与导出操作混排造成误操作） -->
-    <div class="clear-float" v-if="messages.length > 0">
-      <button class="clear-float-btn" title="清空对话"
-              @click.stop="handleClearChat">
-        <i class="fas fa-trash-alt" />
-      </button>
-    </div>
-
-    <!-- 悬浮历史会话按钮 -->
-    <div class="history-float">
-      <button class="history-float-btn" :class="{ active: showHistory }" title="查看历史会话" @click="toggleHistory">
-        <i class="fas fa-history" />
-      </button>
-    </div>
-
     <!-- Token 超限警告横幅 -->
     <transition name="banner-slide">
       <div v-if="tokenWarning && !ctxBannerDismissed" class="ctx-warn-banner">
@@ -418,14 +387,39 @@
             <i class="fas fa-folder-open" /> {{ projectStore.activeProject.title }}
           </span>
         </span>
-        <!-- Token 用量指示（WANT-001） -->
-        <span v-if="messages.length > 0" class="token-indicator"
-              :style="{ color: tokenColor }"
-              :class="{ 'token-warn': tokenWarning }"
-              :title="`估算 token 用量: ${estimatedTokens}/${CTX_LIMIT}`">
-          <i class="fas fa-database" style="font-size:0.7rem" />
-          {{ estimatedTokens }}/{{ CTX_LIMIT }}
-        </span>
+        <div class="input-meta-right">
+          <!-- Token 用量指示（WANT-001） -->
+          <span v-if="messages.length > 0" class="token-indicator"
+                :style="{ color: tokenColor }"
+                :class="{ 'token-warn': tokenWarning }"
+                :title="`估算 token 用量: ${estimatedTokens}/${CTX_LIMIT}`">
+            <i class="fas fa-database" style="font-size:0.7rem" />
+            {{ estimatedTokens }}/{{ CTX_LIMIT }}
+          </span>
+
+          <!-- 会话操作工具条：历史 / 导出 / 清空（水平排列，右下角） -->
+          <div class="input-toolbar">
+            <button class="toolbar-btn" :class="{ active: showHistory }" title="查看历史会话" @click="toggleHistory">
+              <i class="fas fa-history" />
+            </button>
+            <div class="toolbar-export-wrap" v-if="messages.length > 0">
+              <button class="toolbar-btn" title="导出对话" @click.stop="showExportMenu = !showExportMenu">
+                <i class="fas fa-download" />
+              </button>
+              <div v-if="showExportMenu" class="export-menu" @click.stop>
+                <button @click="exportChat('md'); showExportMenu = false">
+                  <i class="fab fa-markdown" /> Markdown
+                </button>
+                <button @click="exportChat('txt'); showExportMenu = false">
+                  <i class="fas fa-file-alt" /> TXT
+                </button>
+              </div>
+            </div>
+            <button v-if="messages.length > 0" class="toolbar-btn toolbar-btn-danger" title="清空对话" @click.stop="handleClearChat">
+              <i class="fas fa-trash-alt" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1712,15 +1706,35 @@ onUnmounted(() => {
 .stop-btn:hover { background: #c62828; }
 
 /* ── 底部提示 ─────────────────────────────────────────────── */
-.input-meta { margin-top: 6px; padding: 0 4px; }
-.hint       { font-size: 0.78rem; color: #aaa; display: flex; align-items: center; gap: 5px; }
+.input-meta { margin-top: 6px; padding: 0 4px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hint       { font-size: 0.78rem; color: #aaa; display: flex; align-items: center; gap: 5px; min-width: 0; }
 .hint.warn  { color: #e67e22; }
 .hint i     { font-size: 0.75rem; }
 .hint-tip   { font-size: 0.72rem; color: #ccc; }
 .project-badge { background: #e8f4fd; color: #1976d2; border-radius: 4px; padding: 1px 6px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
 .project-badge:hover { background: #d0eaf9; }
-.token-indicator { font-size: 0.72rem; margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.input-meta-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.token-indicator { font-size: 0.72rem; display: flex; align-items: center; gap: 4px; }
 .token-warn      { animation: blink 1.5s ease-in-out infinite; }
+
+/* ── 会话操作工具条（历史/导出/清空，input-meta 右下角水平排列） ── */
+.input-toolbar { display: flex; align-items: center; gap: 6px; }
+.toolbar-btn {
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  border: 1px solid #e0e3e8;
+  background: white;
+  color: #999;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.74rem;
+  transition: all 0.2s;
+}
+.toolbar-btn:hover { border-color: #667eea; color: #667eea; }
+.toolbar-btn.active { background: #667eea; color: white; border-color: #667eea; }
+.toolbar-btn-danger { border-color: #ffd0cd; color: #e53935; }
+.toolbar-btn-danger:hover { border-color: #e53935; background: #fff5f5; }
+.toolbar-export-wrap { position: relative; }
 
 /* ── 上下文超限 Banner ─────────────────────────────── */
 .ctx-warn-banner {
@@ -1795,30 +1809,11 @@ onUnmounted(() => {
 .bact-btn.dislike.active { color: #e53935; }
 .bact-btn:disabled { cursor: default; opacity: 0.5; }
 
-/* ── 悬浮导出按钮（左侧，不遮挡右侧停止按钮） ── */
-.export-float {
-  position: absolute;
-  bottom: 90px;
-  left: 16px;
-  z-index: 10;
-}
-.export-float-btn {
-  width: 36px; height: 36px;
-  border-radius: 50%;
-  border: 1px solid #e0e3e8;
-  background: white;
-  color: #888;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 0.85rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  transition: all 0.2s;
-}
-.export-float-btn:hover { border-color: #667eea; color: #667eea; box-shadow: 0 3px 12px rgba(102,126,234,0.3); }
+/* ── 导出菜单（从右下角工具条的导出按钮展开） ── */
 .export-menu {
   position: absolute;
   bottom: calc(100% + 6px);
-  left: 0;
+  right: 0;
   background: white;
   border: 1px solid #e0e3e8;
   border-radius: 10px;
@@ -1838,35 +1833,7 @@ onUnmounted(() => {
 .export-menu button:hover { background: #f5f5f5; }
 .export-menu button i { color: #667eea; width: 14px; }
 
-/* 独立清空悬浮按钮 */
-.clear-float {
-  position: absolute;
-  bottom: 46px;
-  left: 16px;
-  z-index: 10;
-}
-
 /* ── 历史会话面板 ─────────────────────────────────────────── */
-.history-float {
-  position: absolute;
-  bottom: 134px;
-  left: 16px;
-  z-index: 10;
-}
-.history-float-btn {
-  width: 36px; height: 36px;
-  border-radius: 50%;
-  border: 1px solid #e0e3e8;
-  background: white;
-  color: #888;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 0.85rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  transition: all 0.2s;
-}
-.history-float-btn:hover { border-color: #667eea; color: #667eea; box-shadow: 0 3px 12px rgba(102,126,234,0.3); }
-.history-float-btn.active { background: #667eea; color: white; border-color: #667eea; }
 .history-backdrop {
   position: absolute;
   inset: 0;
