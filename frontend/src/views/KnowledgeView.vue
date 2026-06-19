@@ -272,91 +272,91 @@ onMounted(() => loadFiles())
 <style scoped>
 .knowledge-view {
   height: 100%;
-  padding: 20px;
+  padding: var(--space-5);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  background: #f8f9fa;
+  gap: var(--space-4);
+  background: var(--color-bg);
 }
 
 /* ── 上传区 ──────────────────────────────────────────────────── */
 .upload-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .section {
-  background: white;
-  border: 0.5px solid #e8eaed;
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  background: var(--color-surface);
+  border: 0.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
 }
 
 .upload-zone {
   border: 2px dashed #c9d1d9;
-  border-radius: 10px;
-  padding: 36px 20px;
+  border-radius: var(--radius-md);
+  padding: 36px var(--space-5);
   text-align: center;
   cursor: pointer;
-  background: #fafbfc;
+  background: var(--color-bg);
   transition: border-color 0.2s, background 0.2s;
   user-select: none;
 }
 .upload-zone:hover,
 .upload-zone.drag-over {
-  border-color: #667eea;
-  background: #f0f2ff;
+  border-color: var(--color-primary);
+  background: var(--color-surface-raised);
 }
-.upload-icon  { font-size: 2rem; color: #aab0d0; display: block; margin-bottom: 8px; }
-.upload-title { font-size: 0.95rem; font-weight: 500; color: #555; margin: 0 0 4px; }
-.upload-sub   { font-size: 0.8rem; color: #aaa; margin: 0; }
+.upload-icon  { font-size: 2rem; color: #aab0d0; display: block; margin-bottom: var(--space-2); }
+.upload-title { font-size: 0.95rem; font-weight: 500; color: var(--color-text-secondary); margin: 0 0 var(--space-1); }
+.upload-sub   { font-size: 0.8rem; color: var(--color-text-muted); margin: 0; }
 
 /* ── 待上传文件卡片 ─────────────────────────────────────────── */
 .pending-card {
-  background: white;
-  border: 1px solid #e0e3e8;
-  border-radius: 10px;
-  padding: 14px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 14px var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2);
 }
 .pending-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
-.pending-icon  { color: #667eea; font-size: 1rem; flex-shrink: 0; }
-.pending-name  { flex: 1; font-weight: 500; color: #333; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pending-size  { font-size: 0.78rem; color: #999; white-space: nowrap; }
+.pending-icon  { color: var(--color-primary); font-size: 1rem; flex-shrink: 0; }
+.pending-name  { flex: 1; font-weight: 500; color: var(--color-text); font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pending-size  { font-size: 0.78rem; color: var(--color-text-muted); white-space: nowrap; }
 .pending-remove {
-  background: none; border: none; color: #bbb; cursor: pointer;
-  font-size: 0.8rem; padding: 2px 4px; border-radius: 4px;
+  background: none; border: none; color: var(--color-text-muted); cursor: pointer;
+  font-size: 0.8rem; padding: 2px var(--space-1); border-radius: 4px;
   transition: color 0.2s; flex-shrink: 0;
 }
-.pending-remove:hover { color: #f44336; }
+.pending-remove:hover { color: var(--color-danger); }
 
 .desc-input {
-  border: 1px solid #e0e3e8;
-  border-radius: 7px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   padding: 7px 10px;
   font-size: 0.85rem;
   outline: none;
   transition: border-color 0.2s;
   font-family: inherit;
 }
-.desc-input:focus { border-color: #667eea; }
+.desc-input:focus { border-color: var(--color-primary); }
 
-.pending-actions { display: flex; gap: 8px; }
+.pending-actions { display: flex; gap: var(--space-2); }
 
 .upload-btn {
   padding: 7px 20px;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   border: none;
-  background: #667eea;
+  background: var(--color-primary);
   color: white;
   font-size: 0.85rem;
   cursor: pointer;
@@ -365,51 +365,51 @@ onMounted(() => loadFiles())
   align-items: center;
   gap: 6px;
 }
-.upload-btn:hover:not(:disabled) { background: #5568d8; }
+.upload-btn:hover:not(:disabled) { background: var(--color-primary-hover); }
 .upload-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .cancel-btn {
-  padding: 7px 16px;
-  border-radius: 7px;
-  border: 1px solid #e0e3e8;
-  background: white;
-  color: #666;
+  padding: 7px var(--space-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
   font-size: 0.85rem;
   cursor: pointer;
   transition: background 0.2s;
 }
-.cancel-btn:hover { background: #f5f5f5; }
+.cancel-btn:hover { background: var(--color-bg); }
 
 /* ── 统计横幅 ────────────────────────────────────────────────── */
 .stats-banner {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: white;
-  border: 0.5px solid #e8eaed;
-  border-radius: 10px;
-  padding: 10px 16px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  background: var(--color-surface);
+  border: 0.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 10px var(--space-4);
+  box-shadow: var(--shadow-sm);
 }
-.stats-icon { color: #667eea; font-size: 1rem; }
-.stats-text { font-size: 0.88rem; color: #555; }
-.stats-text strong { color: #333; }
+.stats-icon { color: var(--color-primary); font-size: 1rem; }
+.stats-text { font-size: 0.88rem; color: var(--color-text-secondary); }
+.stats-text strong { color: var(--color-text); }
 .stats-spacer { flex: 1; }
 
 .refresh-btn {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 6px 12px;
-  border-radius: 7px;
-  border: 1px solid #e0e3e8;
-  background: white;
-  color: #555;
+  padding: 6px var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
   font-size: 0.82rem;
   cursor: pointer;
   transition: all 0.2s;
 }
-.refresh-btn:hover { border-color: #667eea; color: #667eea; }
+.refresh-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .refresh-btn.spinning i { animation: spin 0.8s linear infinite; }
 .refresh-label { font-size: 0.82rem; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -420,8 +420,8 @@ onMounted(() => loadFiles())
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 48px 20px;
-  color: #aaa;
+  padding: 48px var(--space-5);
+  color: var(--color-text-muted);
   font-size: 0.9rem;
 }
 
@@ -430,24 +430,24 @@ onMounted(() => loadFiles())
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 64px 20px;
-  background: white;
-  border-radius: 12px;
-  border: 0.5px solid #e8eaed;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  gap: var(--space-2);
+  padding: 64px var(--space-5);
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  border: 0.5px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
 }
 .empty-icon  { font-size: 2.5rem; color: #ddd; }
-.empty-title { font-size: 1rem; font-weight: 500; color: #666; margin: 0; }
-.empty-sub   { font-size: 0.85rem; color: #aaa; margin: 0; }
+.empty-title { font-size: 1rem; font-weight: 500; color: var(--color-text-secondary); margin: 0; }
+.empty-sub   { font-size: 0.85rem; color: var(--color-text-muted); margin: 0; }
 
 /* ── 文件表格 ─────────────────────────────────────────────────── */
 .table-wrapper {
-  background: white;
-  border: 0.5px solid #e8eaed;
-  border-radius: 12px;
+  background: var(--color-surface);
+  border: 0.5px solid var(--color-border);
+  border-radius: var(--radius-md);
   overflow: hidden;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  box-shadow: var(--shadow-sm);
 }
 
 .file-table {
@@ -457,15 +457,15 @@ onMounted(() => loadFiles())
 }
 
 .file-table thead {
-  background: #f8f9fa;
-  border-bottom: 1px solid #e8eaed;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .file-table th {
   padding: 10px 14px;
   font-size: 0.78rem;
   font-weight: 600;
-  color: #888;
+  color: var(--color-text-muted);
   text-align: left;
   white-space: nowrap;
 }
@@ -499,7 +499,7 @@ onMounted(() => loadFiles())
 .file-type-icon { color: #90a4ae; flex-shrink: 0; }
 .file-name-text {
   font-weight: 500;
-  color: #333;
+  color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -509,16 +509,16 @@ onMounted(() => loadFiles())
 /* 知识块标签 */
 .chunk-badge {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: #f0f2ff;
-  color: #667eea;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-primary);
   font-size: 0.78rem;
   font-weight: 600;
   text-align: center;
 }
 
-.text-muted { color: #999; font-size: 0.82rem; }
+.text-muted { color: var(--color-text-muted); font-size: 0.82rem; }
 
 /* 描述截断 */
 .desc-text {
@@ -533,7 +533,7 @@ onMounted(() => loadFiles())
 .del-btn {
   background: none;
   border: none;
-  color: #ccc;
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 0.85rem;
   padding: 5px 6px;
@@ -541,7 +541,7 @@ onMounted(() => loadFiles())
   transition: color 0.2s, background 0.2s;
   line-height: 1;
 }
-.del-btn:hover:not(:disabled) { color: #f44336; background: #fff0f0; }
+.del-btn:hover:not(:disabled) { color: var(--color-danger); background: #fff0f0; }
 .del-btn:disabled { cursor: not-allowed; opacity: 0.4; }
 
 /* ── 暗色主题 ─────────────────────────────────────────────────── */
@@ -564,7 +564,7 @@ onMounted(() => loadFiles())
 [data-theme="dark"] .upload-zone:hover,
 [data-theme="dark"] .upload-zone.drag-over {
   background: #1e2a45;
-  border-color: #667eea;
+  border-color: var(--color-primary);
 }
 [data-theme="dark"] .upload-title { color: #c9d1d9; }
 [data-theme="dark"] .upload-sub   { color: #6b7280; }
@@ -592,7 +592,7 @@ onMounted(() => loadFiles())
   border-color: #2d3451;
   color: #9ca3af;
 }
-[data-theme="dark"] .refresh-btn:hover { border-color: #667eea; color: #667eea; }
+[data-theme="dark"] .refresh-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 
 [data-theme="dark"] .file-table thead { background: #1a1f2e; }
 [data-theme="dark"] .file-table th    { color: #6b7280; }
