@@ -1544,7 +1544,7 @@ onUnmounted(() => {
 .md-content :deep(ul),
 .md-content :deep(ol)           { padding-left: 20px; margin: 6px 0; }
 .md-content :deep(li)           { margin-bottom: 2px; }
-.md-content :deep(blockquote)   { border-left: 3px solid var(--color-primary); margin: var(--space-2) 0; padding: var(--space-1) var(--space-3); color: #666; background: #f8f8ff; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.md-content :deep(blockquote)   { border-left: 3px solid var(--color-primary); margin: var(--space-2) 0; padding: var(--space-1) var(--space-3); color: var(--color-text-secondary); background: #f8f8ff; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
 .md-content :deep(table)        { border-collapse: collapse; width: 100%; margin: var(--space-2) 0; font-size: 0.9em; }
 .md-content :deep(th),
 .md-content :deep(td)           { border: 1px solid #ddd; padding: 6px 10px; }
@@ -1703,7 +1703,7 @@ onUnmounted(() => {
   transition: background 0.2s;
   flex-shrink: 0;
 }
-.stop-btn:hover { background: #c62828; }
+.stop-btn:hover { background: var(--color-danger); }
 
 /* ── 底部提示 ─────────────────────────────────────────────── */
 .input-meta { margin-top: 6px; padding: 0 var(--space-1); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -1855,7 +1855,7 @@ onUnmounted(() => {
 .history-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px var(--space-4);
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 .history-title {
@@ -2123,7 +2123,7 @@ details[open] .cot-summary::before { transform: rotate(90deg); }
   padding: 10px 14px;
   font-size: 0.82rem;
   line-height: 1.6;
-  color: #666;
+  color: var(--color-text-secondary);
   max-height: 320px;
   overflow-y: auto;
 }
