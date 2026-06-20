@@ -132,19 +132,14 @@
 
 ---
 
-## TODO-21: Feishu/微信 Bot 接入（MEDIUM，待公网环境）
+## ~~TODO-21: Feishu Bot 接入~~ ✅ 已完成（2026-06-16）
 
-**什么**: 实现飞书 / 微信 Bot Webhook 接入点，让用户在已有工作流中直接与 AI 对话，无需打开 Web UI。
+**结果**：飞书长连接（WebSocket）通道全量落地，无需公网 IP / HTTPS 回调即可使用：
+- `agent/im/feishu_client.py` — Python 侧 `FeishuIMTool`，7 类消息类型
+- `backend/.../web/feishu/` — Java 侧 `FeishuWebSocketClient`（SmartLifecycle + 重连状态机）、`FeishuEventController`、`FeishuCardBuilder`、`FeishuCrypto`、`FeishuMessageSender`
+- `FeishuIntegrationTest` 4 个端到端场景全通过；docker-compose 飞书环境变量 + `docs/feishu-integration.md` 接入文档
 
-**为什么**: 将产品从"个人工具"变为"可分享的 AI 助手"，使用频率可能显著提升。
-
-**如何实现**: 在 Python FastAPI 新增 `POST /api/webhook/feishu`，验证飞书 AppSecret 签名，将消息正文转发给现有 `POST /api/chat`，返回结果。飞书/微信两者独立实现，代码可复用同一适配层。
-
-**当前状态**: 需要公网 IP 和 Bot 平台审核，本地开发环境无法验证。待部署到可公网访问的服务器后再做。
-
-**先决条件**: TODO-1（HTTPS/TLS）完成后方可上线（Bot 平台要求 HTTPS 回调）。
-
-**代价**: Human ~1天 / CC ~45min
+**涉及 commit**：`58083eb` `cadbef4` `70f3866` `b618afc` `fab51d2`
 
 ---
 
