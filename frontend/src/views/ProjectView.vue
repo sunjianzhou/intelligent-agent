@@ -97,7 +97,7 @@ async function createProject() {
   display: flex;
   height: 100%;
   overflow: hidden;
-  background: #f8f9fa;
+  background: var(--color-bg);
   gap: 0;
 }
 
@@ -105,8 +105,8 @@ async function createProject() {
 .project-list-panel {
   width: 200px;
   flex-shrink: 0;
-  background: white;
-  border-right: 1px solid #e8eaed;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   position: relative;
@@ -116,8 +116,8 @@ async function createProject() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px;
-  border-bottom: 1px solid #f0f0f0;
+  padding: var(--space-3) 14px;
+  border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
@@ -135,7 +135,7 @@ async function createProject() {
   border: none;
   border-radius: 5px;
   background: none;
-  color: #aaa;
+  color: var(--color-text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -143,7 +143,7 @@ async function createProject() {
   font-size: 0.78rem;
   transition: all 0.15s;
 }
-.add-btn:hover { background: #4fc3a1; color: white; }
+.add-btn:hover { background: var(--color-accent); color: white; }
 .del-btn { opacity: 0; }
 .del-btn:hover { background: #fce4e4; color: #e53935; opacity: 1 !important; }
 
@@ -156,22 +156,22 @@ async function createProject() {
 .project-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   cursor: pointer;
   transition: background 0.12s;
   border-radius: 0;
 }
-.project-item:hover { background: #f8f9fa; }
+.project-item:hover { background: var(--color-bg); }
 .project-item:hover .del-btn { opacity: 1; }
 .project-item.active { background: #eef0ff; }
 
 .project-icon {
   font-size: 0.82rem;
-  color: #aaa;
+  color: var(--color-text-muted);
   flex-shrink: 0;
 }
-.project-item.active .project-icon { color: #667eea; }
+.project-item.active .project-icon { color: var(--color-primary); }
 
 .project-name {
   flex: 1;
@@ -181,12 +181,12 @@ async function createProject() {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.project-item.active .project-name { color: #667eea; font-weight: 500; }
+.project-item.active .project-name { color: var(--color-primary); font-weight: 500; }
 
 .list-empty {
   padding: 20px 14px;
   font-size: 0.78rem;
-  color: #ccc;
+  color: var(--color-text-muted);
   text-align: center;
 }
 
@@ -202,8 +202,8 @@ async function createProject() {
 }
 
 .create-box {
-  background: white;
-  border-radius: 10px;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
   padding: 18px;
   width: 170px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.15);
@@ -211,43 +211,43 @@ async function createProject() {
 
 .create-label {
   font-size: 0.82rem;
-  color: #666;
-  margin-bottom: 8px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-2);
 }
 
 .create-input {
   width: 100%;
-  border: 1px solid #e0e3e8;
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   padding: 6px 10px;
   font-size: 0.85rem;
   outline: none;
   margin-bottom: 10px;
 }
-.create-input:focus { border-color: #667eea; }
+.create-input:focus { border-color: var(--color-primary); }
 
 .create-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
 }
 
 .cancel-btn {
-  background: #f8f9fa;
-  border: 1px solid #e0e3e8;
-  border-radius: 6px;
-  padding: 4px 10px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) 10px;
   font-size: 0.78rem;
-  color: #666;
+  color: var(--color-text-secondary);
   cursor: pointer;
 }
 
 .confirm-btn {
-  background: #667eea;
+  background: var(--color-primary);
   color: white;
   border: none;
-  border-radius: 6px;
-  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  padding: 4px var(--space-3);
   font-size: 0.78rem;
   cursor: pointer;
 }
@@ -256,16 +256,16 @@ async function createProject() {
 /* ── 中间和右侧面板 ── */
 .spec-panel {
   flex: 1;
-  padding: 12px;
+  padding: var(--space-3);
   overflow: hidden;
   min-width: 0;
-  border-right: 1px solid #e8eaed;
+  border-right: 1px solid var(--color-border);
 }
 
 .task-panel {
   width: 300px;
   flex-shrink: 0;
-  padding: 12px 12px 12px 0;
+  padding: var(--space-3) var(--space-3) var(--space-3) 0;
   overflow: hidden;
 }
 
@@ -278,7 +278,7 @@ async function createProject() {
     width: 100%;
     height: auto;
     border-right: none;
-    border-bottom: 1px solid #e8eaed;
+    border-bottom: 1px solid var(--color-border);
     max-height: 140px;
   }
   .project-list {
@@ -289,7 +289,7 @@ async function createProject() {
   }
   .task-panel {
     width: 100%;
-    padding: 0 12px 12px;
+    padding: 0 var(--space-3) var(--space-3);
   }
 }
 </style>
