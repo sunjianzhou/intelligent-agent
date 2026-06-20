@@ -14,12 +14,14 @@
 > - `ImageGenerationTool` 注册逻辑修复：本地 Provider 无需 API Key 即可激活
 > - 图片输出目录改为配置驱动（`IMAGE_GEN_OUTPUT_DIR`），默认 `agent/data/images`
 >
-> **快速体验（ComfyUI）**：
-> 1. 安装并启动 ComfyUI：`python main.py --listen 0.0.0.0 --port 8188`
-> 2. 无需修改 `.env`（默认 `IMAGE_GEN_PROVIDER=comfyui`）
-> 3. 重启 Python 服务，对话中说"画一只猫"即可触发
+> **快速体验（ComfyUI，Docker 部署，2026-06-20 起）**：
+> 1. `docker compose --profile local up -d --build` 会自动构建并启动 `comfyui` 容器（复用宿主机 `D:/software/ComfyUI` 的 models/checkpoints，首次启动安装依赖较慢，之后跳过）
+> 2. `.env.docker` 默认 `IMAGE_GEN_PROVIDER=comfyui` + `IMAGE_GEN_BASE_URL=http://comfyui:8188`（容器间用 service 名互通，无需 `host.docker.internal`）
+> 3. 对话中说"画一只猫"即可触发；详见 `comfyui/Dockerfile` + `docker-compose.yml` 的 `comfyui` service
 >
-> **切换回 SD WebUI**：`.env` 设置 `IMAGE_GEN_PROVIDER=sd_webui IMAGE_GEN_BASE_URL=http://localhost:7860`
+> **本机非 Docker 直跑 ComfyUI（旧方案，仍兼容）**：`python main.py --listen 0.0.0.0 --port 8188`，`.env.docker` 改 `IMAGE_GEN_BASE_URL=http://host.docker.internal:8188`
+>
+> **切换回 SD WebUI**：`.env.docker` 设置 `IMAGE_GEN_PROVIDER=sd_webui IMAGE_GEN_BASE_URL=http://host.docker.internal:7860`
 
 ---
 

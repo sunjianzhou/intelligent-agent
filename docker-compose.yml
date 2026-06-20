@@ -31,6 +31,31 @@ services:
               count: all
               capabilities: [gpu]
 
+  # ── ComfyUI（本地图片生成，需 GPU，按需启动）──────────────────
+  # 启动方式：docker-compose --profile local up -d --build
+  # 复用宿主机已有的 ComfyUI 安装目录（含 models/checkpoints、custom_nodes），
+  # 首次启动会在容器内安装 python 依赖（与宿主机 conda 环境版本对齐），耗时较久，之后会跳过。
+  comfyui:
+    profiles: [local]
+    build:
+      context: ./comfyui
+      dockerfile: Dockerfile
+    container_name: ia-comfyui
+    volumes:
+      - ${COMFYUI_DIR:-D:/software/ComfyUI}:/app
+    ports:
+      - "8188:8188"
+    restart: unless-stopped
+    networks:
+      - ia_net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
   # ── Python Agent ──────────────────────────────────────────
   agent:
     build:

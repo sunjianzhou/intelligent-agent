@@ -202,7 +202,7 @@ ADMIN_PASSWORD=你的管理员密码
 # 标准启动（agent + backend + frontend）
 docker compose up -d --build
 
-# 含本地 Ollama 容器（GPU 环境）
+# 含本地 Ollama + ComfyUI 容器（GPU 环境，本地图片生成需要这个）
 docker compose --profile local up -d --build
 
 # 含 HTTPS（需先生成证书）
