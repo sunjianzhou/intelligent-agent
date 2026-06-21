@@ -10,9 +10,11 @@
   DELETE /api/conversations/{session_id} — 删除会话
   DELETE /api/conversations             — 清空用户所有会话
   POST /api/conversations/append        — 追加一条消息到会话（由 chat 端点内部调用）
+  POST /api/conversations/{session_id}/retract — 撤回（永久删除）指定消息，并级联清理短期/长期记忆
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import uuid
@@ -23,6 +25,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
 
+import api.state as _state
 from config.settings import settings
 
 router = APIRouter()
@@ -102,8 +105,12 @@ def append_messages(
     session_id: str,
     messages: List[Dict[str, Any]],
     project_id: Optional[str] = None,
-) -> None:
-    """Called internally after each chat turn to persist messages."""
+) -> List[Dict[str, Any]]:
+    """Called internally after each chat turn to persist messages.
+
+    Returns the persisted message dicts (each guaranteed to have an "id"),
+    so callers (chat_router.py) can read back the ids assigned this turn.
+    """
     session = _load_session(user_id, session_id) or {
         "session_id": session_id,
         "user_id":    user_id,
@@ -114,11 +121,15 @@ def append_messages(
     # 写入 project_id（仅在首次传入或与已有值不同时更新）
     if project_id and session.get("project_id") != project_id:
         session["project_id"] = project_id
+    for m in messages:
+        if not m.get("id"):
+            m["id"] = str(uuid.uuid4())
     session["messages"].extend(messages)
     # Trim to avoid unbounded growth
     session["messages"] = session["messages"][-settings.conversation_max_messages:]
     session["updated_at"] = datetime.now().isoformat()
     _save_session(user_id, session)
+    return messages
 
 
 # ── 端点 ──────────────────────────────────────────────────────────────────────
@@ -209,3 +220,74 @@ async def append_conversation(request: Request):
 
     append_messages(user_id, session_id, messages)
     return {"success": True, "session_id": session_id}
+
+
+_MAX_RETRACT_BATCH = 50
+
+
+def _suppress_distilled_memories(agent, retracted_message_ids: List[str]) -> int:
+    """撤回后，把来源命中这些 message_id 的长期记忆标记为排除检索，不物理删除。
+
+    一条摘要可能混合了多条消息的内容，物理删除有误伤其他未撤回消息的风险；
+    硬过滤（excluded_from_retrieval）足以达到"不再污染上下文"的目标。
+    """
+    retracted = set(retracted_message_ids)
+    count = 0
+    for memory_id, item in list(agent.memory.long_term.memories.items()):
+        source_ids = set(item.metadata.get("source_message_ids") or [])
+        if source_ids & retracted:
+            agent.memory.long_term.update(memory_id, metadata={"excluded_from_retrieval": True})
+            count += 1
+    return count
+
+
+async def _suppress_distilled_memories_bg(agent, retracted_message_ids: List[str]) -> None:
+    """后台异步执行：扫描长期记忆，命中来源 id 的条目标记排除检索。
+    不放在 retract 请求主流程里同步跑，避免长期记忆条目较多时拖慢撤回响应。
+    """
+    try:
+        count = await asyncio.to_thread(_suppress_distilled_memories, agent, retracted_message_ids)
+        if count:
+            logger.info(f"撤回级联：{count} 条长期记忆已标记排除检索")
+    except Exception as e:
+        logger.warning(f"长期记忆排除标记失败（不影响已完成的内部删除）: {e}")
+
+
+@router.post("/api/conversations/{session_id}/retract")
+async def retract_messages(session_id: str, request: Request):
+    user_id = getattr(request.state, "user_id", "default")
+    body = await request.json()
+    requested_ids = list(dict.fromkeys(body.get("message_ids") or []))  # 去重保序
+    if not requested_ids:
+        return {"success": True, "requested": 0, "deleted": 0, "deleted_ids": [], "memory_purged": 0}
+    if len(requested_ids) > _MAX_RETRACT_BATCH:
+        return JSONResponse(status_code=400, content={
+            "success": False,
+            "message": f"单次最多撤回 {_MAX_RETRACT_BATCH} 条，请分批操作",
+        })
+
+    session = _load_session(user_id, session_id)
+    if session is None:
+        return {"success": True, "requested": len(requested_ids), "deleted": 0, "deleted_ids": [], "memory_purged": 0}
+
+    target_ids = set(requested_ids)
+    kept, removed = [], []
+    for m in session["messages"]:
+        (removed if m.get("id") in target_ids else kept).append(m)
+    session["messages"] = kept
+    session["updated_at"] = datetime.now().isoformat()
+    _save_session(user_id, session)
+
+    removed_ids = [m["id"] for m in removed if m.get("id")]
+    purged = 0
+    if removed_ids and _state.agent:
+        purged = _state.agent.memory.short_term.delete_by_ids(removed_ids)
+        asyncio.create_task(_suppress_distilled_memories_bg(_state.agent, removed_ids))
+
+    return {
+        "success": True,
+        "requested": len(requested_ids),
+        "deleted": len(removed_ids),
+        "deleted_ids": removed_ids,
+        "memory_purged": purged,
+    }
