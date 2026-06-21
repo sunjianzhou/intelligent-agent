@@ -225,6 +225,12 @@ export const branchConversation  = (messages, parentSessionId) =>
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ messages, parent_session_id: parentSessionId }),
   })
+export const retractMessages = (sessionId, messageIds) =>
+  request(`${BASE}/conversations/${encodeURIComponent(sessionId)}/retract`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ message_ids: messageIds }),
+  })
 
 // ── Image generation ──────────────────────────────────────────────────────────
 
