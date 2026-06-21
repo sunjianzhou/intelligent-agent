@@ -132,6 +132,18 @@ def test_switch_persona_sends_correct_body(client):
     assert sent_body["persona"] == "coder"
 
 
+# ── Conversations ────────────────────────────────────────────────────────────
+
+@resp_mock.activate
+def test_retract_messages_posts_to_correct_endpoint(client):
+    resp_mock.add(resp_mock.POST, f"{BASE}/api/conversations/sess1/retract",
+                  json={"success": True, "requested": 2, "deleted": 2, "deleted_ids": ["m1", "m2"], "memory_purged": 1})
+    result = client.retract_messages("sess1", ["m1", "m2"])
+    assert result["deleted"] == 2
+    sent = json.loads(resp_mock.calls[0].request.body)
+    assert sent["message_ids"] == ["m1", "m2"]
+
+
 # ── Chat (non-streaming) ──────────────────────────────────────────────────────
 
 @resp_mock.activate

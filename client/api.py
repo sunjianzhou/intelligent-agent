@@ -104,6 +104,18 @@ class AgentClient:
         r.raise_for_status()
         return r.json()
 
+    # ── Conversations ────────────────────────────────────────────────
+    def retract_messages(self, session_id: str, message_ids: list) -> dict:
+        """Retract (permanently delete) messages from a conversation session."""
+        r = requests.post(
+            f"{self.base_url}/api/conversations/{session_id}/retract",
+            headers=self._headers(),
+            json={"message_ids": message_ids},
+            timeout=15,
+        )
+        r.raise_for_status()
+        return r.json()
+
     # ── Chat ─────────────────────────────────────────────────────────
     def chat(self, message: str, use_tools: bool = True, use_memory: bool = True) -> dict:
         """Non-streaming chat. Returns full response dict."""
