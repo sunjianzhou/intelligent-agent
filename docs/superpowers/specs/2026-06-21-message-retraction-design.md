@@ -122,15 +122,15 @@ async def retract_messages(session_id: str, request: Request):
     removed_ids = [m["id"] for m in removed if m.get("id")]
     purged = 0
     if removed_ids and _state.agent:  # 通过模块级 _state 访问全局 agent 实例
-        purged = _state.agent.memory.short_term.delete_by_ids(removed_ids)
-        _suppress_distilled_memories(_state.agent, removed_ids)  # 见 4.5 节
+        purged = _state.agent.memory.short_term.delete_by_ids(removed_ids)  # 同步、O(短期记忆容量)，很快
+        asyncio.create_task(_suppress_distilled_memories_bg(_state.agent, removed_ids))  # 见 4.5 节，异步不阻塞响应
 
     return {
         "success": True,
         "requested": len(requested_ids),
         "deleted": len(removed_ids),
         "deleted_ids": removed_ids,
-        "memory_purged": purged,
+        "memory_purged": purged,  # 仅短期记忆计数；长期记忆排除标记是后台异步的，响应时还没跑完，不在此计数
     }
 ```
 
@@ -157,6 +157,23 @@ public ResponseEntity<Map<String, Object>> retractMessages(
 ### 4.5 蒸馏来源追溯 + 长期记忆硬性排除过滤
 
 **不采用"降权"，改用"硬过滤"**——降权（调低 `importance`）只是让该条目在 `calculate_memory_score()` 的综合分数公式里更不容易胜出，但这个公式本身完全可能在未来被调整（比如权重比例变化、加新的因子），届时一个写死的 `importance=0.1` 还能不能压住召回是不确定的，相当于把"是否生效"这件事隐式绑定到了一个未来可能变化的计算公式上。改成显式的排除标记 + 检索时硬过滤，不管打分公式怎么改，被标记的条目永远不会进入候选集，是更稳的做法。
+
+**异步执行，不阻塞 retract 响应**——`agent.memory.long_term.memories` 在长期使用后可能积累到几千条，遍历 + 逐条 `update()`（可能涉及 ChromaDB 的同步 I/O）如果放在 retract 请求的主流程里同步跑，会拖慢撤回操作的响应时间。改成 `asyncio.create_task` 发起的后台任务，内部用 `asyncio.to_thread` 把同步遍历丢进线程池，不占用事件循环：
+
+```python
+async def _suppress_distilled_memories_bg(agent, retracted_message_ids: list[str]) -> None:
+    """后台异步执行：扫描长期记忆，命中来源 id 的条目标记排除检索。
+    不放在 retract 请求主流程里同步跑，避免长期记忆条目较多时拖慢撤回响应。
+    """
+    try:
+        count = await asyncio.to_thread(_suppress_distilled_memories, agent, retracted_message_ids)
+        if count:
+            logger.info(f"撤回级联：{count} 条长期记忆已标记排除检索")
+    except Exception as e:
+        logger.warning(f"长期记忆排除标记失败（不影响已完成的内部删除）: {e}")
+```
+
+代价：`memory_purged` 字段只反映短期记忆的同步清理结果；长期记忆的排除标记在响应返回时可能还没跑完（通常几百毫秒内完成），前端不需要等待也不需要感知这个结果——它只影响"未来检索是否还会召回"，不影响"这次撤回操作本身是否成功"。
 
 **改动 1：蒸馏时记录来源**
 
@@ -232,7 +249,13 @@ def _suppress_distilled_memories(agent, retracted_message_ids: list[str]) -> int
 - **id 回填**：
   - `sendMessage()` 发出后，`finalizeStream()`（流式）/ 非流式响应处理逻辑里读取 `data.user_message_id` / `data.assistant_message_id`（经 Java `chat_done` 透传），回填到刚 push 的 user 消息对象和当前 streaming 的 assistant 消息对象的 `id` 字段，覆盖本地 `genId()` 临时值
   - `websocket.js` 的 `chat_done` case：在 `finalizeStream(responseTime)` 调用时多传 `data.user_message_id, data.assistant_message_id`
-  - **断流 fallback**：`finalizeStream()` 执行后，若本轮始终没收到任一 id（即 `chat_done` payload 里两个字段都是 `undefined`——典型场景是 SSE 中途断开，Java `finally` 兜底补发了一个空 `chat_done`），延迟 1.5s 后自动调用一次现有的 `getConversation(sessionId)`，按"最后两条 user/assistant"在返回的 `messages` 里对齐位置，回填 `id` 字段；如果该会话在后端压根没有这两条（请求中途彻底失败、什么都没persist），说明本来就没有可撤回的对象，跳过即可，不报错不提示
+  - **断流 fallback（内容前缀匹配优先，位置兜底）**：`finalizeStream()` 执行后，若本轮始终没收到任一 id（即 `chat_done` payload 里两个字段都是 `undefined`——典型场景是 SSE 中途断开，Java `finally` 兜底补发了一个空 `chat_done`），延迟 1.5s 后自动调用一次现有的 `getConversation(sessionId)`：
+    - 单纯"按最后两条位置对齐"在并发多 tab / 用户连续快发的场景下会错位（最后两条不一定是本轮的），改成双重定位：
+      1. **内容前缀匹配**：取本地待回填消息（`messages.value` 中 `role` 为 user/assistant 且尚未 `_backendIdConfirmed` 的最近 6 条，限定窗口避免误匹配扩散到整段历史）逐条与后端返回的 `messages` 倒序比较，按 `role` 相同 + `content` 前 200 字符相同（而非完全相等——前端超长消息会被截断并加 `…（响应过长已截断）` 后缀，与后端存的完整内容不一致）找一条**未被占用**的后端条目
+      2. **位置兜底**：前缀匹配未命中时，退化为"同 `role` 里最近一条未被占用"的后端条目
+      3. 匹配成功后把该后端条目的 `id` 回填到本地消息对象，并置 `_backendIdConfirmed = true`、标记该后端条目为已占用（避免被下一条本地消息重复匹配）
+    - 如果该会话在后端压根没有这些消息（请求中途彻底失败、什么都没 persist），匹配不到任何候选，跳过即可，不报错不提示
+  - 正常路径（通过 `chat_done` 拿到 id）回填时，同样要置 `_backendIdConfirmed = true`，避免断流 fallback 逻辑重复处理已经确认过 id 的消息
 - **历史加载路径**（`loadSession()`、`openSessionSignal` watcher）：改用后端返回的 `m.id`（已被持久化的真实 id）而不是 `genId()` 现生成
 
 ### 5.1 API 封装
@@ -275,9 +298,11 @@ export const retractMessages = (sessionId, messageIds) =>
 - 单元测试：`long_term.retrieve()`/`search()` 对 `excluded_from_retrieval=True` 的条目正确过滤
 - 单元测试：`conversations_router.retract_messages` 端点：JSON 正确过滤、agent 不可用时不抛异常、`requested>50` 返回 400、`deleted < requested` 时字段正确
 - 单元测试：`_suppress_distilled_memories()` 按 `source_message_ids` 交集命中并打标记
-- 集成测试：完整一轮 chat → 拿到 id → 调 retract → 确认 JSON 文件和 short_term 都已清除
+- 单元测试：`_suppress_distilled_memories_bg()` 异常被吞掉不向上抛（避免影响已经返回的 retract 响应）
+- 集成测试：完整一轮 chat → 拿到 id → 调 retract → 确认 JSON 文件和 short_term 都已清除（同步部分）；轮询/等待后确认 long_term 排除标记也已生效（异步部分，给够时间窗口）
 - 集成测试：蒸馏触发后再撤回 → 对应长期记忆条目被标记排除、但内容仍存在（验证"硬过滤不删除"）
-- 前端手测：撤回模式勾选/取消/确认/N>1 警告文案/占位条渲染/不可操作态/勾选满50禁用/deleted<requested 提示/断流后自动补 id
+- 前端手测：撤回模式勾选/取消/确认/N>1 警告文案/占位条渲染/不可操作态/勾选满50禁用/deleted<requested 提示
+- 前端手测：模拟断流（开发工具里中途断网）后验证 id 通过前缀匹配正确回填；连续快发多轮后再断流，验证不会错位匹配到旧轮次的消息
 - CLI 手测：`!retract` 单选/多选/旧消息报错路径
 - 飞书手测：飞书内发出的消息撤回后，飞书客户端界面同步消失；Java 重启后撤回旧消息时飞书侧静默失败但内部存储仍正常删除
 
