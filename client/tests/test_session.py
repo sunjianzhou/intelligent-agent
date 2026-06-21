@@ -183,3 +183,75 @@ def test_list_saved_returns_newest_first(tmp_path):
 def test_list_saved_nonexistent_dir(tmp_path):
     s = ChatSession(data_dir=str(tmp_path / "ghost"), save=False)
     assert s.list_saved() == []
+
+
+# ── message id ────────────────────────────────────────────────────────────────
+
+def test_add_user_with_msg_id(no_save_session):
+    no_save_session.add_user("hello", msg_id="mid-1")
+    assert no_save_session.messages[0]["id"] == "mid-1"
+
+
+def test_add_user_without_msg_id_has_no_id_key(no_save_session):
+    no_save_session.add_user("hello")
+    assert "id" not in no_save_session.messages[0]
+
+
+def test_add_assistant_with_msg_id(no_save_session):
+    no_save_session.add_assistant("hi", msg_id="mid-2")
+    assert no_save_session.messages[0]["id"] == "mid-2"
+
+
+def test_set_last_message_id_backfills_matching_role(no_save_session):
+    no_save_session.add_user("hello")
+    no_save_session.set_last_message_id("user", "mid-backfilled")
+    assert no_save_session.messages[-1]["id"] == "mid-backfilled"
+
+
+def test_set_last_message_id_noop_when_role_mismatch(no_save_session):
+    no_save_session.add_user("hello")
+    no_save_session.add_assistant("hi")
+    no_save_session.set_last_message_id("user", "mid-x")  # 最后一条是 assistant，不该被改
+    assert "id" not in no_save_session.messages[-1]
+
+
+def test_set_last_message_id_noop_when_id_is_none(no_save_session):
+    no_save_session.add_user("hello")
+    no_save_session.set_last_message_id("user", None)
+    assert "id" not in no_save_session.messages[-1]
+
+
+def test_set_last_message_id_persists(tmp_session):
+    tmp_session.add_user("hello")
+    tmp_session.set_last_message_id("user", "mid-persisted")
+    data = json.loads(tmp_session._file.read_text(encoding="utf-8"))
+    assert data["messages"][-1]["id"] == "mid-persisted"
+
+
+# ── retract ──────────────────────────────────────────────────────────────────
+
+def test_retract_removes_matching_ids(no_save_session):
+    no_save_session.add_user("first", msg_id="mid-1")
+    no_save_session.add_assistant("second", msg_id="mid-2")
+    no_save_session.add_user("third", msg_id="mid-3")
+
+    removed = no_save_session.retract(["mid-1", "mid-2"])
+
+    assert removed == 2
+    assert [m["content"] for m in no_save_session.messages] == ["third"]
+
+
+def test_retract_ignores_unknown_ids(no_save_session):
+    no_save_session.add_user("first", msg_id="mid-1")
+
+    removed = no_save_session.retract(["mid-does-not-exist"])
+
+    assert removed == 0
+    assert len(no_save_session.messages) == 1
+
+
+def test_retract_persists(tmp_session):
+    tmp_session.add_user("first", msg_id="mid-1")
+    tmp_session.retract(["mid-1"])
+    data = json.loads(tmp_session._file.read_text(encoding="utf-8"))
+    assert data["messages"] == []

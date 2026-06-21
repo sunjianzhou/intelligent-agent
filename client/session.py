@@ -25,15 +25,19 @@ class ChatSession:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             self._file = self._data_dir / f"session_{ts}_{self.session_id}.json"
 
-    def add_user(self, content: str) -> None:
-        self.messages.append({
+    def add_user(self, content: str, msg_id: Optional[str] = None) -> None:
+        entry = {
             "role": "user",
             "content": content,
             "timestamp": datetime.now().isoformat(),
-        })
+        }
+        if msg_id:
+            entry["id"] = msg_id
+        self.messages.append(entry)
         self._persist()
 
-    def add_assistant(self, content: str, tool_calls: Optional[list] = None) -> None:
+    def add_assistant(self, content: str, tool_calls: Optional[list] = None,
+                       msg_id: Optional[str] = None) -> None:
         entry = {
             "role": "assistant",
             "content": content,
@@ -41,6 +45,8 @@ class ChatSession:
         }
         if tool_calls:
             entry["tool_calls"] = tool_calls
+        if msg_id:
+            entry["id"] = msg_id
         self.messages.append(entry)
         self._persist()
 
@@ -51,6 +57,23 @@ class ChatSession:
             "timestamp": datetime.now().isoformat(),
         })
         self._persist()
+
+    def set_last_message_id(self, role: str, msg_id: Optional[str]) -> None:
+        """Backfill the id on the most recent message of the given role —
+        used once the backend returns the canonical id after the request completes."""
+        if msg_id and self.messages and self.messages[-1].get("role") == role:
+            self.messages[-1]["id"] = msg_id
+            self._persist()
+
+    def retract(self, message_ids: list[str]) -> int:
+        """Remove messages matching the given ids. Returns the number removed."""
+        ids_set = set(message_ids)
+        before = len(self.messages)
+        self.messages = [m for m in self.messages if m.get("id") not in ids_set]
+        removed = before - len(self.messages)
+        if removed:
+            self._persist()
+        return removed
 
     def clear(self) -> None:
         self.messages.clear()
