@@ -108,6 +108,10 @@ class MemoryDistiller:
             return 0
 
         # Store with dedup check
+        source_message_ids = [
+            m.metadata.get("message_id") for m in window
+            if m.metadata.get("message_id")
+        ]
         stored = 0
         for fact in facts:
             if self._is_duplicate(fact, long_term_memory, user_id):
@@ -119,6 +123,7 @@ class MemoryDistiller:
                     "type": "fact",
                     "source": "distillation",
                     "user_id": user_id,
+                    "source_message_ids": source_message_ids,
                 },
                 importance=0.75,
             )

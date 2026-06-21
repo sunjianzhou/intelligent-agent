@@ -32,9 +32,11 @@ class DuplicateLongTermMemory(FakeLongTermMemory):
 
 
 class FakeMemoryItem:
-    def __init__(self, role: str, content: str, user_id: str = "u1"):
+    def __init__(self, role: str, content: str, user_id: str = "u1", message_id: str = None):
         self.content = content
         self.metadata = {"role": role, "user_id": user_id}
+        if message_id:
+            self.metadata["message_id"] = message_id
 
 
 async def _llm_good(messages):
@@ -147,3 +149,32 @@ async def test_distill_resets_count():
     items = [FakeMemoryItem("user", "test"), FakeMemoryItem("assistant", "test")]
     await d.distill("u1", items, _llm_empty, ltm)
     assert d._turn_counts.get("u1", 0) == 0
+
+
+@pytest.mark.asyncio
+async def test_distill_records_source_message_ids():
+    d = MemoryDistiller(interval=2)
+    ltm = FakeLongTermMemory()
+    items = [
+        FakeMemoryItem("user", "我叫张三", message_id="mid-u1"),
+        FakeMemoryItem("assistant", "你好张三", message_id="mid-a1"),
+    ]
+    stored = await d.distill("u1", items, _llm_good, ltm)
+    assert stored == 2
+    for entry in ltm.stored:
+        assert set(entry["metadata"]["source_message_ids"]) == {"mid-u1", "mid-a1"}
+
+
+@pytest.mark.asyncio
+async def test_distill_source_message_ids_skips_items_without_id():
+    """部分短期记忆条目没有 message_id（旧数据），不应写入 None。"""
+    d = MemoryDistiller(interval=2)
+    ltm = FakeLongTermMemory()
+    items = [
+        FakeMemoryItem("user", "我叫张三"),  # 无 message_id
+        FakeMemoryItem("assistant", "你好张三", message_id="mid-a1"),
+    ]
+    stored = await d.distill("u1", items, _llm_good, ltm)
+    assert stored == 2
+    for entry in ltm.stored:
+        assert entry["metadata"]["source_message_ids"] == ["mid-a1"]
