@@ -9,6 +9,7 @@
 - **流式 / 非流式聊天**：通过 SSE（Server-Sent Events）逐 token 输出，或等待完整响应
 - **模型切换**：`!model <name>` 或启动参数 `--model`
 - **角色切换**：`!persona <name>` 或启动参数 `--persona`
+- **消息撤回**：`!retract <编号>`（编号取自 `!history`），从服务端对话记录和本地会话文件中永久删除，逗号分隔可批量（单次上限 50 条）
 - **会话持久化**：每次对话自动保存到 `datas/session_<timestamp>_<id>.json`，可用 `--load` 恢复
 - **Rich 渲染**：安装 `rich` 后自动启用彩色 Markdown 输出（可选）
 
@@ -79,7 +80,8 @@ data:
 | `!model <name>` | 切换模型 |
 | `!personas` | 列出所有角色 |
 | `!persona <name>` | 切换角色 |
-| `!history` | 显示最近 10 条对话 |
+| `!history` | 显示最近 10 条对话（带编号，撤回时引用此编号） |
+| `!retract <编号>` | 按 `!history` 编号永久撤回消息（逗号分隔可批量，如 `!retract 2,4`）；旧版本数据缺少 id 时无法撤回 |
 | `!sessions` | 列出已保存的会话文件 |
 | `!clear` | 清空当前会话，开始新对话 |
 | `!exit` / `!quit` | 退出 |
@@ -114,3 +116,4 @@ client/
 | 不经 Java 后端 | 直连 Python 8000，无 WebSocket、无 Java 代理层；任务通知不会推送到此客户端 |
 | 记忆隔离 | `user_id`（默认 `cli-user`）与前端 Web 用户共享记忆（如需隔离，在 config.yaml 中修改 `user_id`）|
 | 工具结果渲染 | 工具调用结果仅显示名称和摘要，不渲染完整 JSON |
+| 撤回不改写终端输出 | `!retract` 只影响存储和下一次 `!history` 的展示，已经打印到屏幕上的历史行不会被改写或擦除 |

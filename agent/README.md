@@ -28,7 +28,7 @@ agent/
 ├── api/
 │   ├── fastapi_app.py          入口：全部 REST/SSE 端点 + 中间件
 │   ├── roles_router.py         /api/roles/* 角色 CRUD（含激活状态持久化）
-│   ├── conversations_router.py /api/conversations/* 历史会话 CRUD（T4）
+│   ├── conversations_router.py /api/conversations/* 历史会话 CRUD（T4）+ retract 撤回端点
 │   ├── projects_router.py      /api/project/* 项目规格/任务树/上下文
 │   ├── cloud_router.py         /api/cloud/* 云端服务商 CRUD + 激活切换
 │   └── metrics.py              Prometheus 指标 (/metrics)
@@ -98,7 +98,7 @@ agent/
 ├── config/
 │   └── settings.py             Pydantic-settings 全量配置（含 .env 读取）
 ├── data/                       运行时数据目录（runtime_config.json、user 偏好等）
-└── tests/                      pytest 单元测试套件（155 个，含角色、记忆、调度等）
+└── tests/                      pytest 单元测试套件（246 个，含角色、记忆、调度、消息撤回等）
 ```
 
 ---
@@ -167,6 +167,12 @@ _call_model_with_tools()     ← 第一次 LLM 调用
 - `semantic_cache` 初始化失败时自动 delete + recreate collection
 - 迁移脚本：`python tools/migrate_chromadb.py [--dry-run]`（修复 seq_id 类型不匹配）
 - Docker 具名卷：`intelligent_agent_agent_chroma_data` / `intelligent_agent_agent_chroma_data_longterm`
+
+**消息撤回级联**（`conversations_router.py` 的 `retract` 端点）：
+- 每条消息在生成时由 `chat_router.py` 赋一个跨层共享的 `message_id`，写入对话 JSON 和 `ShortTermMemory` 的 metadata
+- 撤回时：对话 JSON 数组里对应条目直接移除（不留 tombstone）+ `ShortTermMemory.delete_by_ids()` 按 `message_id` 精确删除
+- 蒸馏（`MemoryDistiller`）写入长期记忆时会记录来源短期记忆的 `source_message_ids`；撤回后异步（`asyncio.create_task` + `to_thread`，不阻塞响应）扫描长期记忆，命中的条目打 `excluded_from_retrieval` 标记——硬过滤、不物理删除（一条摘要可能混合多条消息内容，避免误伤）
+- 已蒸馏的旧数据没有 `source_message_ids`，无法回溯清理，是已知边界（详见设计文档 `docs/superpowers/specs/2026-06-21-message-retraction-design.md`）
 
 ---
 
@@ -267,7 +273,7 @@ pip install -e ".[dev]"               # 含 black/isort/pylint/mypy
 conda activate python310
 python -m uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000 --reload
 
-# 运行单元测试（155 个，< 30s）
+# 运行单元测试（246 个，< 30s）
 pytest tests/ -v
 
 # 代码质量
@@ -300,6 +306,7 @@ black . && isort . && pylint . && mypy .
 | DELETE | `/api/roles/activate` | 取消激活角色 |
 | GET | `/api/conversations` | 列出历史会话 |
 | POST | `/api/conversations` | 新建会话记录 |
+| POST | `/api/conversations/{session_id}/retract` | 按 message_id 撤回（永久删除）消息，级联清理短期记忆 + 异步标记长期记忆排除检索，单次最多 50 条 |
 | GET | `/api/memory/list` | 列出记忆条目 |
 | GET | `/api/memory/search?q=关键词` | 语义搜索 |
 | GET | `/api/tasks/list` | 列出调度任务 |

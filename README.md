@@ -71,6 +71,7 @@
 | 图片生成 | ComfyUI（默认）/ SD WebUI / diffusers 进程内推理 / SiliconFlow 云端四种 Provider |
 | 知识库 | 上传 .txt/.md/.pdf/.json 文件，段落/句子边界分块，ChromaDB 向量索引，聊天时自动语义检索注入上下文 |
 | 多模态输入 | 聊天输入区支持图片附件/粘贴，base64 全链路透传至 Ollama images 字段（llava / qwen-vl 等） |
+| 消息撤回 | 用户可手动撤回任意历史消息（user/assistant），从对话 JSON + 短期记忆中真正删除，避免错误回复污染后续上下文；蒸馏来源标记排除检索，飞书消息联动官方撤回 API |
 
 **内置工具**：计算器 · 时间查询 · 文件读写 · DuckDuckGo 搜索 · Shell 命令 · MySQL 查询 · 图片生成 · 记忆存储/检索 · 定时提醒创建 · 知识库上传/检索
 
@@ -114,7 +115,7 @@
 
 | 路由 | 功能 |
 |------|------|
-| `/chat` | 流式聊天，Markdown 渲染，工具进度卡片，历史会话侧边栏；config-bar 内嵌角色选择器 + 模型切换；支持图片附件/粘贴多模态输入 |
+| `/chat` | 流式聊天，Markdown 渲染，工具进度卡片，历史会话侧边栏；config-bar 内嵌角色选择器 + 模型切换；支持图片附件/粘贴多模态输入；撤回模式可勾选/批量永久删除消息 |
 | `/roles/editor` | 角色编辑器：六标签表单（基本信息/核心身份/用户画像/场景知识/限制条件/提示预览）|
 | `/memory` | 短期/长期记忆查看，语义搜索（500ms 防抖），导入/导出/批量清空 |
 | `/knowledge` | 知识库管理：拖拽上传、分块统计、文件列表（含描述/大小/创建时间）、删除 |
@@ -152,7 +153,7 @@ python main.py --model qwen2.5:7b       # 指定模型
 python main.py --url http://host:8000   # 自定义服务地址
 ```
 
-**REPL 内置命令**：`!models` 列出模型 · `!model <name>` 切换模型 · `!personas` 列出角色 · `!persona <name>` 切换角色 · `!history` 查看历史 · `!sessions` 列出已保存会话 · `!clear` 清空会话
+**REPL 内置命令**：`!models` 列出模型 · `!model <name>` 切换模型 · `!personas` 列出角色 · `!persona <name>` 切换角色 · `!history` 查看历史（带编号） · `!retract <编号>` 按编号撤回消息（永久删除，逗号分隔可批量） · `!sessions` 列出已保存会话 · `!clear` 清空会话
 
 **命令行参数**：`--model <name>` 指定模型 · `--persona <name>` 指定角色 · `--no-stream` 等完整响应后输出
 
@@ -425,7 +426,7 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 | 层 | 测试框架 | 覆盖范围 |
 |------|------|------|
-| Agent 单元测试 | pytest（152 个） | 记忆系统、工具调用、调度器持久化、角色加载、上下文提取、项目接口等 |
+| Agent 单元测试 | pytest（246 个） | 记忆系统、工具调用、调度器持久化、角色加载、上下文提取、项目接口、消息撤回等 |
 | Backend 单元测试 | JUnit 5 | WebSocket 消息序列化、JWT 工具类、JSON 工具类 |
 | Frontend 单元测试 | Vitest | JWT 处理逻辑等关键工具函数 |
 | E2E 端到端测试 | pytest + httpx（63 个） | 从客户端发起 HTTP 请求打通 Java:8080 → Python:8000，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知全链路 |
@@ -449,7 +450,7 @@ intelligent_agent/
 │   ├── api/fastapi_app.py          入口：所有 REST/SSE 端点（启动、健康、模型、聊天）
 │   ├── api/chat_router.py          /api/chat/* 聊天（含多模态 image_base64 透传）
 │   ├── api/roles_router.py         /api/roles/* 角色完整 CRUD
-│   ├── api/conversations_router.py /api/conversations/* 历史会话（JSON 持久化）
+│   ├── api/conversations_router.py /api/conversations/* 历史会话（JSON 持久化）+ retract 撤回
 │   ├── api/knowledge_router.py     /api/knowledge/* 知识库上传/检索/删除
 │   ├── api/projects_router.py      /api/project/* 规格/任务/上下文
 │   ├── api/cloud_router.py         /api/cloud/* 云端服务商 CRUD + 激活切换
@@ -473,7 +474,7 @@ intelligent_agent/
 │       ├── WebSocketController     WS 消息路由
 │       ├── AgentService            SSE 流式代理 + 事件转发（@Scheduled 5s 通知推送）
 │       ├── RoleController          /api/roles/* 代理（角色 CRUD + 激活）
-│       ├── ConversationsProxyController /api/conversations/* 代理（历史会话）
+│       ├── ConversationsProxyController /api/conversations/* 代理（历史会话+撤回，联动 FeishuRecallBridge）
 │       ├── CloudProxyController    /api/cloud/* 代理（云端服务商 CRUD + 激活切换）
 │       └── controller/             其余 HTTP 代理（记忆/工具/项目/分析/图片等）
 │
@@ -597,6 +598,7 @@ intelligent_agent/
 | DELETE | `/api/conversations/{session_id}` | 删除指定会话 |
 | DELETE | `/api/conversations` | 清空用户所有会话 |
 | POST | `/api/conversations/branch` | 从指定消息列表创建分支会话 |
+| POST | `/api/conversations/{session_id}/retract` | 按 message_id 撤回（永久删除）消息，级联清理短期记忆，单次最多 50 条 |
 
 ---
 

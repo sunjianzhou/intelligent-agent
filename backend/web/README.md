@@ -43,7 +43,7 @@ backend/web/src/main/java/.../
 │   ├── HealthController.java              /api/health、/api/models、/api/model/switch、/api/config/*
 │   ├── AuthController.java                /api/auth/login、/api/auth/refresh
 │   ├── RoleController.java                /api/roles/* → Python（角色 CRUD + 激活状态）
-│   ├── ConversationsProxyController.java  /api/conversations/* → Python（历史会话）
+│   ├── ConversationsProxyController.java  /api/conversations/* → Python（历史会话+撤回，撤回成功后调用 FeishuRecallBridge）
 │   ├── MemoryProxyController.java         /api/memory/* → Python
 │   ├── TaskProxyController.java           /api/tasks/* → Python
 │   ├── ToolProxyController.java           /api/tools/* → Python
@@ -53,8 +53,16 @@ backend/web/src/main/java/.../
 │   ├── ProjectProxyController.java        /api/project/* → Python（spec CRUD、context 查询）
 │   ├── CloudProxyController.java          /api/cloud/* → Python（云端服务商 CRUD + 激活切换）
 │   └── SpaController.java                 兜底路由（Vue Router history mode）
+├── feishu/                          飞书（Lark）IM 集成（长连接 WebSocket，无需公网/HTTPS）
+│   ├── FeishuConfig.java             飞书 app_id/secret/verification token 配置
+│   ├── FeishuWebSocketClient.java    飞书长连接客户端（SmartLifecycle + 重连状态机）
+│   ├── FeishuEventController.java    接收飞书消息事件，调用 AgentService.chatFull() 生成回复
+│   ├── FeishuMessageSender.java      发送文本/卡片消息，返回飞书 message_id；recall() 撤回 API
+│   ├── FeishuCardBuilder.java        飞书交互卡片 JSON 构建
+│   ├── FeishuCrypto.java             飞书事件签名验证
+│   └── FeishuRecallBridge.java       内部 assistant_message_id ↔ 飞书 message_id 映射（内存态，封顶500条），撤回时联动调用 recall()
 ├── service/
-│   ├── AgentService.java            Python SSE 流读取 + WS 推送（线程池）
+│   ├── AgentService.java            Python SSE 流读取 + WS 推送（线程池），done 事件转发 user_message_id/assistant_message_id
 │   └── PythonProxyService.java      通用 HTTP 代理（GET/POST/PUT/PATCH/DELETE）
 ├── filter/
 │   └── JwtAuthFilter.java           JWT 验证 + X-New-Token 滑动续期
@@ -88,7 +96,7 @@ backend/web/src/main/java/.../
 | `chat_token` | 流式 token | `data`（token 文本）|
 | `tool_call_start` | 工具开始执行 | `tool_name`、`args_summary` |
 | `tool_calls_done` | 本轮工具全部完成 | `data`（工具调用列表）|
-| `chat_done` | 本轮完整回复 | `content`、`response_time_ms` |
+| `chat_done` | 本轮完整回复 | `content`、`response_time_ms`、`user_message_id`、`assistant_message_id`（用于前端撤回功能定位消息）|
 | `task_update` | 任务完成 | `task_data.task_id`、`project_id` |
 | `task_blocked` | 任务阻塞 | `task_data.task_id`、`project_id` |
 | `pong` | 心跳回复 | — |

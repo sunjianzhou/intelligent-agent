@@ -39,6 +39,7 @@
 | **响应时间** | 每条助手消息下方显示本次响应耗时（秒）|
 | **点赞 / 踩** | 助手消息生成完毕后显示 👍/👎，评价结果持久化至 localStorage，同步到后端统计 |
 | **对话导出** | 悬浮下载按钮，支持 Markdown 和 TXT 两种格式，文件名含时间戳 |
+| **消息撤回** | 工具条「撤回」按钮进入撤回模式，勾选 user/assistant 气泡（单次最多 50 条）后批量永久删除，级联清理服务端短期记忆；多选时弹窗额外提示上下文连贯性风险；已撤回消息渲染为灰色占位条 |
 | **清空对话** | 同时清除前端消息和 Python 短期记忆（二次确认弹窗）|
 | **新开对话** | 仅清前端显示，保留 AI 后端记忆，创建新的 IndexedDB 会话 |
 | **定时通知** | 调度任务完成时以橙色通知气泡推送到聊天区，含"查看任务管理"跳转链接 |
@@ -231,7 +232,8 @@ frontend/src/
 │   ├── api.js                  REST 调用封装（自动附 JWT、401 跳登录、错误 toast）
 │   └── localDB.js              IndexedDB v2（sessions store + projects store）
 ├── utils/
-│   └── jwt.js                  JWT 解码工具（isTokenExpired）
+│   ├── jwt.js                  JWT 解码工具（isTokenExpired）
+│   └── messageIdSync.js        撤回功能用：断流后内容前缀匹配+位置兜底，回填消息真实 id（resolvePendingMessageIds）
 └── router/
     └── index.js                路由配置（含导航守卫：未登录跳 /login）
 ```
@@ -250,7 +252,7 @@ connect() → ws = new WebSocket(`ws://host/ws?token=...`)
         chat_token       → streaming message 追加 token
         tool_call_start  → activeToolSteps.push()
         tool_calls_done  → 构造工具卡片 message
-        chat_done        → isThinking = false，记录响应时间
+        chat_done        → isThinking = false，记录响应时间，回填 user/assistant 消息真实 id（缺失时 1.5s 后兜底重新拉取会话用 resolvePendingMessageIds 匹配）
         task_update      → useProjectStore.markTaskDone(task_id)
         notification     → 聊天区推送通知气泡
         system_info      → 更新 systemInfo（模型、健康状态）
