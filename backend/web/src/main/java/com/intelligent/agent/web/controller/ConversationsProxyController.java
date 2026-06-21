@@ -61,4 +61,11 @@ public class ConversationsProxyController extends AbstractProxyController {
             @RequestBody Map<String, Object> body, HttpServletRequest req) {
         return proxyPost("/api/conversations/branch", body, req);
     }
+
+    @PostMapping("/api/conversations/{sessionId}/retract")
+    public ResponseEntity<Map<String, Object>> retractMessages(
+            @PathVariable String sessionId, @RequestBody Map<String, Object> body,
+            HttpServletRequest req) {
+        return proxyPost("/api/conversations/" + sessionId + "/retract", body, req);
+    }
 }
