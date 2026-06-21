@@ -108,31 +108,49 @@ public class FeishuMessageSender {
         }
     }
 
-    public void sendText(String chatId, String text) {
+    public String sendText(String chatId, String text) {
         Map<String, Object> content = new HashMap<>();
         content.put("text", text);
-        sendWithRetry(chatId, "text", content);
+        return sendWithRetry(chatId, "text", content);
     }
 
-    public void sendPost(String chatId, Map<String, Object> content) {
-        sendWithRetry(chatId, "post", content);
+    public String sendPost(String chatId, Map<String, Object> content) {
+        return sendWithRetry(chatId, "post", content);
     }
 
-    public void sendInteractive(String chatId, String cardJson) {
+    public String sendInteractive(String chatId, String cardJson) {
         try {
             Map<?, ?> card = objectMapper.readValue(cardJson, Map.class);
-            sendWithRetry(chatId, "interactive", card);
+            return sendWithRetry(chatId, "interactive", card);
         } catch (Exception e) {
             log.error("sendInteractive 解析 cardJson 失败，chatId={}", chatId, e);
+            return null;
         }
     }
 
-    private void sendWithRetry(String chatId, String msgType, Object content) {
+    /** 调用飞书官方撤回消息 API。method/path 已知早期文档版本为
+     *  DELETE /open-apis/im/v1/messages/{message_id}——落地前请对照飞书开放平台
+     *  当前文档核实一遍，如有出入只需改这里的 HttpMethod/url 拼接。 */
+    public void recall(String messageId) {
+        String url   = feishuBase + "/open-apis/im/v1/messages/" + messageId;
+        String token = getTenantAccessToken();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + token);
+        headers.setAcceptCharset(Collections.singletonList(StandardCharsets.UTF_8));
+
+        ResponseEntity<String> res = restTemplate.exchange(
+                url, HttpMethod.DELETE, new HttpEntity<>(headers), String.class);
+        if (!res.getStatusCode().is2xxSuccessful()) {
+            throw new RuntimeException("飞书撤回 API 返回 " + res.getStatusCode() + ": " + res.getBody());
+        }
+    }
+
+    private String sendWithRetry(String chatId, String msgType, Object content) {
         Exception lastEx = null;
         for (int i = 0; i < 3; i++) {
             try {
-                doSend(chatId, msgType, content);
-                return;
+                return doSend(chatId, msgType, content);
             } catch (Exception e) {
                 lastEx = e;
                 log.warn("发送飞书消息第 {} 次失败，chatId={}: {}", i + 1, chatId, e.getMessage());
@@ -145,13 +163,14 @@ public class FeishuMessageSender {
         }
         log.error("发送消息 3 次全部失败，chatId={}，发送 fallback", chatId, lastEx);
         try {
-            doSend(chatId, "text", Collections.singletonMap("text", "网络繁忙，请重试 🙏"));
+            return doSend(chatId, "text", Collections.singletonMap("text", "网络繁忙，请重试 🙏"));
         } catch (Exception e) {
             log.error("fallback 消息也发送失败，chatId={}", chatId, e);
+            return null;
         }
     }
 
-    private void doSend(String chatId, String msgType, Object content) throws Exception {
+    private String doSend(String chatId, String msgType, Object content) throws Exception {
         String url   = feishuBase + "/open-apis/im/v1/messages?receive_id_type=chat_id";
         String token = getTenantAccessToken();
 
@@ -169,6 +188,18 @@ public class FeishuMessageSender {
                 url, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
         if (!res.getStatusCode().is2xxSuccessful()) {
             throw new RuntimeException("飞书 API 返回 " + res.getStatusCode() + ": " + res.getBody());
+        }
+        return extractMessageId(res.getBody());
+    }
+
+    private String extractMessageId(String responseBody) {
+        try {
+            Map<?, ?> json = objectMapper.readValue(responseBody, Map.class);
+            Map<?, ?> data = (Map<?, ?>) json.get("data");
+            return data != null ? (String) data.get("message_id") : null;
+        } catch (Exception e) {
+            log.warn("解析飞书 message_id 失败: {}", e.getMessage());
+            return null;
         }
     }
 }
