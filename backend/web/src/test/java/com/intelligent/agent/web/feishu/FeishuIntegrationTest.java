@@ -17,6 +17,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
@@ -36,6 +38,7 @@ class FeishuIntegrationTest {
 
     @MockBean AgentService agentService;
     @MockBean FeishuMessageSender feishuMessageSender;
+    @MockBean FeishuRecallBridge feishuRecallBridge;
 
     private MockWebServer mockFeishuApi;
 
@@ -43,7 +46,10 @@ class FeishuIntegrationTest {
     void setUp() throws IOException {
         mockFeishuApi = new MockWebServer();
         mockFeishuApi.start();
-        when(agentService.chat(any(ChatRequest.class))).thenReturn("集成测试回复");
+        Map<String, Object> chatFullResult = new HashMap<>();
+        chatFullResult.put("response", "集成测试回复");
+        chatFullResult.put("assistant_message_id", "aid-int-1");
+        when(agentService.chatFull(any(ChatRequest.class))).thenReturn(chatFullResult);
     }
 
     @AfterEach
@@ -67,13 +73,14 @@ class FeishuIntegrationTest {
                 agentService,
                 feishuMessageSender,
                 objectMapper,
-                Executors.newSingleThreadExecutor());
+                Executors.newSingleThreadExecutor(),
+                feishuRecallBridge);
 
         String event = buildEvent("ou_user01", "oc_chat01", "你好 Agent");
         ctrl.routeEvent(event);
         Thread.sleep(300);
 
-        verify(agentService, timeout(1000)).chat(argThat(req ->
+        verify(agentService, timeout(1000)).chatFull(argThat(req ->
                 "feishu:ou_user01".equals(req.getUserId())
                 && "你好 Agent".equals(req.getMessage())));
         verify(feishuMessageSender, timeout(1000)).sendText(eq("oc_chat01"), contains("思考"));

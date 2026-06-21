@@ -23,18 +23,21 @@ public class FeishuEventController {
     private final FeishuMessageSender sender;
     private final ObjectMapper objectMapper;
     private final ExecutorService executor;
+    private final FeishuRecallBridge recallBridge;
 
     @Autowired
     public FeishuEventController(FeishuConfig config,
                                   AgentService agentService,
                                   FeishuMessageSender sender,
                                   ObjectMapper objectMapper,
-                                  @Qualifier("feishuStreamExecutor") ExecutorService executor) {
+                                  @Qualifier("feishuStreamExecutor") ExecutorService executor,
+                                  FeishuRecallBridge recallBridge) {
         this.config       = config;
         this.agentService = agentService;
         this.sender       = sender;
         this.objectMapper = objectMapper;
         this.executor     = executor;
+        this.recallBridge = recallBridge;
     }
 
     public void routeEvent(String json) {
@@ -85,9 +88,12 @@ public class FeishuEventController {
                     req.setUserId(finalUserId);
                     req.setUseTools(true);
                     req.setUseMemory(true);
-                    String reply = agentService.chat(req);
-                    sender.sendInteractive(finalChatId,
+                    Map<String, Object> result = agentService.chatFull(req);
+                    String reply = String.valueOf(result.getOrDefault("response", ""));
+                    String assistantMessageId = (String) result.get("assistant_message_id");
+                    String feishuMessageId = sender.sendInteractive(finalChatId,
                             FeishuCardBuilder.textCard("AI 回复", reply));
+                    recallBridge.register(assistantMessageId, feishuMessageId);
                 } catch (Exception e) {
                     log.error("飞书消息处理失败，chatId={}", finalChatId, e);
                     try {

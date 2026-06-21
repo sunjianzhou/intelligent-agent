@@ -7,6 +7,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.*;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -17,6 +19,7 @@ class FeishuEventControllerTest {
 
     @Mock AgentService agentService;
     @Mock FeishuMessageSender sender;
+    @Mock FeishuRecallBridge recallBridge;
 
     private FeishuEventController controller;
 
@@ -28,10 +31,14 @@ class FeishuEventControllerTest {
         config.setEncryptKey("test-key");
         ExecutorService executor = Executors.newSingleThreadExecutor();
 
-        when(agentService.chat(any(ChatRequest.class))).thenReturn("Agent 回复");
+        Map<String, Object> chatFullResult = new HashMap<>();
+        chatFullResult.put("response", "Agent 回复");
+        chatFullResult.put("assistant_message_id", "aid-1");
+        when(agentService.chatFull(any(ChatRequest.class))).thenReturn(chatFullResult);
+        when(sender.sendInteractive(any(), any())).thenReturn("om_feishu1");
 
         controller = new FeishuEventController(config, agentService, sender,
-                new ObjectMapper(), executor);
+                new ObjectMapper(), executor, recallBridge);
     }
 
     @Test
@@ -41,7 +48,7 @@ class FeishuEventControllerTest {
         Thread.sleep(200);
 
         ArgumentCaptor<ChatRequest> cap = ArgumentCaptor.forClass(ChatRequest.class);
-        verify(agentService, timeout(1000)).chat(cap.capture());
+        verify(agentService, timeout(1000)).chatFull(cap.capture());
         assertThat(cap.getValue().getUserId()).isEqualTo("feishu:ou_test123");
     }
 
@@ -51,6 +58,14 @@ class FeishuEventControllerTest {
         controller.routeEvent(event);
         Thread.sleep(500);
         verify(sender, timeout(1000)).sendText(eq("oc_chat789"), contains("思考中"));
+    }
+
+    @Test
+    void routeEvent_imMessage_registersFeishuRecallMapping() throws Exception {
+        String event = buildImMessageEvent("ou_abc", "oc_chat789", "测试");
+        controller.routeEvent(event);
+        Thread.sleep(500);
+        verify(recallBridge, timeout(1000)).register("aid-1", "om_feishu1");
     }
 
     @Test
