@@ -3,10 +3,12 @@ import { ref, computed } from 'vue'
 import { isTokenExpired } from '@/utils/jwt'
 import { formatTime } from '@/utils/date'
 import { genId } from '@/utils/string'
+import { resolvePendingMessageIds } from '@/utils/messageIdSync'
 import {
   switchModel as apiSwitchModel,
   getModels as apiGetModels,
   clearAllMemory as apiClearAllMemory,
+  getConversation as apiGetConversation,
 } from '@/services/api'
 import { useProjectStore } from '@/stores/project'
 
@@ -225,7 +227,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
         break
 
       case 'chat_done':
-        finalizeStream(data.response_time)
+        finalizeStream(data.response_time, data.user_message_id, data.assistant_message_id)
         lastResponseTime.value = data.response_time
         if (data.response_time != null) {
           responseTimes.value.push({ time: data.response_time, ts: Date.now() })
@@ -322,12 +324,13 @@ export const useWebSocketStore = defineStore('websocket', () => {
   // ── 流式消息管理 ──────────────────────────────────────────
   const startStreamMessage = () => {
     messages.value.push({
-      id:           genId(),
-      role:         'assistant',
-      content:      '',
-      thinkingText: '',   // CoT <think> 内容，与正文分离存储
-      isStreaming:  true,
-      timestamp:    new Date()
+      id:                 genId(),
+      role:               'assistant',
+      content:            '',
+      thinkingText:       '',   // CoT <think> 内容，与正文分离存储
+      isStreaming:        true,
+      timestamp:          new Date(),
+      _backendIdConfirmed: false,
     })
     streamingIndex.value = messages.value.length - 1
     isStreaming.value    = true
@@ -344,11 +347,30 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
   }
 
-  const finalizeStream = (responseTime) => {
-    if (streamingIndex.value !== -1) {
-      messages.value[streamingIndex.value].isStreaming = false
+  const finalizeStream = (responseTime, userMessageId, assistantMessageId) => {
+    const idx = streamingIndex.value
+    if (idx !== -1) {
+      const assistantMsg = messages.value[idx]
+      assistantMsg.isStreaming = false
       if (responseTime != null) {
-        messages.value[streamingIndex.value].responseTime = responseTime
+        assistantMsg.responseTime = responseTime
+      }
+      if (assistantMessageId) {
+        assistantMsg.id = assistantMessageId
+        assistantMsg._backendIdConfirmed = true
+      }
+      if (userMessageId) {
+        // 当前流式消息之前最近的一条 user 消息即本轮发出的消息
+        for (let i = idx - 1; i >= 0; i--) {
+          if (messages.value[i].role === 'user') {
+            messages.value[i].id = userMessageId
+            messages.value[i]._backendIdConfirmed = true
+            break
+          }
+        }
+      }
+      if (!userMessageId && !assistantMessageId) {
+        _scheduleIdSyncFallback()
       }
     }
     streamingIndex.value = -1
@@ -356,6 +378,31 @@ export const useWebSocketStore = defineStore('websocket', () => {
     chatEndSignal.value++  // notify watchers (e.g. ChatView.isThinking reset)
     // 流式完成后持久化（此时 isStreaming 已为 false）
     _saveChatHistory()
+  }
+
+  /** 断流 fallback：本轮 chat_done 没带 id（SSE 中断、Java 兜底补发空 chat_done），
+   *  延迟后重新拉取该会话，用内容前缀匹配 + 位置兜底回填最近几条消息的真实 id。 */
+  const _scheduleIdSyncFallback = () => {
+    setTimeout(async () => {
+      try {
+        const res = await apiGetConversation(currentSessionId.value)
+        const backendMsgs = res?.session?.messages || res?.messages || []
+        if (!backendMsgs.length) return
+
+        const pending = messages.value
+          .filter(m => (m.role === 'user' || m.role === 'assistant') && !m._backendIdConfirmed)
+          .slice(-6)
+        if (!pending.length) return
+
+        const resolved = resolvePendingMessageIds(pending, backendMsgs)
+        resolved.forEach((backendId, localMsg) => {
+          localMsg.id = backendId
+          localMsg._backendIdConfirmed = true
+        })
+      } catch (err) {
+        console.warn('[WS] 断流后 id 同步失败（不影响正常使用）:', err)
+      }
+    }, 1500)
   }
 
   // ── 发送消息 ──────────────────────────────────────────────
