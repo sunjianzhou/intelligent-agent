@@ -54,9 +54,16 @@ class RoleManager:
 
         # ChromaDB 客户端（与现有 LongTermMemory 共享同一目录）
         self._chroma = chromadb.PersistentClient(path=chroma_dir)
-        self._embed_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name=_EMBEDDING_MODEL
-        )
+        # 判断是否使用 chromadb 内置 embedding（Docker 环境无 sentence_transformers，
+        # 与 memory/long_term.py 的降级逻辑保持一致）
+        try:
+            import sentence_transformers  # noqa
+            self._embed_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name=_EMBEDDING_MODEL
+            )
+        except ImportError:
+            logger.info("sentence_transformers 不可用，RoleManager 使用 chromadb 内置 embedding")
+            self._embed_fn = embedding_functions.DefaultEmbeddingFunction()
 
         # ⚠️ 运行时短期记忆缓存（重启后清空）
         # 结构：{role_id: deque[str]}，每个字符串是一条对话摘要

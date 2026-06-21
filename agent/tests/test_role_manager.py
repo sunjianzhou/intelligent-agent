@@ -34,6 +34,27 @@ def rm(tmp_path):
     return mgr
 
 
+# ── Embedding fallback ───────────────────────────────────────────────────────
+
+def test_init_falls_back_to_chroma_embedding_when_sentence_transformers_missing(tmp_path):
+    """Docker 镜像不装 sentence_transformers（~1GB）时，应降级到 chromadb 内置
+    DefaultEmbeddingFunction，而不是抛 ValueError 崩掉（与 memory/long_term.py 一致）。"""
+    mock_chroma = MagicMock()
+    mock_default_ef = MagicMock()
+
+    with patch("personas.role_manager.chromadb.PersistentClient", return_value=mock_chroma), \
+         patch.dict(sys.modules, {"sentence_transformers": None}), \
+         patch("personas.role_manager.embedding_functions.DefaultEmbeddingFunction",
+               return_value=mock_default_ef) as mock_default_cls:
+        mgr = RoleManager(
+            roles_dir=str(tmp_path / "roles"),
+            chroma_dir=str(tmp_path / "chroma"),
+        )
+
+    mock_default_cls.assert_called_once()
+    assert mgr._embed_fn is mock_default_ef
+
+
 def _make_role(role_id="role_test", name="Tester") -> RoleConfig:
     return RoleConfig(
         role_id=role_id,
