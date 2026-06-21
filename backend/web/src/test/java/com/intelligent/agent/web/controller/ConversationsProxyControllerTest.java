@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.intelligent.agent.web.feishu.FeishuRecallBridge;
 import com.intelligent.agent.web.service.PythonProxyService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,7 @@ class ConversationsProxyControllerTest {
 
     @Mock PythonProxyService proxy;
     @Mock HttpServletRequest req;
+    @Mock FeishuRecallBridge recallBridge;
 
     private ConversationsProxyController controller;
 
@@ -30,6 +32,7 @@ class ConversationsProxyControllerTest {
         controller = new ConversationsProxyController();
         controller.proxy = proxy;
         controller.objectMapper = new ObjectMapper();
+        controller.feishuRecallBridge = recallBridge;
         when(proxy.extractUserIdFromRequest(req)).thenReturn("u1");
     }
 
@@ -60,5 +63,19 @@ class ConversationsProxyControllerTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(resp.getBody().get("success")).isEqualTo(false);
+    }
+
+    @Test
+    void retractMessages_triggersFeishuRecallBridge() throws Exception {
+        when(proxy.post(eq("/api/conversations/sess1/retract"), any(), eq("u1")))
+                .thenReturn(ResponseEntity.ok("{\"success\":true,\"requested\":1,\"deleted\":1,\"deleted_ids\":[\"mid-1\"],\"memory_purged\":1}"));
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("message_ids", Collections.singletonList("mid-1"));
+
+        controller.retractMessages("sess1", body, req);
+
+        verify(recallBridge).onMessagesRetracted(argThat(resp ->
+                resp != null && Boolean.TRUE.equals(resp.get("success"))));
     }
 }

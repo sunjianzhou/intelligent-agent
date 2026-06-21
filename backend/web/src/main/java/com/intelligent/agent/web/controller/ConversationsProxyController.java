@@ -1,6 +1,8 @@
 package com.intelligent.agent.web.controller;
 
+import com.intelligent.agent.web.feishu.FeishuRecallBridge;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,6 +18,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 @Slf4j
 @RestController
 public class ConversationsProxyController extends AbstractProxyController {
+
+    @Autowired
+    FeishuRecallBridge feishuRecallBridge;
 
     @GetMapping("/api/conversations")
     public ResponseEntity<Map<String, Object>> listConversations(HttpServletRequest req) {
@@ -66,6 +71,9 @@ public class ConversationsProxyController extends AbstractProxyController {
     public ResponseEntity<Map<String, Object>> retractMessages(
             @PathVariable String sessionId, @RequestBody Map<String, Object> body,
             HttpServletRequest req) {
-        return proxyPost("/api/conversations/" + sessionId + "/retract", body, req);
+        ResponseEntity<Map<String, Object>> resp =
+                proxyPost("/api/conversations/" + sessionId + "/retract", body, req);
+        feishuRecallBridge.onMessagesRetracted(resp.getBody());  // 失败不影响本次响应
+        return resp;
     }
 }
