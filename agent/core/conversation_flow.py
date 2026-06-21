@@ -61,10 +61,14 @@ class ConversationFlowMixin:
                                     user_id: str = "default",
                                     project_id: Optional[str] = None,
                                     pending_tasks: Optional[List[Dict[str, Any]]] = None,
-                                    image_base64: Optional[str] = None) -> List[Dict[str, str]]:
+                                    image_base64: Optional[str] = None,
+                                    message_id: Optional[str] = None) -> List[Dict[str, str]]:
         """异步版 _build_messages：超预算时先尝试 LLM 摘要压缩，再兜底截断。"""
         if use_memory:
-            self.memory.store_conversation("user", message, user_id=user_id)
+            self.memory.store_conversation(
+                "user", message, user_id=user_id,
+                metadata={"message_id": message_id} if message_id else None,
+            )
             self._encode_message_for_intent(message)
 
         msgs = [{"role": "system", "content": self.system_prompt}]
@@ -261,7 +265,9 @@ class ConversationFlowMixin:
                    project_id: Optional[str] = None,
                    pending_tasks: Optional[List[Dict[str, Any]]] = None,
                    skip_cache: bool = False,
-                   image_base64: Optional[str] = None) -> dict:
+                   image_base64: Optional[str] = None,
+                   message_id: Optional[str] = None,
+                   assistant_message_id: Optional[str] = None) -> dict:
         """非流式聊天（ReAct 循环）。
         provider_override: 若传入，则本次请求使用该 provider（per-user 隔离）。
         persona_override:  若传入，则本次请求使用该角色内容（per-user 角色隔离）。
@@ -304,7 +310,8 @@ class ConversationFlowMixin:
         messages = await self._build_messages_async(message, use_memory, user_id=user_id,
                                                      project_id=project_id,
                                                      pending_tasks=pending_tasks,
-                                                     image_base64=image_base64)
+                                                     image_base64=image_base64,
+                                                     message_id=message_id)
         tool_call_log = []
 
         if not use_tools:
@@ -312,7 +319,10 @@ class ConversationFlowMixin:
             if use_memory and full_response:
                 # 短期记忆存储完整响应（in-process deque，无存储压力）
                 # 长文本在 _build_messages 注入时截取前 300 字符，平衡上下文长度
-                self.memory.store_conversation("assistant", full_response, user_id=user_id)
+                self.memory.store_conversation(
+                    "assistant", full_response, user_id=user_id,
+                    metadata={"message_id": assistant_message_id} if assistant_message_id else None,
+                )
                 asyncio.create_task(self._maybe_distill(user_id))
                 asyncio.create_task(self._maybe_summarize(user_id))
                 if project_id:
@@ -386,7 +396,10 @@ class ConversationFlowMixin:
             full_response = await self._call_model(final_messages)
 
         if use_memory and full_response:
-            self.memory.store_conversation("assistant", full_response, user_id=user_id)
+            self.memory.store_conversation(
+                "assistant", full_response, user_id=user_id,
+                metadata={"message_id": assistant_message_id} if assistant_message_id else None,
+            )
             asyncio.create_task(self._maybe_distill(user_id))
             if project_id:
                 asyncio.create_task(self._maybe_extract_context(user_id, project_id))
@@ -484,7 +497,9 @@ class ConversationFlowMixin:
                           persona_override: Optional[str] = None,
                           project_id: Optional[str] = None,
                           pending_tasks: Optional[List[Dict[str, Any]]] = None,
-                          image_base64: Optional[str] = None):
+                          image_base64: Optional[str] = None,
+                          message_id: Optional[str] = None,
+                          assistant_message_id: Optional[str] = None):
         """SSE 流式聊天（ReAct 循环 + 流式最终回答）。
         cancel_event：客户端断连时由 FastAPI 端点设置，通知底层停止生产。
         provider_override: 若传入，则本次请求使用该 provider（per-user 隔离）。
@@ -501,7 +516,8 @@ class ConversationFlowMixin:
         messages = await self._build_messages_async(message, use_memory, user_id=user_id,
                                                      project_id=project_id,
                                                      pending_tasks=pending_tasks,
-                                                     image_base64=image_base64)
+                                                     image_base64=image_base64,
+                                                     message_id=message_id)
         tool_call_log = []
 
         if not use_tools:
@@ -526,7 +542,10 @@ class ConversationFlowMixin:
             if use_memory and full_response:
                 # 短期记忆存储完整响应（in-process deque，无存储压力）
                 # 长文本在 _build_messages 注入时截取前 300 字符，平衡上下文长度
-                self.memory.store_conversation("assistant", full_response, user_id=user_id)
+                self.memory.store_conversation(
+                    "assistant", full_response, user_id=user_id,
+                    metadata={"message_id": assistant_message_id} if assistant_message_id else None,
+                )
                 asyncio.create_task(self._maybe_distill(user_id))
                 asyncio.create_task(self._maybe_summarize(user_id))
                 if project_id:
@@ -603,7 +622,10 @@ class ConversationFlowMixin:
             cleaned = re.sub(r'\n{3,}', '\n\n', cleaned).strip()
             if cleaned:
                 if use_memory:
-                    self.memory.store_conversation("assistant", cleaned, user_id=user_id)
+                    self.memory.store_conversation(
+                        "assistant", cleaned, user_id=user_id,
+                        metadata={"message_id": assistant_message_id} if assistant_message_id else None,
+                    )
                     asyncio.create_task(self._maybe_distill(user_id))
                 asyncio.create_task(self._maybe_summarize(user_id))
                 if project_id:
@@ -646,7 +668,10 @@ class ConversationFlowMixin:
             logger.warning(f"流式输出异常（已收到部分内容）: {e}")
 
         if use_memory and full_response:
-            self.memory.store_conversation("assistant", full_response, user_id=user_id)
+            self.memory.store_conversation(
+                "assistant", full_response, user_id=user_id,
+                metadata={"message_id": assistant_message_id} if assistant_message_id else None,
+            )
             asyncio.create_task(self._maybe_distill(user_id))
             if project_id:
                 asyncio.create_task(self._maybe_extract_context(user_id, project_id))

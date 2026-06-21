@@ -171,6 +171,53 @@ def test_chat_no_memory_write_when_disabled(agent):
     assert len(assistant_calls) == 0
 
 
+def test_chat_passes_message_id_to_store_conversation(agent):
+    agent.provider.chat = MagicMock(return_value=_make_llm_resp("Sure!"))
+    agent.memory.store_conversation = MagicMock()
+    _run(agent.chat(
+        "Remember this", use_tools=False, use_memory=True,
+        message_id="mid-user-1", assistant_message_id="mid-assistant-1",
+    ))
+    calls = agent.memory.store_conversation.call_args_list
+    user_call = next(c for c in calls if c.args[0] == "user")
+    assistant_call = next(c for c in calls if c.args[0] == "assistant")
+    assert user_call.kwargs.get("metadata") == {"message_id": "mid-user-1"}
+    assert assistant_call.kwargs.get("metadata") == {"message_id": "mid-assistant-1"}
+
+
+def test_chat_without_message_id_omits_metadata(agent):
+    """不传 message_id 时（如旧调用方/测试代码），metadata 不应被强行塞 None 值。"""
+    agent.provider.chat = MagicMock(return_value=_make_llm_resp("ok"))
+    agent.memory.store_conversation = MagicMock()
+    _run(agent.chat("hello", use_tools=False, use_memory=True))
+    calls = agent.memory.store_conversation.call_args_list
+    user_call = next(c for c in calls if c.args[0] == "user")
+    assert user_call.kwargs.get("metadata") is None
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_passes_message_id_to_store_conversation(agent):
+    agent.memory.store_conversation = MagicMock()
+
+    async def _fake_stream(*args, **kwargs):
+        for etype, chunk in [("token", "Hi"), ("done", {"content": "Hi"})]:
+            yield etype, chunk
+
+    with patch.object(agent, "_stream_with_cot", side_effect=lambda *a, **k: _fake_stream()):
+        events = []
+        async for etype, data in agent.chat_stream(
+            "hello", use_tools=False, use_memory=True,
+            message_id="mid-user-2", assistant_message_id="mid-assistant-2",
+        ):
+            events.append((etype, data))
+
+    calls = agent.memory.store_conversation.call_args_list
+    user_call = next(c for c in calls if c.args[0] == "user")
+    assistant_call = next(c for c in calls if c.args[0] == "assistant")
+    assert user_call.kwargs.get("metadata") == {"message_id": "mid-user-2"}
+    assert assistant_call.kwargs.get("metadata") == {"message_id": "mid-assistant-2"}
+
+
 # ── L1 cache ─────────────────────────────────────────────────────────────────
 
 def test_l1_cache_hit_on_second_call(agent):
