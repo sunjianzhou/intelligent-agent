@@ -54,3 +54,4 @@ agent/data/tool_calls/
 
 # 灵魂私密档案（不入版本控制）
 soul/whisper.md
+.superpowers/
