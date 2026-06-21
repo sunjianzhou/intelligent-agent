@@ -490,7 +490,7 @@ class LongTermMemory(BaseMemory):
                 memory_id, similarity = result_tuple
                 memory = self.memories.get(memory_id)
 
-            if memory:
+            if memory and not memory.metadata.get("excluded_from_retrieval"):
                 memory.update_access()            # 只更新内存对象，暂不写 DB
                 updated_memories.append(memory)
 
