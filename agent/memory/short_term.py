@@ -173,6 +173,24 @@ class ShortTermMemory(BaseMemory):
             return True
         return False
 
+    def delete_by_ids(self, message_ids: list) -> int:
+        """按 metadata['message_id'] 精确匹配删除，返回实际删除条数。
+
+        用于消息撤回功能：撤回时按对话 JSON 里记录的 message_id 级联清理
+        对应的短期记忆条目，避免该内容继续作为上下文喂给下一轮 LLM。
+        """
+        if not message_ids:
+            return 0
+        ids_set = set(message_ids)
+        targets = [
+            mid for mid, m in self.memories.items()
+            if m.metadata.get("message_id") is not None
+            and m.metadata.get("message_id") in ids_set
+        ]
+        for mid in targets:
+            self._remove_memory(mid)
+        return len(targets)
+
     def list(self, limit: int = 100, offset: int = 0) -> List[MemoryItem]:
         """列出所有记忆（按访问时间倒序）"""
         # 先按最后访问时间排序
