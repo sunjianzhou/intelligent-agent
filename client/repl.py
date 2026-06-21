@@ -383,7 +383,7 @@ def run_repl(
                         if confirm.strip().lower() == "y":
                             target_ids = [t["id"] for t in targets]
                             try:
-                                client.retract_messages(session.session_id, target_ids)
+                                client.retract_messages(client.session_id, target_ids)
                                 removed = session.retract(target_ids)
                                 _print(f"已撤回 {removed} 条消息", "green")
                             except Exception as e:

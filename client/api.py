@@ -27,6 +27,14 @@ class AgentClient:
         self._token: Optional[str] = None
         self._token_exp: float = 0.0
 
+    @property
+    def session_id(self) -> str:
+        """The implicit backend session id this client's chat turns are persisted under
+        (the user_id — chat()/chat_stream() never send an explicit session_id, so the
+        backend falls back to user_id). Use this, not ChatSession.session_id (a local-only
+        file-naming id), when calling retract_messages()."""
+        return self._user_id
+
     # ── Auth ─────────────────────────────────────────────────────────
     def _get_token(self) -> str:
         if not _HAS_JWT:

@@ -30,6 +30,15 @@ def test_timeout_stored():
     assert c._timeout == 99
 
 
+def test_session_id_property_returns_user_id(client):
+    # session_id is the implicit backend session identifier (user_id), NOT the
+    # local-only ChatSession.session_id used for the client-side JSON file name.
+    # chat()/chat_stream() never send an explicit session_id, so the backend falls
+    # back to user_id — retract_messages() must be called with this value to hit
+    # the same conversation file the chat turns were actually persisted under.
+    assert client.session_id == USER
+
+
 # ── JWT / auth ────────────────────────────────────────────────────────────────
 
 def test_get_token_returns_string(client):

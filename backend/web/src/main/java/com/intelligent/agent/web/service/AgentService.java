@@ -280,6 +280,15 @@ public class AgentService {
                             wsMsg.put("type",          WebSocketMessageType.CHAT_DONE);
                             wsMsg.put("message",       fullMsg.toString());
                             wsMsg.put("response_time", responseTime);
+                            if (eventData instanceof Map) {
+                                Map<?, ?> doneData = (Map<?, ?>) eventData;
+                                if (doneData.get("user_message_id") != null) {
+                                    wsMsg.put("user_message_id", doneData.get("user_message_id"));
+                                }
+                                if (doneData.get("assistant_message_id") != null) {
+                                    wsMsg.put("assistant_message_id", doneData.get("assistant_message_id"));
+                                }
+                            }
                             JsonUtil.sendJsonMessage(session, wsMsg);
                             chatDoneEmitted[0] = true;
                             break;
