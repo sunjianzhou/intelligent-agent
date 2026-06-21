@@ -134,15 +134,16 @@ def main() -> None:
         try:
             if stream:
                 from repl import stream_response
-                text, tool_calls = stream_response(
+                text, tool_calls, user_msg_id, assistant_msg_id = stream_response(
                     client, session, args.message, use_tools, use_memory
                 )
             else:
                 from repl import non_stream_response
-                text, tool_calls = non_stream_response(
+                text, tool_calls, user_msg_id, assistant_msg_id = non_stream_response(
                     client, args.message, use_tools, use_memory
                 )
-            session.add_assistant(text, tool_calls or None)
+            session.set_last_message_id("user", user_msg_id)
+            session.add_assistant(text, tool_calls or None, msg_id=assistant_msg_id)
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)

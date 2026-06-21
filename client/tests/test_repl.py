@@ -40,8 +40,8 @@ def test_stream_response_returns_tuple(tmp_path, capsys):
     session = _make_session(tmp_path)
     result = stream_response(client, session, "hi", True, True)
     assert isinstance(result, tuple)
-    assert len(result) == 2
-    text, tool_calls = result
+    assert len(result) == 4
+    text, tool_calls, user_id, assistant_id = result
     assert isinstance(text, str)
     assert isinstance(tool_calls, list)
 
@@ -53,7 +53,7 @@ def test_stream_response_accumulates_tokens(tmp_path, capsys):
         {"type": "done", "data": {}},
     ])
     session = _make_session(tmp_path)
-    text, _ = stream_response(client, session, "hi", True, True)
+    text, _, _, _ = stream_response(client, session, "hi", True, True)
     assert text == "Hello world"
 
 
@@ -63,7 +63,7 @@ def test_stream_response_done_event_content(tmp_path, capsys):
         {"type": "done", "data": {"content": "fallback text"}},
     ])
     session = _make_session(tmp_path)
-    text, _ = stream_response(client, session, "hi", True, True)
+    text, _, _, _ = stream_response(client, session, "hi", True, True)
     assert text == "fallback text"
 
 
@@ -75,7 +75,7 @@ def test_stream_response_collects_tool_calls(tmp_path, capsys):
         {"type": "done", "data": {}},
     ])
     session = _make_session(tmp_path)
-    _, tool_calls = stream_response(client, session, "search", True, True)
+    _, tool_calls, _, _ = stream_response(client, session, "search", True, True)
     assert len(tool_calls) == 1
     assert tool_calls[0]["tool_name"] == "search"
 
@@ -85,7 +85,7 @@ def test_stream_response_error_event(tmp_path, capsys):
         {"type": "error", "data": "something broke"},
     ])
     session = _make_session(tmp_path)
-    text, _ = stream_response(client, session, "hi", True, True)
+    text, _, _, _ = stream_response(client, session, "hi", True, True)
     out = capsys.readouterr().out
     assert "Error:" in out or text == ""
 
@@ -98,7 +98,7 @@ def test_non_stream_response_parses_response(tmp_path, capsys):
         "tool_calls": [],
     })
     session = _make_session(tmp_path)
-    text, tool_calls = non_stream_response(client, "hi", True, True)
+    text, tool_calls, _, _ = non_stream_response(client, "hi", True, True)
     assert text == "Hello!"
     assert tool_calls == []
 
@@ -110,10 +110,62 @@ def test_non_stream_response_with_tool_calls(tmp_path, capsys):
         "tool_calls": tc,
     })
     session = _make_session(tmp_path)
-    text, tool_calls = non_stream_response(client, "search for something", True, True)
+    text, tool_calls, _, _ = non_stream_response(client, "search for something", True, True)
     assert tool_calls == tc
     out = capsys.readouterr().out
     assert "Tool calls" in out or "search" in out
+
+
+# ── id capture (Task 16) ──────────────────────────────────────────────────────
+
+def test_stream_response_returns_ids_from_done_event(tmp_path, capsys):
+    client = _make_client(stream_events=[
+        {"type": "token", "data": "Hi"},
+        {"type": "done", "data": {
+            "content": "Hi",
+            "user_message_id": "mid-u",
+            "assistant_message_id": "mid-a",
+        }},
+    ])
+    session = _make_session(tmp_path)
+
+    text, tool_calls, user_id, assistant_id = stream_response(
+        client, session, "hello", True, True,
+    )
+
+    assert text == "Hi"
+    assert user_id == "mid-u"
+    assert assistant_id == "mid-a"
+
+
+def test_stream_response_missing_ids_returns_none(tmp_path, capsys):
+    client = _make_client(stream_events=[
+        {"type": "token", "data": "Hi"},
+        {"type": "done", "data": {"content": "Hi"}},
+    ])
+    session = _make_session(tmp_path)
+
+    _, _, user_id, assistant_id = stream_response(
+        client, session, "hello", True, True,
+    )
+
+    assert user_id is None
+    assert assistant_id is None
+
+
+def test_non_stream_response_returns_ids(tmp_path, capsys):
+    client = _make_client(chat_return={
+        "response": "ok", "tool_calls": [],
+        "user_message_id": "mid-u2", "assistant_message_id": "mid-a2",
+    })
+
+    text, tool_calls, user_id, assistant_id = non_stream_response(
+        client, "hello", True, True,
+    )
+
+    assert text == "ok"
+    assert user_id == "mid-u2"
+    assert assistant_id == "mid-a2"
 
 
 # ── requests_error ────────────────────────────────────────────────────────────
