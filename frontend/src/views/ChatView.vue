@@ -72,10 +72,19 @@
         v-for="(msg, index) in messages"
         :key="msg.id != null ? msg.id : index"
         class="message-row"
-        :class="msg.role"
+        :class="[msg.role, { 'retract-mode': retractMode && canRetract(msg) }]"
+        @click="retractMode && canRetract(msg) ? toggleRetractSelect(msg) : null"
       >
+        <!-- 撤回模式勾选框 -->
+        <div v-if="retractMode && canRetract(msg)" class="retract-checkbox" @click.stop="toggleRetractSelect(msg)">
+          <i :class="selectedRetractIds.has(msg.id) ? 'fas fa-check-square' : 'far fa-square'" />
+        </div>
+        <!-- 已撤回占位条 -->
+        <div v-if="msg.isRetracted" class="retracted-placeholder">
+          <i class="fas fa-rotate-left" /> 该消息已被撤回
+        </div>
         <!-- 工具调用卡片 -->
-        <template v-if="msg.role === 'tool_calls'">
+        <template v-if="!msg.isRetracted && msg.role === 'tool_calls'">
           <div class="tool-calls-card">
             <div class="tool-calls-title">
               <i class="fas fa-tools" /> 本轮调用了 {{ msg.toolCalls.length }} 个工具
@@ -104,7 +113,7 @@
         </template>
 
         <!-- 普通消息（头像 + 气泡） -->
-        <template v-else>
+        <template v-else-if="!msg.isRetracted">
           <div v-if="msg.role !== 'user'" class="avatar">
             <i :class="msg.notif ? 'fas fa-bell' : msg.role === 'system' ? 'fas fa-info-circle' : 'fas fa-robot'"></i>
           </div>
@@ -223,6 +232,16 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- 撤回模式底部浮层 -->
+    <div v-if="retractMode" class="retract-toolbar">
+      <span class="retract-count">
+        已选 {{ selectedRetractIds.size }} 条
+        <template v-if="selectedRetractIds.size >= MAX_RETRACT_BATCH"> （已达单次上限，请先确认或取消部分选择）</template>
+      </span>
+      <button class="retract-cancel-btn" @click="cancelRetractSelection">取消</button>
+      <button class="retract-confirm-btn" :disabled="!selectedRetractIds.size" @click="confirmRetract">确认撤回</button>
     </div>
 
     <!-- Token 超限警告横幅 -->
@@ -397,7 +416,7 @@
             {{ estimatedTokens }}/{{ CTX_LIMIT }}
           </span>
 
-          <!-- 会话操作工具条：历史 / 导出 / 清空（水平排列，右下角） -->
+          <!-- 会话操作工具条：历史 / 导出 / 撤回 / 清空（水平排列，右下角） -->
           <div class="input-toolbar">
             <button class="toolbar-btn" :class="{ active: showHistory }" title="查看历史会话" @click="toggleHistory">
               <i class="fas fa-history" />
@@ -415,6 +434,9 @@
                 </button>
               </div>
             </div>
+            <button v-if="messages.length > 0" class="toolbar-btn" :class="{ active: retractMode }" title="撤回消息" @click.stop="toggleRetractMode">
+              <i class="fas fa-rotate-left" />
+            </button>
             <button v-if="messages.length > 0" class="toolbar-btn toolbar-btn-danger" title="清空对话" @click.stop="handleClearChat">
               <i class="fas fa-trash-alt" />
             </button>
@@ -474,6 +496,7 @@ import {
   submitFeedback as apiFeedback,
   listConversations, getConversation, deleteConversation,
   branchConversation as apiBranchConversation,
+  retractMessages as apiRetractMessages,
 } from '@/services/api'
 import { formatTime, formatForFilename } from '@/utils/date'
 import { genId } from '@/utils/string'
@@ -878,6 +901,7 @@ const sendMessage = () => {
   const imgB64     = attachedImageB64.value
   const userMsg = {
     id: genId(), role: 'user', content: text, timestamp: new Date(),
+    _backendIdConfirmed: false,
     ...(imgPreview ? { imagePreview: imgPreview } : {}),
   }
   store.addMessage(userMsg)
@@ -999,6 +1023,72 @@ const handleClearChat = async () => {
   ElMessage({ message: '对话已清空', type: 'success', duration: 1500 })
 }
 
+// ── 撤回模式 ──────────────────────────────────────────────
+const MAX_RETRACT_BATCH = 50
+const retractMode       = ref(false)
+const selectedRetractIds = ref(new Set())
+
+const canRetract = (msg) => (msg.role === 'user' || msg.role === 'assistant') && !msg.isRetracted
+
+const toggleRetractMode = () => {
+  retractMode.value = !retractMode.value
+  if (!retractMode.value) selectedRetractIds.value = new Set()
+}
+
+const toggleRetractSelect = (msg) => {
+  if (!canRetract(msg) || msg.id == null) return
+  const next = new Set(selectedRetractIds.value)
+  if (next.has(msg.id)) {
+    next.delete(msg.id)
+  } else if (next.size < MAX_RETRACT_BATCH) {
+    next.add(msg.id)
+  }
+  selectedRetractIds.value = next
+}
+
+const cancelRetractSelection = () => {
+  retractMode.value = false
+  selectedRetractIds.value = new Set()
+}
+
+const confirmRetract = async () => {
+  const ids = Array.from(selectedRetractIds.value)
+  if (!ids.length) return
+
+  const warningSuffix = ids.length > 1
+    ? '\n\n⚠️ 同时撤回多条消息可能造成对话上下文不连贯，请确认这些消息之间没有被后续内容依赖引用。'
+    : ''
+  const ok = await confirmDialog.confirm(
+    `确认撤回${ids.length > 1 ? `这 ${ids.length} 条消息` : '这条消息'}？此操作将从存储中永久删除，无法恢复。${warningSuffix}`,
+    { title: '撤回消息', confirmText: '撤回', danger: true }
+  )
+  if (!ok) return
+
+  try {
+    const res = await apiRetractMessages(store.currentSessionId, ids)
+    const deletedIds = new Set(res?.deleted_ids || [])
+    messages.value.forEach(msg => {
+      if (deletedIds.has(msg.id)) {
+        msg.content = ''
+        msg.isRetracted = true
+      }
+    })
+    if ((res?.deleted ?? 0) < (res?.requested ?? ids.length)) {
+      ElMessage({
+        message: `部分消息已不存在或删除失败（${res.requested} 条中成功 ${res.deleted} 条）`,
+        type: 'warning', duration: 3000,
+      })
+    } else {
+      ElMessage({ message: `已撤回 ${res.deleted} 条消息`, type: 'success', duration: 1500 })
+    }
+  } catch {
+    ElMessage({ message: '撤回失败，请重试', type: 'error', duration: 2000 })
+  } finally {
+    retractMode.value = false
+    selectedRetractIds.value = new Set()
+  }
+}
+
 // 点击其他地方关闭菜单（UX-009：选择器与模板中类名一致）
 const closeExportMenu = (e) => {
   if (!e.target.closest('.export-float') && !e.target.closest('.export-menu')) {
@@ -1027,6 +1117,7 @@ watch(() => store.openSessionSignal, () => {
     role:      m.role,
     content:   m.content,
     timestamp: m.timestamp || new Date().toISOString(),
+    _backendIdConfirmed: !!m.id,
   }))
   nextTick(scrollToBottom)
   ElMessage({ message: '已加载历史会话', type: 'success', duration: 1500 })
@@ -1060,10 +1151,11 @@ const loadSession = async (sessionId) => {
   localStorage.setItem('ia_session_id', sessionId)
   msgs.forEach(m => {
     const entry = {
-      id: genId(),
+      id: m.id || genId(),
       role: m.role,
       content: m.content,
       timestamp: m.timestamp || new Date().toISOString(),
+      _backendIdConfirmed: !!m.id,
     }
     // 还原多模态图片预览（base64 存于 images_b64[0]）
     if (m.images_b64?.length) {
@@ -1787,6 +1879,28 @@ onUnmounted(() => {
   transition: opacity 0.15s, transform 0.15s;
   pointer-events: none;
 }
+.message-row.retract-mode { cursor: pointer; }
+.retract-checkbox {
+  display: flex; align-items: center; padding: 0 6px; color: var(--color-primary, #667eea);
+  font-size: 1rem; flex-shrink: 0;
+}
+.retracted-placeholder {
+  color: #9ca3af; font-style: italic; font-size: 0.85rem; padding: 6px 12px;
+  display: flex; align-items: center; gap: 6px;
+}
+.retract-toolbar {
+  position: sticky; bottom: 0; left: 0; right: 0;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; background: #fff7ed; border-top: 1px solid #fed7aa;
+  font-size: 0.85rem; z-index: 5;
+}
+.retract-count { flex: 1; color: #9a3412; }
+.retract-cancel-btn, .retract-confirm-btn {
+  padding: 6px 14px; border-radius: 6px; font-size: 0.85rem; cursor: pointer;
+}
+.retract-cancel-btn { background: #fff; border: 1px solid #d1d5db; color: #374151; }
+.retract-confirm-btn { background: #ea580c; border: none; color: #fff; }
+.retract-confirm-btn:disabled { background: #fdba74; cursor: not-allowed; }
 .bubble-wrap:hover .bubble-actions {
   opacity: 1;
   transform: translateY(0);
