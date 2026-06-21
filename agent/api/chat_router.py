@@ -2,6 +2,7 @@
 import asyncio
 import json as _json
 import traceback
+import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -72,6 +73,8 @@ async def chat(request: ChatRequest, http_req: Request):
     async with _state._inference_slot():
         if _state.agent and _state.OLLAMA_AVAILABLE:
             try:
+                _user_msg_id      = str(uuid.uuid4())
+                _assistant_msg_id = str(uuid.uuid4())
                 result = await _state.agent.chat(
                     message=request.message,
                     use_tools=request.use_tools,
@@ -82,22 +85,31 @@ async def chat(request: ChatRequest, http_req: Request):
                     project_id=request.project_id,
                     pending_tasks=request.pending_tasks,
                     image_base64=request.image_base64,
+                    message_id=_user_msg_id,
+                    assistant_message_id=_assistant_msg_id,
                 )
                 _now = datetime.now().isoformat()
                 _sid = request.session_id or user_id
-                _user_msg: Dict[str, Any] = {"role": "user", "content": request.message, "timestamp": _now}
+                _user_msg: Dict[str, Any] = {
+                    "role": "user", "content": request.message, "timestamp": _now, "id": _user_msg_id,
+                }
                 if request.image_base64:
                     _user_msg["images_b64"] = [request.image_base64]
                 _append_messages(user_id, _sid, [
                     _user_msg,
-                    {"role": "assistant", "content": result["content"], "timestamp": _now},
+                    {
+                        "role": "assistant", "content": result["content"], "timestamp": _now,
+                        "id": _assistant_msg_id,
+                    },
                 ], project_id=request.project_id)
                 return {
-                    "response":         result["content"],
-                    "tool_calls":       result["tool_calls"],
-                    "model":            user_provider.current_model if user_provider else "",
-                    "agent_mode":       True,
-                    "ollama_available": _state.OLLAMA_AVAILABLE,
+                    "response":             result["content"],
+                    "tool_calls":           result["tool_calls"],
+                    "model":                user_provider.current_model if user_provider else "",
+                    "agent_mode":           True,
+                    "ollama_available":     _state.OLLAMA_AVAILABLE,
+                    "user_message_id":      _user_msg_id,
+                    "assistant_message_id": _assistant_msg_id,
                 }
             except Exception as e:
                 logger.error(f"Agent 调用异常: {e}\n{traceback.format_exc()}")
@@ -161,6 +173,8 @@ async def chat_stream_endpoint(request: ChatRequest, http_req: Request):
 
     cancel_ev = asyncio.Event()
     _session_id = request.session_id or user_id
+    _stream_user_msg_id      = str(uuid.uuid4())
+    _stream_assistant_msg_id = str(uuid.uuid4())
 
     async def generate():
         try:
@@ -178,20 +192,31 @@ async def chat_stream_endpoint(request: ChatRequest, http_req: Request):
                             project_id=request.project_id,
                             pending_tasks=request.pending_tasks,
                             image_base64=request.image_base64,
+                            message_id=_stream_user_msg_id,
+                            assistant_message_id=_stream_assistant_msg_id,
                     ):
-                        yield f"data: {_json.dumps({'type': event_type, 'data': data}, ensure_ascii=False)}\n\n"
                         if event_type == "done" and isinstance(data, dict):
                             _full_reply.append(data.get("content", ""))
+                            data = {
+                                **data,
+                                "user_message_id": _stream_user_msg_id,
+                                "assistant_message_id": _stream_assistant_msg_id,
+                            }
+                        yield f"data: {_json.dumps({'type': event_type, 'data': data}, ensure_ascii=False)}\n\n"
                     if _full_reply:
                         _now = datetime.now().isoformat()
                         _stream_user_msg: Dict[str, Any] = {
-                            "role": "user", "content": request.message, "timestamp": _now
+                            "role": "user", "content": request.message, "timestamp": _now,
+                            "id": _stream_user_msg_id,
                         }
                         if request.image_base64:
                             _stream_user_msg["images_b64"] = [request.image_base64]
                         _append_messages(user_id, _session_id, [
                             _stream_user_msg,
-                            {"role": "assistant", "content": _full_reply[0], "timestamp": _now},
+                            {
+                                "role": "assistant", "content": _full_reply[0], "timestamp": _now,
+                                "id": _stream_assistant_msg_id,
+                            },
                         ], project_id=request.project_id)
 
                 elif user_provider:
