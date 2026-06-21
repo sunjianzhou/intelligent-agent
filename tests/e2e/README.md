@@ -9,9 +9,9 @@
 | 指标 | 值 |
 |------|----|
 | 测试框架 | pytest + httpx |
-| 用例总数 | 63 |
-| 非聊天用例 | 60（运行约 25s） |
-| 聊天用例 | 3（LLM 推理，约 5min） |
+| 用例总数 | 68 |
+| 非聊天用例 | 64（运行约 25s） |
+| 聊天用例 | 4（LLM 推理，约 5min，云端模型时数秒级）|
 | 入口 | `tests/e2e/` |
 
 ---
@@ -76,6 +76,7 @@ pytest -m chat -v -p no:timeout
 | `test_cloud.py` | 云端服务商 CRUD / 激活停用 / 预设 |
 | `test_models.py` | 模型列表 / 去重 / 切换 |
 | `test_conversations.py` | 历史会话列表 / 查询 / 删除 |
+| `test_retract.py` | 消息撤回：边界条件（会话不存在/空列表/超50条上限，Java代理+Python直连各一份）+ 真实聊天→撤回→确认历史中彻底消失的端到端用例（聊天维度） |
 | `test_analytics.py` | 统计数据 / 满意度反馈 |
 | `test_notifications.py` | 通知轮询 |
 | `test_tools.py` | 工具列表 |
@@ -110,6 +111,7 @@ pytest -m chat -v -p no:timeout
 ## 运行结果参考
 
 ```
-60 passed, 1 skipped（无角色数据时 test_activate_and_deactivate_role 跳过）
-chat: 2 passed, 1 skipped（云端未激活时 test_cloud_model_chat 跳过）
+64 passed, 1 skipped（无角色数据时 test_activate_and_deactivate_role 跳过）
+chat: 3 passed, 1 skipped（云端未激活时 test_cloud_model_chat 跳过）；
+      test_retract_removes_real_message_end_to_end 云端模型下约 10s 完成
 ```
