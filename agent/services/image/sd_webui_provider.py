@@ -76,6 +76,28 @@ class SDWebUIProvider(BaseImageProvider):
             logger.error(f"[SDWebUI] 切换模型失败: {e}")
             return False, str(e)
 
+    async def list_controlnet_modules(self) -> list:
+        """从 SD WebUI ControlNet 扩展获取可用预处理器列表（如 canny/depth/openpose）。"""
+        try:
+            async with httpx.AsyncClient(timeout=10, auth=self._auth) as client:
+                r = await client.get(f"{self._base_url}/controlnet/module_list")
+                r.raise_for_status()
+                return r.json().get("module_list", [])
+        except Exception as e:
+            logger.warning(f"[SDWebUI] 获取 ControlNet 预处理器列表失败: {e}")
+            return []
+
+    async def list_controlnet_models(self) -> list:
+        """从 SD WebUI ControlNet 扩展获取可用模型列表。"""
+        try:
+            async with httpx.AsyncClient(timeout=10, auth=self._auth) as client:
+                r = await client.get(f"{self._base_url}/controlnet/model_list")
+                r.raise_for_status()
+                return r.json().get("model_list", [])
+        except Exception as e:
+            logger.warning(f"[SDWebUI] 获取 ControlNet 模型列表失败: {e}")
+            return []
+
     async def get_progress(self) -> dict:
         """查询当前生成进度（0.0~1.0）。SD WebUI 未在出图时返回 progress=0。"""
         try:
@@ -126,6 +148,18 @@ class SDWebUIProvider(BaseImageProvider):
                 "denoising_strength": req.denoising_strength,
                 "resize_mode":        0,
             }
+            if req.controlnet_enabled:
+                payload["alwayson_scripts"] = {
+                    "controlnet": {
+                        "args": [{
+                            "input_image": req.init_image_base64,
+                            "module":      req.controlnet_module,
+                            "model":       req.controlnet_model,
+                            "weight":      req.controlnet_weight,
+                        }]
+                    }
+                }
+                logger.info(f"[SDWebUI] ControlNet 已启用 module={req.controlnet_module} model={req.controlnet_model}")
             logger.info(f"[SDWebUI] img2img 请求 size={req.size} sampler={sampler}")
         else:
             endpoint = f"{self._base_url}/sdapi/v1/txt2img"
