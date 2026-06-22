@@ -155,3 +155,48 @@ async def test_generate_omits_controlnet_payload_when_disabled():
     sent_kwargs = mock_client.post.call_args
     sent_payload = sent_kwargs.kwargs.get("json") or sent_kwargs[1].get("json")
     assert "alwayson_scripts" not in sent_payload
+
+
+from unittest.mock import patch as _patch
+
+
+@pytest.mark.asyncio
+async def test_controlnet_modules_endpoint_sd_webui(monkeypatch):
+    import api.image_router as image_router
+    from config.settings import settings
+
+    monkeypatch.setattr(settings, "image_gen_provider", "sd_webui")
+    with _patch(
+        "services.image.sd_webui_provider.SDWebUIProvider.list_controlnet_modules",
+        new=AsyncMock(return_value=["none", "canny"]),
+    ):
+        result = await image_router.list_controlnet_modules()
+
+    assert result == {"success": True, "modules": ["none", "canny"]}
+
+
+@pytest.mark.asyncio
+async def test_controlnet_modules_endpoint_non_sd_webui(monkeypatch):
+    import api.image_router as image_router
+    from config.settings import settings
+
+    monkeypatch.setattr(settings, "image_gen_provider", "comfyui")
+    result = await image_router.list_controlnet_modules()
+
+    assert result["success"] is True
+    assert result["modules"] == []
+
+
+@pytest.mark.asyncio
+async def test_controlnet_models_endpoint_sd_webui(monkeypatch):
+    import api.image_router as image_router
+    from config.settings import settings
+
+    monkeypatch.setattr(settings, "image_gen_provider", "sd_webui")
+    with _patch(
+        "services.image.sd_webui_provider.SDWebUIProvider.list_controlnet_models",
+        new=AsyncMock(return_value=["control_v11p_sd15_canny"]),
+    ):
+        result = await image_router.list_controlnet_models()
+
+    assert result == {"success": True, "models": ["control_v11p_sd15_canny"]}
