@@ -21,3 +21,10 @@ _request_persona_ctx: contextvars.ContextVar = contextvars.ContextVar(
 _last_message_vec_ctx: contextvars.ContextVar = contextvars.ContextVar(
     '_last_message_vec_ctx', default=None
 )
+
+# Per-request chat-attached image (base64, no data: prefix): lets ImageGenerationTool
+# auto-use the image the user attached this turn for img2img, without the LLM ever
+# handling image bytes as a function-call argument.
+_request_image_b64_ctx: contextvars.ContextVar = contextvars.ContextVar(
+    '_request_image_b64_ctx', default=None
+)
