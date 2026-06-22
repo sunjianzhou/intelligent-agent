@@ -128,6 +128,7 @@ async def test_generate_injects_controlnet_payload_when_enabled():
         "module": "canny",
         "model": "control_v11p_sd15_canny",
         "weight": 0.8,
+        "enabled": True,
     }
 
 

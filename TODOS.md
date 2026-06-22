@@ -40,7 +40,7 @@
 - [x] **运行时换模型**：`POST /api/image/switch-model`，调用 `/sdapi/v1/options` 热切换模型 ✅
 - [ ] **生成进度查询**：调用 `/sdapi/v1/progress` 轮询并通过 SSE 推送进度百分比到前端
 - [ ] **img2img 支持**：扩展 `ImageRequest` 增加 `init_image_base64`，调用 `/sdapi/v1/img2img`
-- [ ] **ControlNet 支持**：在 payload 中加入 `alwayson_scripts.controlnet`，需 WebUI 安装 ControlNet 扩展
+- [x] **ControlNet 支持**：在 payload 中加入 `alwayson_scripts.controlnet`，需 WebUI 安装 ControlNet 扩展 ✅（2026-06-22，复用 img2img 底图上传，仅 SD WebUI）
 - [ ] **采样器/调度器选择**：将 `sampler_name` 暴露为 `ImageRequest.extra` 参数
 
 **涉及文件**：`agent/services/image/sd_webui_provider.py`
