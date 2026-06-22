@@ -129,6 +129,32 @@
           </label>
         </div>
 
+        <!-- ControlNet（仅 SD WebUI，需先上传底图） -->
+        <div class="param-section" v-if="providerName === 'sd_webui' && form.initImageB64">
+          <label class="param-label">
+            <input type="checkbox" v-model="form.controlnetEnabled" />
+            同时用作 ControlNet 控制图
+          </label>
+          <div v-if="form.controlnetEnabled" class="controlnet-options">
+            <div class="param-item">
+              <label class="param-label">预处理器</label>
+              <select v-model="form.controlnetModule" class="sampler-select">
+                <option v-for="m in controlnetModules" :key="m" :value="m">{{ m }}</option>
+              </select>
+            </div>
+            <div class="param-item">
+              <label class="param-label">ControlNet 模型</label>
+              <select v-model="form.controlnetModel" class="sampler-select">
+                <option v-for="m in controlnetModels" :key="m" :value="m">{{ m }}</option>
+              </select>
+            </div>
+            <div class="param-item">
+              <label class="param-label">引导权重 <span class="param-val">{{ form.controlnetWeight }}</span></label>
+              <input type="range" v-model.number="form.controlnetWeight" min="0" max="2" step="0.05" class="steps-slider" />
+            </div>
+          </div>
+        </div>
+
         <!-- 生成按钮 -->
         <button
           class="gen-btn"
@@ -241,7 +267,7 @@ import { ElMessage } from 'element-plus'
 import {
   getImageProviderStatus, listImageModels, switchImageModel,
   generateImage, listGeneratedImages, deleteGeneratedImage,
-  getImageProgress,
+  getImageProgress, getControlnetModules, getControlnetModels,
 } from '@/services/api'
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
@@ -282,6 +308,10 @@ const form = ref({
   initImagePreview:  null,             // Data URL for display
   initImageB64:      null,             // pure base64 for API
   denoisingStrength: 0.75,
+  controlnetEnabled: false,
+  controlnetModule:  'none',
+  controlnetModel:   '',
+  controlnetWeight:  1.0,
 })
 
 const providerOk    = ref(false)
@@ -300,6 +330,8 @@ const previewImg     = ref(null)
 const progressPct    = ref(0)
 const progressEta    = ref(0)
 let   _progressTimer = null
+const controlnetModules = ref([])
+const controlnetModels  = ref([])
 
 // ── 计算 ─────────────────────────────────────────────────────────────────────
 
@@ -309,9 +341,21 @@ const SAMPLER_OPTIONS = computed(() =>
 )
 
 // 切换 provider 时重置采样器默认值
-watch(providerName, (name) => {
-  if (name === 'sd_webui') form.value.sampler = 'DPM++ 2M Karras'
-  else form.value.sampler = 'euler'
+watch(providerName, async (name) => {
+  if (name === 'sd_webui') {
+    form.value.sampler = 'DPM++ 2M Karras'
+    const [modulesRes, modelsRes] = await Promise.all([
+      getControlnetModules().catch(() => null),
+      getControlnetModels().catch(() => null),
+    ])
+    controlnetModules.value = modulesRes?.modules || []
+    controlnetModels.value  = modelsRes?.models || []
+  } else {
+    form.value.sampler = 'euler'
+    form.value.controlnetEnabled = false
+    controlnetModules.value = []
+    controlnetModels.value  = []
+  }
 })
 
 const providerClass = computed(() => ({
@@ -452,6 +496,10 @@ const doGenerate = async () => {
       sampler_name:       form.value.sampler,
       init_image_base64:  form.value.initImageB64 || undefined,
       denoising_strength: form.value.denoisingStrength,
+      controlnet_enabled: form.value.controlnetEnabled,
+      controlnet_module:  form.value.controlnetModule,
+      controlnet_model:   form.value.controlnetModel,
+      controlnet_weight:  form.value.controlnetWeight,
     })
     if (res?.success) {
       lastResult.value = res
@@ -679,6 +727,7 @@ const formatDate = (iso) => {
   display: flex; align-items: center; justify-content: center;
 }
 .denoising-row { margin-top: var(--space-2); }
+.controlnet-options { margin-top: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2); }
 
 /* 暗色补充 */
 [data-theme="dark"] .sampler-select { background: #0d1117; border-color: #2d3451; color: #c9d1d9; }
