@@ -19,6 +19,7 @@ from core._context_vars import (
     _request_provider_ctx,
     _request_persona_ctx,
     _last_message_vec_ctx,
+    _request_image_b64_ctx,
 )
 from prompts.prompt_manager import prompt_manager
 
@@ -277,6 +278,7 @@ class ConversationFlowMixin:
             _request_provider_ctx.set(provider_override)
         if persona_override is not None:
             _request_persona_ctx.set(persona_override)
+        _request_image_b64_ctx.set(image_base64)
 
         _trace_id = str(uuid.uuid4())[:8]
         _, eff_model = self._get_eff_provider()
@@ -509,6 +511,7 @@ class ConversationFlowMixin:
             _request_provider_ctx.set(provider_override)
         if persona_override is not None:
             _request_persona_ctx.set(persona_override)
+        _request_image_b64_ctx.set(image_base64)
 
         # 重置请求级 embedding 缓存（per-request ContextVar，自动隔离并发请求）
         _last_message_vec_ctx.set(None)
