@@ -15,6 +15,10 @@ class ImageRequest:
     sampler_name: str = "DPM++ 2M Karras"   # 采样器（SD WebUI / ComfyUI 支持）
     init_image_base64: Optional[str] = None  # img2img 底图（纯 base64，不含前缀）
     denoising_strength: float = 0.75         # img2img 去噪强度 0~1
+    controlnet_enabled: bool = False         # 是否将 init_image_base64 同时用作 ControlNet 控制图（仅 SD WebUI）
+    controlnet_module: str = "none"          # ControlNet 预处理器，如 canny/depth/openpose
+    controlnet_model: str = ""               # ControlNet 模型名（来自 /controlnet/model_list）
+    controlnet_weight: float = 1.0           # ControlNet 引导权重 0~2
     extra: dict = field(default_factory=dict)
 
 

@@ -109,6 +109,38 @@ async def list_image_models():
     return {"success": True, "provider": provider_name, "models": [], "note": "云端 Provider 模型列表不支持"}
 
 
+@router.get("/api/image/controlnet/modules")
+async def list_controlnet_modules():
+    """列出 SD WebUI ControlNet 可用预处理器（仅 sd_webui 支持）。"""
+    if settings.image_gen_provider.lower() != "sd_webui":
+        return {"success": True, "modules": [], "note": "ControlNet 仅 SD WebUI 支持"}
+    from services.image.sd_webui_provider import SDWebUIProvider
+    p = SDWebUIProvider(
+        base_url=settings.image_gen_base_url,
+        model=settings.image_gen_model,
+        username=settings.image_gen_sd_user,
+        password=settings.image_gen_sd_pass,
+    )
+    modules = await p.list_controlnet_modules()
+    return {"success": True, "modules": modules}
+
+
+@router.get("/api/image/controlnet/models")
+async def list_controlnet_models():
+    """列出 SD WebUI ControlNet 可用模型（仅 sd_webui 支持）。"""
+    if settings.image_gen_provider.lower() != "sd_webui":
+        return {"success": True, "models": [], "note": "ControlNet 仅 SD WebUI 支持"}
+    from services.image.sd_webui_provider import SDWebUIProvider
+    p = SDWebUIProvider(
+        base_url=settings.image_gen_base_url,
+        model=settings.image_gen_model,
+        username=settings.image_gen_sd_user,
+        password=settings.image_gen_sd_pass,
+    )
+    models = await p.list_controlnet_models()
+    return {"success": True, "models": models}
+
+
 @router.get("/api/image/progress")
 async def get_image_progress():
     """查询当前生成进度（SD WebUI / ComfyUI 均支持，其他返回 0）。"""
@@ -217,6 +249,10 @@ async def generate_image(request: Request):
         sampler_name       = body.get("sampler_name")       or "DPM++ 2M Karras",
         init_image_base64  = body.get("init_image_base64")  or None,
         denoising_strength = float(body.get("denoising_strength", 0.75)),
+        controlnet_enabled = bool(body.get("controlnet_enabled", False)),
+        controlnet_module  = body.get("controlnet_module")  or "none",
+        controlnet_model   = body.get("controlnet_model")   or "",
+        controlnet_weight  = float(body.get("controlnet_weight", 1.0)),
     )
 
     logger.info(f"[image_router] 生成请求: prompt={prompt[:60]} size={req.size}")
