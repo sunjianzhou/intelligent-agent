@@ -39,7 +39,10 @@ class ImageGenerationTool(BaseTool):
                 "prompt(图片描述,英文效果更好,必填), "
                 "size(尺寸,可选,如 1024x1024 / 512x512 / 768x1024,默认1024x1024), "
                 "negative_prompt(不希望出现的内容,可选), "
-                "style(风格提示词,可选,如 photorealistic/anime/oil painting)"
+                "style(风格提示词,可选,如 photorealistic/anime/oil painting), "
+                "sampler_name(采样器名称,可选,如 'DPM++ 2M Karras'/'euler',不填用默认), "
+                "denoising_strength(去噪强度0~1,可选,仅当用户要求'在刚发的图基础上改'时设置,默认0.75). "
+                "若用户在本轮消息中附带了图片,会自动作为底图用于图生图(img2img),不需要也不能把图片内容当作参数传入"
             )
         )
 
@@ -49,9 +52,12 @@ class ImageGenerationTool(BaseTool):
         size: Optional[str] = None,
         negative_prompt: str = "",
         style: Optional[str] = None,
+        sampler_name: Optional[str] = None,
+        denoising_strength: float = 0.75,
     ) -> str:
         from services.image import create_image_provider, ImageRequest
         from config.settings import settings
+        from core._context_vars import _request_image_b64_ctx
 
         provider = create_image_provider()
         if provider is None or not provider.is_available():
@@ -64,12 +70,16 @@ class ImageGenerationTool(BaseTool):
             )
             return tip
 
+        init_image_b64 = _request_image_b64_ctx.get()
         req = ImageRequest(
             prompt=prompt,
             size=size or settings.image_gen_size,
             steps=settings.image_gen_steps,
             style=style,
             negative_prompt=negative_prompt,
+            sampler_name=sampler_name or "DPM++ 2M Karras",
+            init_image_base64=init_image_b64,
+            denoising_strength=denoising_strength,
         )
         result = await provider.generate(req)
 
@@ -93,9 +103,13 @@ class ImageGenerationTool(BaseTool):
         size: Optional[str] = None,
         negative_prompt: str = "",
         style: Optional[str] = None,
+        sampler_name: Optional[str] = None,
+        denoising_strength: float = 0.75,
     ) -> str:
         import asyncio
-        return asyncio.run(self.execute_async(prompt, size, negative_prompt, style))
+        return asyncio.run(self.execute_async(
+            prompt, size, negative_prompt, style, sampler_name, denoising_strength
+        ))
 
 
 async def _persist_image(result, filename: str, image_dir: Path) -> str:
