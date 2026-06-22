@@ -86,6 +86,14 @@ async def test_list_controlnet_models_success():
 
 
 @pytest.mark.asyncio
+async def test_list_controlnet_models_failure_returns_empty():
+    provider = _make_provider()
+    with patch("httpx.AsyncClient", side_effect=RuntimeError("boom")):
+        result = await provider.list_controlnet_models()
+    assert result == []
+
+
+@pytest.mark.asyncio
 async def test_generate_injects_controlnet_payload_when_enabled():
     from services.image.base_image_provider import ImageRequest
     import base64

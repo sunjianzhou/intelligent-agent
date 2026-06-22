@@ -76,7 +76,7 @@ class SDWebUIProvider(BaseImageProvider):
             logger.error(f"[SDWebUI] 切换模型失败: {e}")
             return False, str(e)
 
-    async def list_controlnet_modules(self) -> list:
+    async def list_controlnet_modules(self) -> list[str]:
         """从 SD WebUI ControlNet 扩展获取可用预处理器列表（如 canny/depth/openpose）。"""
         try:
             async with httpx.AsyncClient(timeout=10, auth=self._auth) as client:
@@ -87,7 +87,7 @@ class SDWebUIProvider(BaseImageProvider):
             logger.warning(f"[SDWebUI] 获取 ControlNet 预处理器列表失败: {e}")
             return []
 
-    async def list_controlnet_models(self) -> list:
+    async def list_controlnet_models(self) -> list[str]:
         """从 SD WebUI ControlNet 扩展获取可用模型列表。"""
         try:
             async with httpx.AsyncClient(timeout=10, auth=self._auth) as client:
