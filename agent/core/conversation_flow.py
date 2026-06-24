@@ -289,7 +289,8 @@ class ConversationFlowMixin:
                    assistant_message_id: Optional[str] = None,
                    channel: str = "web",
                    scene_chat_type: Optional[str] = None,
-                   scene_mentioned: bool = False) -> dict:
+                   scene_mentioned: bool = False,
+                   allowed_tool_categories: Optional[List[str]] = None) -> dict:
         """非流式聊天（ReAct 循环）。
         provider_override: 若传入，则本次请求使用该 provider（per-user 隔离）。
         persona_override:  若传入，则本次请求使用该角色内容（per-user 角色隔离）。
@@ -297,6 +298,8 @@ class ConversationFlowMixin:
         channel:           请求来源渠道（"web"/"feishu_im"/...），决定 system prompt 是否注入私密档案段。
         scene_chat_type:   多人会话场景标记（如飞书 "group"/"p2p"），group 时注入静默规则。
         scene_mentioned:   group 场景下是否被显式 @ 提及。
+        allowed_tool_categories: 非 None 时硬限制本次对话可用的工具分类（代码层强制），
+                          用于受限的内部自动化场景（如记忆归并只允许 file 分类）。
         """
         if provider_override is not None:
             _request_provider_ctx.set(provider_override)
@@ -375,6 +378,7 @@ class ConversationFlowMixin:
                 messages,
                 intent_message=message if i == 0 else "",
                 _trace_id=f"{_trace_id}:{i}",
+                allowed_tool_categories=allowed_tool_categories,
             )
 
             tool_calls = result.get("tool_calls", [])

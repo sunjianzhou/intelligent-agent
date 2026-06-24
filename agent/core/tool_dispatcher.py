@@ -869,8 +869,15 @@ class ToolDispatcherMixin:
             config=None,
             intent_message: str = "",
             _trace_id: str = "",
+            allowed_tool_categories: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """调度入口：完成公共准备后派发到 text-tool 或 native FC 分支。"""
+        """调度入口：完成公共准备后派发到 text-tool 或 native FC 分支。
+
+        allowed_tool_categories: 非 None 时做最终硬性收窄（代码层强制，不依赖关键词/
+        embedding 软匹配），应用顺序在 intent 过滤和 skill 应用之后，保证不会被
+        skill_applicator 重新加回被排除的工具。仅供内部受限场景使用
+        （如心跳记忆归并只允许 file 分类）。
+        """
         _t0 = time.time()
         eff_provider, eff_model = self._get_eff_provider()
 
@@ -883,6 +890,12 @@ class ToolDispatcherMixin:
             messages, filtered_tools, _ = await self.skill_applicator.apply(
                 intent_message, messages, filtered_tools, self._call_model
             )
+
+        if allowed_tool_categories is not None:
+            allowed_names: Set[str] = set()
+            for cat in allowed_tool_categories:
+                allowed_names.update(self.tool_manager.get_tools_by_category(cat))
+            filtered_tools = {k: v for k, v in filtered_tools.items() if k in allowed_names}
 
         model_lower = (eff_model or "").lower()
         use_text_tools = any(p in model_lower for p in self._TEXT_TOOL_CALLING_PATTERNS)

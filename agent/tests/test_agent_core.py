@@ -347,3 +347,27 @@ def test_p2p_scene_has_no_group_rule(agent):
 
     system_msgs = [m for m in captured.get("messages", []) if m.get("role") == "system"]
     assert not any("[GROUP SCENE]" in (m.get("content") or "") for m in system_msgs)
+
+
+# ── allowed_tool_categories 硬限制（TODO-83）────────────────────────────────────
+
+def test_allowed_tool_categories_restricts_tools_passed_to_provider(agent):
+    """allowed_tool_categories 是代码层硬限制：即使消息文本命中了更宽的意图关键词，
+    最终传给模型的 tool_schemas 也只能来自指定分类——这里验证只剩 FileTool。"""
+    captured = {}
+
+    def _capture_schemas(tools_dict):
+        captured["tool_names"] = list(tools_dict.keys())
+        return []
+
+    agent.provider.build_tool_schemas_from = MagicMock(side_effect=_capture_schemas)
+    agent.provider.chat_with_tools = MagicMock(return_value={"content": "done", "tool_calls": []})
+
+    _run(agent.chat(
+        "随便聊聊，可能涉及文件、计算、系统等多种工具",
+        use_tools=True,
+        use_memory=False,
+        allowed_tool_categories=["file"],
+    ))
+
+    assert captured["tool_names"] == ["FileTool"]
