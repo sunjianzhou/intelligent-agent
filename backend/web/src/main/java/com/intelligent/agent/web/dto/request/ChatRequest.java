@@ -41,6 +41,18 @@ public class ChatRequest {
     @JsonProperty("image_base64")
     private String imageBase64;
 
+    /** 请求来源渠道（"web"/"feishu_im"/...），决定 Python 端 system prompt 是否注入私密档案段。
+     *  为空时 Python 侧默认按 "web" 处理。*/
+    private String channel;
+
+    /** 多人会话场景标记（如飞书 "group"/"p2p"），group 时 Python 端注入群聊静默规则。*/
+    @JsonProperty("scene_chat_type")
+    private String sceneChatType;
+
+    /** group 场景下是否被显式 @ 提及。*/
+    @JsonProperty("scene_mentioned")
+    private Boolean sceneMentioned = false;
+
     /** 前端真实用户 ID（从 WebSocket session 属性中提取，不序列化到 JSON body）*/
     private transient String userId;
 

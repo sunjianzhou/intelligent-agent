@@ -29,6 +29,7 @@ from core._context_vars import (
     _request_provider_ctx,
     _request_persona_ctx,
     _last_message_vec_ctx,
+    _request_channel_ctx,
 )
 from core.memory_writer import MemoryWriterMixin
 from core.tool_dispatcher import ToolDispatcherMixin
@@ -182,6 +183,10 @@ class IntelligentAgent(ConversationFlowMixin, ToolDispatcherMixin, MemoryWriterM
     def _get_eff_persona(self) -> Optional[str]:
         """返回当前请求的有效角色内容字符串，或 None（使用模型默认 template）。"""
         return _request_persona_ctx.get()
+
+    def _get_eff_channel(self) -> str:
+        """返回当前请求的输出渠道（"web"/"feishu_im"/...），默认 "web"。"""
+        return _request_channel_ctx.get()
 
     # ═══════════════════════════════════════════════════════════════
     # Token 估算 & 上下文保护

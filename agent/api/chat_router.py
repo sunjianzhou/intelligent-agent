@@ -54,6 +54,9 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     image_base64: Optional[str] = None  # 前端传来的单张图片 base64（不含 data URL 前缀）
     request_id: Optional[str] = None    # 前端生成的 traceID，用于日志链路追踪
+    channel: Optional[str] = None       # 请求来源渠道（"web"/"feishu_im"/...），默认 "web"
+    scene_chat_type: Optional[str] = None  # 多人会话场景标记（如飞书 "group"/"p2p"）
+    scene_mentioned: bool = False          # group 场景下是否被显式 @ 提及
 
 
 @router.post("/api/chat")
@@ -87,6 +90,9 @@ async def chat(request: ChatRequest, http_req: Request):
                     image_base64=request.image_base64,
                     message_id=_user_msg_id,
                     assistant_message_id=_assistant_msg_id,
+                    channel=request.channel or "web",
+                    scene_chat_type=request.scene_chat_type,
+                    scene_mentioned=request.scene_mentioned,
                 )
                 _now = datetime.now().isoformat()
                 _sid = request.session_id or user_id
@@ -194,6 +200,9 @@ async def chat_stream_endpoint(request: ChatRequest, http_req: Request):
                             image_base64=request.image_base64,
                             message_id=_stream_user_msg_id,
                             assistant_message_id=_stream_assistant_msg_id,
+                            channel=request.channel or "web",
+                            scene_chat_type=request.scene_chat_type,
+                            scene_mentioned=request.scene_mentioned,
                     ):
                         if event_type == "done" and isinstance(data, dict):
                             _full_reply.append(data.get("content", ""))

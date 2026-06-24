@@ -255,9 +255,104 @@ class SimpleTaskScheduler:
                 _push_notification(f"AI 定时生成失败: {str(e)[:100]}", role="system")
                 return {"success": False, "error": str(e)}
 
+        _HEARTBEAT_DECISION_PROMPT = (
+            "现在是一次心跳巡检时刻，不是用户主动发来的消息。"
+            "基于你对这位用户近期对话和长期记忆的了解，判断现在是否有必要主动联系他。"
+            "只有在确实有值得说的事（重要提醒、明显的关心时机、超过较长时间未联系等）时才选择联系；"
+            "没有合适理由就保持沉默，不要为了说话而说话。\n\n"
+            "严格按以下格式输出，不要寒暄，不要多余说明：\n"
+            "- 不需要联系：只输出 SILENT\n"
+            "- 需要联系：输出 SPEAK: 后接你要发送的完整消息内容"
+        )
+        _QUIET_HOUR_START = 23  # [23:00, 次日08:00) 默认安静时段，不主动联系
+        _QUIET_HOUR_END = 8
+
+        async def heartbeat_check_action(
+            receiver_id: str,
+            receive_id_type: str = "open_id",
+            user_id: str = "java-service",
+            quiet_hour_start: int = _QUIET_HOUR_START,
+            quiet_hour_end: int = _QUIET_HOUR_END,
+        ):
+            """心跳巡检：让 LLM 判断当前是否需要主动联系用户，需要才通过 im_message 发送。
+
+            与 llm_generate 的区别：llm_generate 总是把结果推给用户；heartbeat_check 默认沉默，
+            只有 LLM 明确给出 SPEAK 判定时才真正发送消息，避免无意义的主动打扰。
+            生成判定文本时固定使用 channel="feishu_im"，保证一旦决定发送，内容已经是 IM 克制风格
+            （不会带出私密档案段），无需在发送前二次过滤。
+            """
+            _now_hour = datetime.now().hour
+            _in_quiet = (
+                _now_hour >= quiet_hour_start or _now_hour < quiet_hour_end
+                if quiet_hour_start > quiet_hour_end
+                else quiet_hour_start <= _now_hour < quiet_hour_end
+            )
+            if _in_quiet:
+                logger.debug(f"[heartbeat_check] 安静时段（{quiet_hour_start}:00-{quiet_hour_end}:00），跳过")
+                return {"success": True, "sent": False, "reason": "quiet_hours"}
+
+            agent = self._agent
+            if agent is None:
+                return {"success": False, "error": "agent not initialized"}
+            try:
+                result = await agent.chat(
+                    _HEARTBEAT_DECISION_PROMPT,
+                    use_tools=False,
+                    use_memory=True,
+                    skip_cache=True,
+                    user_id=user_id,
+                    channel="feishu_im",
+                )
+                content = (result.get("content", "") if isinstance(result, dict) else str(result)).strip()
+            except Exception as e:
+                logger.error(f"[heartbeat_check] LLM 判定调用失败: {e}")
+                return {"success": False, "error": str(e)}
+
+            if not content.upper().startswith("SPEAK:"):
+                if content.upper() != "SILENT":
+                    logger.warning(f"[heartbeat_check] LLM 输出格式不符合约定，按沉默处理: {content[:80]}")
+                return {"success": True, "sent": False, "reason": "silent"}
+
+            message = content.split(":", 1)[1].strip()
+            if not message:
+                return {"success": True, "sent": False, "reason": "empty_speak"}
+
+            _tm = self._tool_manager
+            if _tm is None:
+                from tools.tool_manager import tool_manager as _global_tm
+                _tm = _global_tm
+            im_tool = _tm.get_tool("im_message")
+            if im_tool is None:
+                logger.warning("[heartbeat_check] im_message 工具未注册，无法发送，判定结果丢弃")
+                return {"success": False, "error": "im_message tool not registered", "message": message}
+
+            try:
+                _send_result = im_tool(
+                    receiver_id=receiver_id,
+                    msg_type="text",
+                    content={"text": message},
+                    receive_id_type=receive_id_type,
+                )
+                # BaseTool.__call__ 内部吞掉异常，包装成 ToolResult(success=False, error=...)，
+                # 不会向外抛异常，必须显式检查 success 字段才能感知发送失败。
+                if hasattr(_send_result, "success") and not _send_result.success:
+                    raise RuntimeError(getattr(_send_result, "error", "未知错误"))
+            except Exception as e:
+                logger.error(f"[heartbeat_check] im_message 发送失败: {e}")
+                return {"success": False, "error": str(e), "message": message}
+
+            ts = datetime.now().isoformat()
+            try:
+                agent.memory.store(message, category="task", metadata={"source": "heartbeat_check", "role": "assistant", "timestamp": ts})
+            except Exception as _me:
+                logger.warning(f"[heartbeat_check] 写入短期记忆失败: {_me}")
+            logger.info(f"[heartbeat_check] 主动联系已发送，长度 {len(message)}")
+            return {"success": True, "sent": True, "message": message, "timestamp": ts}
+
         self.register_action("log", log_action)
         self.register_action("log_action", log_action)   # backward-compat alias
         self.register_action("llm_generate", llm_generate_action)
+        self.register_action("heartbeat_check", heartbeat_check_action)
         self.register_action("system_info", system_info_action)
         self.register_action("test", test_action)
 

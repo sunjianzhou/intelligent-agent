@@ -78,3 +78,4 @@ feishu:
   ws-endpoint: wss://open.feishu.cn/event/v2/websocket/connect
   reconnect-delay-seconds: 5
   reconnect-max-delay-seconds: 300
+  bot-open-id: ${FEISHU_BOT_OPEN_ID:}

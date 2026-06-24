@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
@@ -24,6 +25,9 @@ public class FeishuEventController {
     private final ObjectMapper objectMapper;
     private final ExecutorService executor;
     private final FeishuRecallBridge recallBridge;
+
+    /** group 场景下、模型判定无需发言时输出的静默约定 sentinel（见 conversation_flow.py [GROUP SCENE] 规则）。*/
+    private static final String NO_REPLY_SENTINEL = "NO_REPLY";
 
     @Autowired
     public FeishuEventController(FeishuConfig config,
@@ -59,6 +63,7 @@ public class FeishuEventController {
 
             Map<?, ?> message = (Map<?, ?>) event.get("message");
             String chatId     = (String) message.get("chat_id");
+            String chatType   = (String) message.get("chat_type"); // "p2p" / "group"
 
             String contentStr = (String) message.get("content");
             String text;
@@ -70,16 +75,27 @@ public class FeishuEventController {
                 text = contentStr;
             }
 
+            boolean isGroup   = "group".equals(chatType);
+            boolean mentioned = isGroup && isBotMentioned((List<?>) message.get("mentions"));
+            // 群聊里没被 @：跳过「思考中」占位提示，避免对不相关的消息刷屏；
+            // 仍会把消息送进 LLM，由 [GROUP SCENE] 规则决定是否真正回复（NO_REPLY 时静默丢弃）。
+            boolean quietProbe = isGroup && !mentioned;
+
             String userId = "feishu:" + openId;
-            final String finalText   = text;
-            final String finalUserId = userId;
-            final String finalChatId = chatId;
+            final String finalText     = text;
+            final String finalUserId   = userId;
+            final String finalChatId   = chatId;
+            final String finalChatType = chatType;
+            final boolean finalMentioned  = mentioned;
+            final boolean finalQuietProbe = quietProbe;
 
             executor.submit(() -> {
-                try {
-                    sender.sendText(finalChatId, "⏳ 思考中...");
-                } catch (Exception e) {
-                    log.warn("发送「思考中」失败，chatId={}: {}", finalChatId, e.getMessage());
+                if (!finalQuietProbe) {
+                    try {
+                        sender.sendText(finalChatId, "⏳ 思考中...");
+                    } catch (Exception e) {
+                        log.warn("发送「思考中」失败，chatId={}: {}", finalChatId, e.getMessage());
+                    }
                 }
 
                 try {
@@ -88,23 +104,54 @@ public class FeishuEventController {
                     req.setUserId(finalUserId);
                     req.setUseTools(true);
                     req.setUseMemory(true);
+                    req.setChannel("feishu_im");
+                    req.setSceneChatType(finalChatType);
+                    req.setSceneMentioned(finalMentioned);
                     Map<String, Object> result = agentService.chatFull(req);
                     String reply = String.valueOf(result.getOrDefault("response", ""));
+                    if (NO_REPLY_SENTINEL.equals(reply.trim())) {
+                        log.debug("飞书群聊静默：模型判定无需发言，chatId={}", finalChatId);
+                        return;
+                    }
                     String assistantMessageId = (String) result.get("assistant_message_id");
                     String feishuMessageId = sender.sendInteractive(finalChatId,
                             FeishuCardBuilder.textCard("AI 回复", reply));
                     recallBridge.register(assistantMessageId, feishuMessageId);
                 } catch (Exception e) {
                     log.error("飞书消息处理失败，chatId={}", finalChatId, e);
-                    try {
-                        sender.sendText(finalChatId, "⚠️ 处理超时，请重试");
-                    } catch (Exception ignored) {}
+                    if (!finalQuietProbe) {
+                        try {
+                            sender.sendText(finalChatId, "⚠️ 处理超时，请重试");
+                        } catch (Exception ignored) {}
+                    }
                 }
             });
 
         } catch (Exception e) {
             log.error("routeEvent 解析失败（跳过本条，不影响 WS 连接）: {}", e.getMessage());
         }
+    }
+
+    /** 判断群聊消息的 mentions 列表中是否包含机器人自身。
+     *  未配置 {@code feishu.bot-open-id} 时退化为"群里有人被 @ 就当作可能 @ 了机器人"的低精度启发式。*/
+    private boolean isBotMentioned(List<?> mentions) {
+        if (mentions == null || mentions.isEmpty()) {
+            return false;
+        }
+        String botOpenId = config.getBotOpenId();
+        if (botOpenId == null || botOpenId.isEmpty()) {
+            return true;
+        }
+        for (Object m : mentions) {
+            if (!(m instanceof Map)) continue;
+            Map<?, ?> mm = (Map<?, ?>) m;
+            Map<?, ?> id = (Map<?, ?>) mm.get("id");
+            String mentionedOpenId = id != null ? (String) id.get("open_id") : null;
+            if (botOpenId.equals(mentionedOpenId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @PostMapping("/callback/interactive")

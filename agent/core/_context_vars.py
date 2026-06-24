@@ -28,3 +28,10 @@ _last_message_vec_ctx: contextvars.ContextVar = contextvars.ContextVar(
 _request_image_b64_ctx: contextvars.ContextVar = contextvars.ContextVar(
     '_request_image_b64_ctx', default=None
 )
+
+# Per-request output channel ("web" / "feishu_im" / ...): lets SystemPromptBuilder decide
+# whether to inject the whisper (private/unrestricted) soul section. Defaults to "web" so
+# existing callers that never set it keep today's behavior unchanged.
+_request_channel_ctx: contextvars.ContextVar = contextvars.ContextVar(
+    '_request_channel_ctx', default="web"
+)

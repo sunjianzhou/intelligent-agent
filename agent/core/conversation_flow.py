@@ -20,6 +20,7 @@ from core._context_vars import (
     _request_persona_ctx,
     _last_message_vec_ctx,
     _request_image_b64_ctx,
+    _request_channel_ctx,
 )
 from prompts.prompt_manager import prompt_manager
 
@@ -44,6 +45,7 @@ class ConversationFlowMixin:
             soul=self.soul,
             role_ctx=role_ctx,
             tool_overlay=tool_overlay,
+            channel=self._get_eff_channel(),
         )
 
     def _get_role_ctx_for_prompt(
@@ -63,7 +65,9 @@ class ConversationFlowMixin:
                                     project_id: Optional[str] = None,
                                     pending_tasks: Optional[List[Dict[str, Any]]] = None,
                                     image_base64: Optional[str] = None,
-                                    message_id: Optional[str] = None) -> List[Dict[str, str]]:
+                                    message_id: Optional[str] = None,
+                                    scene_chat_type: Optional[str] = None,
+                                    scene_mentioned: bool = False) -> List[Dict[str, str]]:
         """异步版 _build_messages：超预算时先尝试 LLM 摘要压缩，再兜底截断。"""
         if use_memory:
             self.memory.store_conversation(
@@ -170,6 +174,20 @@ class ConversationFlowMixin:
                 ),
             })
 
+        # 群聊场景规则（飞书等多人会话）：未被 @ 时默认沉默，避免刷屏打扰
+        if scene_chat_type == "group":
+            msgs.append({
+                "role": "system",
+                "content": (
+                    "[GROUP SCENE] 当前消息来自一个多人群聊，你是参与者之一，不是代言人。"
+                    + ("你被直接 @ 提及或被问了问题。" if scene_mentioned else
+                       "你没有被 @ 提及。除非消息中有需要你纠正的明显错误、"
+                       "明确向你提的问题，或被要求做总结，否则不要主动发言。")
+                    + "若判断当前不需要你发言，将完整回复内容替换为唯一一行 NO_REPLY"
+                      "（不要附加任何其他文字、标点或解释）；其余情况按正常风格作答。"
+                ),
+            })
+
         # 多模态：若有图片，在用户消息中加提示文字，并将 images 存入消息 dict 供后续转为 ChatMessage 时使用
         if image_base64:
             msgs.append({
@@ -268,17 +286,24 @@ class ConversationFlowMixin:
                    skip_cache: bool = False,
                    image_base64: Optional[str] = None,
                    message_id: Optional[str] = None,
-                   assistant_message_id: Optional[str] = None) -> dict:
+                   assistant_message_id: Optional[str] = None,
+                   channel: str = "web",
+                   scene_chat_type: Optional[str] = None,
+                   scene_mentioned: bool = False) -> dict:
         """非流式聊天（ReAct 循环）。
         provider_override: 若传入，则本次请求使用该 provider（per-user 隔离）。
         persona_override:  若传入，则本次请求使用该角色内容（per-user 角色隔离）。
         skip_cache:        True 时跳过 L1/L2 缓存查询（适用于需要每次新鲜结果的场景，如定时 AI 生成任务）。
+        channel:           请求来源渠道（"web"/"feishu_im"/...），决定 system prompt 是否注入私密档案段。
+        scene_chat_type:   多人会话场景标记（如飞书 "group"/"p2p"），group 时注入静默规则。
+        scene_mentioned:   group 场景下是否被显式 @ 提及。
         """
         if provider_override is not None:
             _request_provider_ctx.set(provider_override)
         if persona_override is not None:
             _request_persona_ctx.set(persona_override)
         _request_image_b64_ctx.set(image_base64)
+        _request_channel_ctx.set(channel)
 
         _trace_id = str(uuid.uuid4())[:8]
         _, eff_model = self._get_eff_provider()
@@ -313,7 +338,9 @@ class ConversationFlowMixin:
                                                      project_id=project_id,
                                                      pending_tasks=pending_tasks,
                                                      image_base64=image_base64,
-                                                     message_id=message_id)
+                                                     message_id=message_id,
+                                                     scene_chat_type=scene_chat_type,
+                                                     scene_mentioned=scene_mentioned)
         tool_call_log = []
 
         if not use_tools:
@@ -501,17 +528,24 @@ class ConversationFlowMixin:
                           pending_tasks: Optional[List[Dict[str, Any]]] = None,
                           image_base64: Optional[str] = None,
                           message_id: Optional[str] = None,
-                          assistant_message_id: Optional[str] = None):
+                          assistant_message_id: Optional[str] = None,
+                          channel: str = "web",
+                          scene_chat_type: Optional[str] = None,
+                          scene_mentioned: bool = False):
         """SSE 流式聊天（ReAct 循环 + 流式最终回答）。
         cancel_event：客户端断连时由 FastAPI 端点设置，通知底层停止生产。
         provider_override: 若传入，则本次请求使用该 provider（per-user 隔离）。
         persona_override:  若传入，则本次请求使用该角色内容（per-user 角色隔离）。
+        channel:           请求来源渠道（"web"/"feishu_im"/...），决定 system prompt 是否注入私密档案段。
+        scene_chat_type:   多人会话场景标记（如飞书 "group"/"p2p"），group 时注入静默规则。
+        scene_mentioned:   group 场景下是否被显式 @ 提及。
         """
         if provider_override is not None:
             _request_provider_ctx.set(provider_override)
         if persona_override is not None:
             _request_persona_ctx.set(persona_override)
         _request_image_b64_ctx.set(image_base64)
+        _request_channel_ctx.set(channel)
 
         # 重置请求级 embedding 缓存（per-request ContextVar，自动隔离并发请求）
         _last_message_vec_ctx.set(None)
@@ -520,7 +554,9 @@ class ConversationFlowMixin:
                                                      project_id=project_id,
                                                      pending_tasks=pending_tasks,
                                                      image_base64=image_base64,
-                                                     message_id=message_id)
+                                                     message_id=message_id,
+                                                     scene_chat_type=scene_chat_type,
+                                                     scene_mentioned=scene_mentioned)
         tool_call_log = []
 
         if not use_tools:

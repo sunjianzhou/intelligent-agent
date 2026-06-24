@@ -288,3 +288,62 @@ def test_different_user_ids_accepted(agent):
     r2 = _run(agent.chat("hello-bob", use_tools=False, use_memory=False, user_id="bob"))
     assert r1["content"] == "ok"
     assert r2["content"] == "ok"
+
+
+# ── scene_chat_type（飞书群聊静默规则，TODO-81）──────────────────────────────────
+
+def test_group_scene_injects_silence_rule(agent):
+    """scene_chat_type='group' 时，system 消息中应出现 [GROUP SCENE] 静默规则。"""
+    captured = {}
+
+    from services.base_provider import LLMResponse
+
+    def _capture_chat(messages, config):
+        captured["messages"] = [{"role": m.role, "content": m.content} for m in messages]
+        return LLMResponse(content="ok", model="test-model", success=True)
+
+    agent.provider.chat = _capture_chat
+    _run(agent.chat("随便聊聊", use_tools=False, use_memory=False,
+                    scene_chat_type="group", scene_mentioned=False))
+
+    system_msgs = [m for m in captured.get("messages", []) if m.get("role") == "system"]
+    assert any("[GROUP SCENE]" in (m.get("content") or "") for m in system_msgs)
+    assert any("没有被 @ 提及" in (m.get("content") or "") for m in system_msgs)
+
+
+def test_group_scene_mentioned_changes_instruction(agent):
+    """scene_mentioned=True 时，规则文案应体现"已被 @"而非"未被 @"。"""
+    captured = {}
+
+    from services.base_provider import LLMResponse
+
+    def _capture_chat(messages, config):
+        captured["messages"] = [{"role": m.role, "content": m.content} for m in messages]
+        return LLMResponse(content="ok", model="test-model", success=True)
+
+    agent.provider.chat = _capture_chat
+    _run(agent.chat("@机器人 在吗", use_tools=False, use_memory=False,
+                    scene_chat_type="group", scene_mentioned=True))
+
+    system_msgs = [m for m in captured.get("messages", []) if m.get("role") == "system"]
+    group_scene_msgs = [m for m in system_msgs if "[GROUP SCENE]" in (m.get("content") or "")]
+    assert group_scene_msgs, "缺少 [GROUP SCENE] 系统消息"
+    assert "被直接 @ 提及" in group_scene_msgs[0]["content"]
+    assert "没有被 @ 提及" not in group_scene_msgs[0]["content"]
+
+
+def test_p2p_scene_has_no_group_rule(agent):
+    """非 group 场景（p2p 或未传 scene_chat_type）不应注入 [GROUP SCENE] 规则。"""
+    captured = {}
+
+    from services.base_provider import LLMResponse
+
+    def _capture_chat(messages, config):
+        captured["messages"] = [{"role": m.role, "content": m.content} for m in messages]
+        return LLMResponse(content="ok", model="test-model", success=True)
+
+    agent.provider.chat = _capture_chat
+    _run(agent.chat("你好", use_tools=False, use_memory=False, scene_chat_type="p2p"))
+
+    system_msgs = [m for m in captured.get("messages", []) if m.get("role") == "system"]
+    assert not any("[GROUP SCENE]" in (m.get("content") or "") for m in system_msgs)

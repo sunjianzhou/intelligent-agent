@@ -140,6 +140,13 @@ public class AgentService {
             if (request.getImageBase64() != null && !request.getImageBase64().isEmpty()) {
                 body.put("image_base64", request.getImageBase64());
             }
+            if (request.getChannel() != null && !request.getChannel().isEmpty()) {
+                body.put("channel", request.getChannel());
+            }
+            if (request.getSceneChatType() != null && !request.getSceneChatType().isEmpty()) {
+                body.put("scene_chat_type", request.getSceneChatType());
+                body.put("scene_mentioned", Boolean.TRUE.equals(request.getSceneMentioned()));
+            }
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, authHeaders());
             ResponseEntity<String> response = restTemplate.exchange(
@@ -195,6 +202,13 @@ public class AgentService {
             }
             if (request.getImageBase64() != null && !request.getImageBase64().isEmpty()) {
                 body.put("image_base64", request.getImageBase64());
+            }
+            if (request.getChannel() != null && !request.getChannel().isEmpty()) {
+                body.put("channel", request.getChannel());
+            }
+            if (request.getSceneChatType() != null && !request.getSceneChatType().isEmpty()) {
+                body.put("scene_chat_type", request.getSceneChatType());
+                body.put("scene_mentioned", Boolean.TRUE.equals(request.getSceneMentioned()));
             }
             String bodyJson = objectMapper.writeValueAsString(body);
 

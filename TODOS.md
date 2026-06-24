@@ -579,3 +579,45 @@ AbortController + 30s 超时早已实现；补 `options.timeout` 支持。commit
 
 ---
 
+## ~~TODO-79: [FEATURE-P0] system prompt 渠道感知（channel-aware）~~ ✅ 已完成（2026-06-23）
+
+新增 `_request_channel_ctx` ContextVar（默认 `"web"`），`chat()`/`chat_stream()` 新增 `channel` 参数并通过 `ChatRequest.channel` 透传；`SystemPromptBuilder.build()` 新增 `channel` 参数，命中 `_WHISPER_EXCLUDED_CHANNELS`（当前仅 `feishu_im`）时跳过私密档案段注入。Java 侧 `ChatRequest` DTO 加 `channel` 字段，`FeishuEventController` 固定传 `feishu_im`，`AgentService` 两处调用（非流式 + 流式）均透传。Python 263 + Java 17 测试全绿。
+
+---
+
+## ~~TODO-80: [FEATURE-P1] 心跳执行器（heartbeat_check 调度动作）~~ ✅ 已完成（2026-06-23）
+
+`SimpleTaskScheduler` 新增 `heartbeat_check` action：安静时段（默认 23:00-08:00，可配）直接跳过不调用 LLM；非安静时段调一次 `agent.chat(channel="feishu_im", use_tools=False)` 让模型判定 `SILENT`/`SPEAK: <内容>`，只有 `SPEAK` 才通过 `im_message` 工具实际发送，否则静默不打扰。判定阶段固定走 `feishu_im` 渠道（依赖 TODO-79），保证一旦决定发送，内容已经是 IM 风格，不会带出私密档案段。
+
+暂未接入日历/待办查询（依赖 TODO-82 的只读工具），当前判定依据仅为短期/长期记忆；原文件里的 `larksuite-cli`、`artifacts/` 等不存在的工具/路径未被原样迁移，待对应能力落地后再补充判定上下文。新增 5 个测试（`test_heartbeat_check.py`），Python 268 测试全绿。
+
+**涉及文件**：`agent/scheduler/simple_scheduler.py`, `agent/scheduler/simple_models.py`
+
+---
+
+## ~~TODO-81: [FEATURE-P1] 飞书群聊场景识别 + 静默/表情回应~~ ✅ 已完成（2026-06-23）
+
+`FeishuEventController` 解析 `message.chat_type`（p2p/group）与 `mentions` 列表（新增 `feishu.bot-open-id` 配置精确匹配机器人，未配置时退化为低精度启发式），通过 `ChatRequest.sceneChatType/sceneMentioned` → `/api/chat` 的 `scene_chat_type`/`scene_mentioned` 字段透传给 Python。`conversation_flow.py` 在 `scene_chat_type="group"` 时注入 `[GROUP SCENE]` 系统消息：未被 @ 默认要求模型输出唯一一行 `NO_REPLY` 静默；被 @ 时正常作答。Java 侧命中 `NO_REPLY` 即静默丢弃（不发卡片、不注册撤回），群聊未被 @ 时还会跳过"思考中"占位提示避免刷屏。表情回应未做（标为后续可选项，飞书 `emoji` 消息类型已具备，仅缺业务判断）。新增 Java 3 个 + Python 3 个测试，Python 271 + Java 65 测试全绿。
+
+---
+
+## ~~TODO-82: [FEATURE-P2] 飞书日历 / 待办只读工具~~ ✅ 已完成（2026-06-23）
+
+新增 `feishu_calendar_list`（`/calendar/v4/calendars/:id/events`，按 `calendar_id`+时间范围查询）与 `feishu_task_list`（`/task/v2/tasks`，可选按 `tasklist_guid` 过滤）两个只读工具，复用 `im.feishu_client._get_tenant_access_token`，随 `FeishuIMTool` 一起在 `tool_dispatcher.py` 按 `FEISHU_APP_ID` 配置注册。
+
+**重要权限边界（务必记住）**：两者都用 `tenant_access_token`（应用身份），只能访问应用被授权访问的日历/任务清单（应用自建或被显式共享的），**不能**直接读取某个普通用户的私人日历/待办——那需要 `user_access_token`（OAuth 用户授权流程），未实现。原方案 `larksuite-cli calendar +agenda --as user` 用的是个人身份访问，与此处的应用身份访问是两种不同的权限模型；心跳巡检若要真正查"用户的"日程待办，需要先补 OAuth 授权流程（新增待办，未单独立项，下次涉及个人日历场景时优先考虑）。
+
+新增 5 个测试（`test_feishu_readonly_tools.py`），Python 277 测试全绿。
+
+---
+
+## TODO-83: [FEATURE-P3] 自维护版本化记忆技能
+
+**背景**：原方案 `MEMORY.md` 由模型自主用文件读写权限持续追加"铁律 vN.0"、定期归并、控制在 200 行内，本质是有文件系统自主权的智能体在自编辑核心文件。本平台长期记忆是后端代码驱动的自动管线（`MemoryDistiller` 每 5 轮提炼写入 ChromaDB），不是模型自主决定编辑 markdown 文件。
+
+**修复方向**：设计一个 skill，在心跳（依赖 TODO-80）或固定节奏触发"审视近期对话 → 决定是否归并进 `soul/MEMORY.md`"，复刻版本化铁律 + 行数上限的自我维护机制；需要给 LLM 在该触发点开放 `soul/MEMORY.md` 的 `FileTool` 写权限（当前 `filesystem_allowed_dirs` 未必包含 `soul/`，需评估安全边界）
+
+**涉及文件**：`agent/skills/`, `agent/tools/builtin_tools/file_tool.py`, `agent/config/settings.py`
+
+---
+

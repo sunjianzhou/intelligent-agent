@@ -20,6 +20,11 @@ public class FeishuConfig {
     private int reconnectDelaySeconds = 5;
     private int reconnectMaxDelaySeconds = 300;
 
+    /** 机器人自身的 open_id，用于在群聊 mentions 列表中精确判断"是否 @ 了机器人"。
+     *  留空时退化为"群里只要有人被 @ 就当作可能 @ 了机器人"的低精度启发式。
+     *  飞书开放平台「凭证与基础信息」页可查看应用的 open_id。*/
+    private String botOpenId = "";
+
     /** 5 线程 + 有界队列 100 + CallerRunsPolicy，与主 streamExecutor 完全隔离 */
     @Bean(name = "feishuStreamExecutor", destroyMethod = "shutdown")
     public ExecutorService feishuStreamExecutor() {
@@ -57,4 +62,6 @@ public class FeishuConfig {
     public void setReconnectDelaySeconds(int reconnectDelaySeconds) { this.reconnectDelaySeconds = reconnectDelaySeconds; }
     public int getReconnectMaxDelaySeconds() { return reconnectMaxDelaySeconds; }
     public void setReconnectMaxDelaySeconds(int reconnectMaxDelaySeconds) { this.reconnectMaxDelaySeconds = reconnectMaxDelaySeconds; }
+    public String getBotOpenId() { return botOpenId; }
+    public void setBotOpenId(String botOpenId) { this.botOpenId = botOpenId; }
 }

@@ -21,11 +21,16 @@ class SystemPromptBuilder:
 
     _SEP = "\n" + "─" * 60 + "\n"
 
+    # 不注入 whisper（私密档案）段的渠道：消息会离开本机，发往受平台内容政策约束
+    # 的第三方 IM，必须保持克制风格。新增渠道时在此追加。
+    _WHISPER_EXCLUDED_CHANNELS = {"feishu_im"}
+
     def build(
         self,
         soul: Any,
         role_ctx: Optional[Dict[str, Any]] = None,
         tool_overlay: str = "",
+        channel: str = "web",
     ) -> str:
         d = soul.data
         if d is None:
@@ -50,8 +55,8 @@ class SystemPromptBuilder:
         if role_ctx:
             sections.append(self._build_persona(role_ctx))
 
-        # ⑥ whisper（非空时追加）
-        if d.whisper.strip():
+        # ⑥ whisper（非空且当前渠道未被排除时追加）
+        if d.whisper.strip() and channel not in self._WHISPER_EXCLUDED_CHANNELS:
             sections.append(self._wrap("【私密档案】", d.whisper))
 
         # ⑦ tool_overlay（始终最后）
