@@ -22,6 +22,7 @@ FEISHU_APP_ID=cli_xxxxxxxxxxxxxxxx
 FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 FEISHU_ENCRYPT_KEY=（可选，开启加密时填写）
 FEISHU_VERIFICATION_TOKEN=（可选，卡片回调签名验证用）
+FEISHU_BOT_OPEN_ID=（可选，机器人自身 open_id，群聊 @ 判断用，见下文）
 ```
 
 ### 3. 启动
@@ -61,6 +62,34 @@ Agent 可通过 `im_message` 工具主动发送飞书消息：
 ```
 
 Agent 会自动调用 `im_message(receiver_id="ou_xxxxx", msg_type="text", content={"text": "任务已完成"})`
+
+## 群聊行为
+
+- **私聊（p2p）**：正常回复每一条消息。
+- **群聊（group）**：默认静默，只有显式 @ 机器人才会回复，避免刷屏。判断是否被 @ 依赖 `FEISHU_BOT_OPEN_ID`——
+  填了就精确匹配，留空则退化为"群里有人被 @ 就当作可能 @ 了机器人"的低精度启发式。获取 open_id：飞书开放平台 →
+  你的应用 → 「凭证与基础信息」页。
+
+## 主动心跳巡检（可选）
+
+机器人可以按设定节奏自我判断"现在要不要主动联系用户"，而不是只能被动回复。原理：调度器每隔一段时间触发一次
+`heartbeat_check` 动作，让模型基于近期对话/长期记忆判断输出 `SILENT`（不打扰）或 `SPEAK: <内容>`（值得主动说），
+只有后者才会真正调用 `im_message` 发送；默认 23:00–08:00 安静时段直接跳过，不调用模型。
+
+通过 `POST /api/tasks/create` 创建（`receiver_id` 填你自己的飞书 open_id）：
+
+```json
+{
+  "name": "飞书心跳巡检",
+  "action": "heartbeat_check",
+  "args": { "receiver_id": "ou_xxxxxxxxxxxxxxxxxxxxxxxx" },
+  "schedule_type": "interval",
+  "interval_seconds": 1800
+}
+```
+
+同一次心跳还会顺带做一次节流的长期记忆归并（每 24 小时一次，写入 `soul/MEMORY.md`），与是否触发主动联系无关，
+不需要额外配置。
 
 ## 消息类型参考
 
