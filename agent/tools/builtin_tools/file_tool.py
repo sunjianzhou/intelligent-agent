@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from tools.base_tool import BaseTool, ToolResult
 
+# soul/MEMORY.md 绝对路径，由文件位置锚定（不依赖 CWD），供 TODO-83 记忆归并使用
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+MEMORY_MD_PATH = os.path.abspath(str(_PROJECT_ROOT / "soul" / "MEMORY.md"))
+
 
 class FileTool(BaseTool):
     """文件操作工具
@@ -21,6 +25,10 @@ class FileTool(BaseTool):
         super().__init__(description=description)
         self.requires_auth = True
         self.safe_directories = [str(Path.home()), os.getcwd()]
+        # 额外授权的单文件白名单（TODO-83）：允许 soul/MEMORY.md 在 safe_directories
+        # 之外仍可读写，但 _check_path_safety 会禁止对它执行 delete/move，
+        # 防止心跳记忆归并的自治 LLM 调用误删/误移走唯一副本。
+        self._extra_writable_files = [MEMORY_MD_PATH]
 
     def execute(self, action: str, path: str, **kwargs) -> Any:
         """执行文件操作
@@ -34,7 +42,7 @@ class FileTool(BaseTool):
             操作结果
         """
         # 安全检查
-        self._check_path_safety(path)
+        self._check_path_safety(path, action)
 
         action_handlers = {
             "read": self._read_file,
@@ -53,9 +61,18 @@ class FileTool(BaseTool):
 
         return action_handlers[action](path, **kwargs)
 
-    def _check_path_safety(self, path: str) -> None:
-        """检查路径安全性"""
+    def _check_path_safety(self, path: str, action: str = "") -> None:
+        """检查路径安全性。
+
+        白名单文件（如 soul/MEMORY.md）允许超出 safe_directories 范围读写，
+        但禁止 delete/move，防止自治记忆归并把唯一副本删掉或移走。
+        """
         abs_path = os.path.abspath(path)
+
+        if abs_path in self._extra_writable_files:
+            if action in ("delete", "move"):
+                raise PermissionError(f"白名单文件禁止 {action} 操作: {path}")
+            return
 
         # 检查是否在安全目录内
         is_safe = any(abs_path.startswith(safe_dir) for safe_dir in self.safe_directories)
