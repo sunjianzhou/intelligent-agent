@@ -611,13 +611,19 @@ AbortController + 30s 超时早已实现；补 `options.timeout` 支持。commit
 
 ---
 
-## TODO-83: [FEATURE-P3] 自维护版本化记忆技能
+## ~~TODO-83: [FEATURE-P3] 自维护版本化记忆技能~~ ✅ 已完成（2026-06-24）
 
-**背景**：原方案 `MEMORY.md` 由模型自主用文件读写权限持续追加"铁律 vN.0"、定期归并、控制在 200 行内，本质是有文件系统自主权的智能体在自编辑核心文件。本平台长期记忆是后端代码驱动的自动管线（`MemoryDistiller` 每 5 轮提炼写入 ChromaDB），不是模型自主决定编辑 markdown 文件。
+**结果**：复用 TODO-80 的心跳节奏，不新增调度器入口。三处改动协同：
 
-**修复方向**：设计一个 skill，在心跳（依赖 TODO-80）或固定节奏触发"审视近期对话 → 决定是否归并进 `soul/MEMORY.md`"，复刻版本化铁律 + 行数上限的自我维护机制；需要给 LLM 在该触发点开放 `soul/MEMORY.md` 的 `FileTool` 写权限（当前 `filesystem_allowed_dirs` 未必包含 `soul/`，需评估安全边界）
+- `FileTool` 新增单文件白名单（`MEMORY_MD_PATH`，由文件位置锚定）：允许 `soul/MEMORY.md` 在常规 `safe_directories`（home + cwd）之外读写，但 `_check_path_safety` 显式禁止对它执行 delete/move，且不放宽到 `soul/` 下的其他文件（`SOUL.md`/`IDENTITY.md`/`USER.md` 等身份文件不受影响）
+- `chat()` / `_call_model_with_tools` 新增 `allowed_tool_categories` 参数：代码层硬限制，在意图过滤和 skill 应用之后做最终交集过滤，不依赖关键词软匹配，防止任何上游逻辑悄悄放宽工具集合
+- `SimpleTaskScheduler._consolidate_memory`：心跳非安静时段触发，节流时间戳（24h，写在 `soul/MEMORY.md` 头部 HTML 注释里）完全由代码读写，不依赖 LLM 维护；写入前自动轮转备份（`.bak.1`~`.bak.5`），LLM 仅获得 `allowed_tool_categories=["file"]` 的受限会话去自主判断是否归并、写回时用原子替换（temp + replace）
 
-**涉及文件**：`agent/skills/`, `agent/tools/builtin_tools/file_tool.py`, `agent/config/settings.py`
+新增 14 个测试（`test_file_tool_whitelist.py` 4 个、`test_memory_consolidate.py` 5 个、`test_agent_core.py`/`test_heartbeat_check.py` 各若干），Python 287 测试全绿。
+
+**评审中明确不做（YAGNI，附理由）**：独立 `agent/prompts/` 模板文件（与现有模块常量写法不一致）、事件计数双触发（无埋点基础设施）、`soul/` 黑名单清单（白名单设计本身已排除其他文件，黑名单防御一个不可达的攻击面）、checksum 校验行（无消费者代码）、RFC3339 时区感知（与仓库现有 naive isoformat 约定不一致）。
+
+**涉及文件**：`agent/tools/builtin_tools/file_tool.py`, `agent/core/conversation_flow.py`, `agent/core/tool_dispatcher.py`, `agent/scheduler/simple_scheduler.py`, `soul/MEMORY.md`
 
 ---
 
