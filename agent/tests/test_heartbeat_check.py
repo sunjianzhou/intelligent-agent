@@ -13,8 +13,11 @@ def tmp_tasks_file(tmp_path):
     return tmp_path / "tasks.json"
 
 
-def make_scheduler(tasks_file):
-    return SimpleTaskScheduler(check_interval=60, tasks_file=tasks_file)
+def make_scheduler(tasks_file, memory_md_path=None):
+    sched = SimpleTaskScheduler(check_interval=60, tasks_file=tasks_file)
+    if memory_md_path is not None:
+        sched._memory_md_path = memory_md_path
+    return sched
 
 
 def make_agent(chat_content: str):
@@ -44,8 +47,8 @@ async def test_quiet_hours_skips_without_calling_llm(tmp_tasks_file):
 # ── 测试：LLM 判定 SILENT 时不发送 ─────────────────────────────
 
 @pytest.mark.asyncio
-async def test_silent_decision_does_not_send(tmp_tasks_file):
-    sched = make_scheduler(tmp_tasks_file)
+async def test_silent_decision_does_not_send(tmp_tasks_file, tmp_path):
+    sched = make_scheduler(tmp_tasks_file, tmp_path / "MEMORY.md")
     sched._agent = make_agent("SILENT")
     im_tool = MagicMock()
     sched._tool_manager = MagicMock()
@@ -56,15 +59,18 @@ async def test_silent_decision_does_not_send(tmp_tasks_file):
         quiet_hour_start=5, quiet_hour_end=5,  # 永不安静
     )
 
-    assert result == {"success": True, "sent": False, "reason": "silent"}
+    assert result["success"] is True
+    assert result["sent"] is False
+    assert result["reason"] == "silent"
+    assert result["memory_consolidate"]["ran"] is True
     im_tool.assert_not_called()
 
 
 # ── 测试：LLM 判定 SPEAK 时通过 im_message 发送 ─────────────────
 
 @pytest.mark.asyncio
-async def test_speak_decision_sends_via_im_message(tmp_tasks_file):
-    sched = make_scheduler(tmp_tasks_file)
+async def test_speak_decision_sends_via_im_message(tmp_tasks_file, tmp_path):
+    sched = make_scheduler(tmp_tasks_file, tmp_path / "MEMORY.md")
     sched._agent = make_agent("SPEAK: 好久没聊了，最近还好吗？")
     im_tool = MagicMock()
     sched._tool_manager = MagicMock()
@@ -87,16 +93,17 @@ async def test_speak_decision_sends_via_im_message(tmp_tasks_file):
     )
     sched._agent.memory.store.assert_called_once()
 
-    # 判定调用必须走 feishu_im 渠道，保证生成内容本身就是 IM 克制风格
-    _, kwargs = sched._agent.chat.call_args
-    assert kwargs["channel"] == "feishu_im"
+    # 判定调用（第一次 agent.chat 调用）必须走 feishu_im 渠道，
+    # 保证生成内容本身就是 IM 克制风格；第二次调用是记忆归并，channel 不受此约束。
+    _, decision_kwargs = sched._agent.chat.call_args_list[0]
+    assert decision_kwargs["channel"] == "feishu_im"
 
 
 # ── 测试：im_message 工具未注册时安全失败，不抛异常 ─────────────
 
 @pytest.mark.asyncio
-async def test_speak_decision_without_im_tool_registered(tmp_tasks_file):
-    sched = make_scheduler(tmp_tasks_file)
+async def test_speak_decision_without_im_tool_registered(tmp_tasks_file, tmp_path):
+    sched = make_scheduler(tmp_tasks_file, tmp_path / "MEMORY.md")
     sched._agent = make_agent("SPEAK: 消息内容")
     sched._tool_manager = MagicMock()
     sched._tool_manager.get_tool.return_value = None
@@ -113,8 +120,8 @@ async def test_speak_decision_without_im_tool_registered(tmp_tasks_file):
 # ── 测试：im_message 工具内部失败（ToolResult.success=False）时正确识别 ────────
 
 @pytest.mark.asyncio
-async def test_im_tool_failure_result_is_detected(tmp_tasks_file):
-    sched = make_scheduler(tmp_tasks_file)
+async def test_im_tool_failure_result_is_detected(tmp_tasks_file, tmp_path):
+    sched = make_scheduler(tmp_tasks_file, tmp_path / "MEMORY.md")
     sched._agent = make_agent("SPEAK: 消息内容")
     im_tool = MagicMock()
     # 模拟 BaseTool.__call__ 吞掉异常后返回的失败 ToolResult（不会抛异常）

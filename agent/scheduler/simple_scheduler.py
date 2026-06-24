@@ -2,6 +2,8 @@
 import asyncio
 import json
 import os
+import re
+import shutil
 import threading
 import time
 from collections import deque
@@ -37,6 +39,86 @@ def pop_notifications() -> list:
 _DEFAULT_TASKS_FILE = Path(__file__).parent.parent / "data" / "tasks.json"
 
 
+# ── 记忆归并辅助函数（TODO-83）──────────────────────────────────
+# soul/MEMORY.md 头部的节流标记，纯由代码读写，不依赖 LLM 维护，保证节流可靠。
+_MEMORY_TIMESTAMP_RE = re.compile(r"<!--\s*last_consolidated:\s*([0-9T:.\-]+)\s*-->")
+_MEMORY_CONSOLIDATE_THROTTLE_HOURS = 24
+
+_MEMORY_CONSOLIDATE_PROMPT = (
+    "现在是一次心跳巡检中的记忆归并环节，不是用户主动发来的消息。"
+    "你被授权使用 file 工具读写 soul/MEMORY.md 这一个文件，用于维护你的长期精选记忆。\n\n"
+    "⚠️ 安全声明：\n"
+    "- 你只能使用 file 工具，且只能操作 soul/MEMORY.md\n"
+    "- 你禁止删除该文件、禁止将其改名或移动（即使尝试也会被拒绝）\n"
+    "- 你禁止修改 soul/MEMORY.md 之外的任何文件\n\n"
+    "请按以下步骤操作：\n"
+    "1. 用 file 工具（action=read）读取 soul/MEMORY.md 当前内容\n"
+    "2. 基于你对近期对话和长期记忆的了解，判断是否有值得永久记录的新内容。"
+    "判定标准：铁律/不可逆的重要决策/已反复验证的规律 → 值得记录；"
+    "一次性的临时事件、已被新版取代的旧条目 → 不值得，应删除或跳过\n"
+    "3. 如果有值得记录的新内容，用 file 工具（action=write）写回更新后的完整文件，要求：\n"
+    "   - 全文不超过 200 行\n"
+    "   - 超出时优先合并或删除已被取代的旧条目，而不是简单截断\n"
+    "   - 保留文件已有的整体结构（精选记忆 / 重要决策记录 / 主题索引）\n"
+    "4. 如果没有值得记录的新内容，什么都不要做，直接回复 NO_CHANGE\n\n"
+    "完成后用一句话总结你做了什么（或回复 NO_CHANGE），不要输出其他内容。"
+)
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """原子写入：先写临时文件再 replace，避免写入中途崩溃导致文件半截。"""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    tmp.replace(path)
+
+
+def _backup_memory_md(path: Path, keep: int = 5) -> None:
+    """写入前做一次轮转备份（.bak.1 最新 ... .bak.N 最旧），保留最近 N 份。
+
+    这个项目的长期记忆此前出现过自毁性 bug（ChromaDB 异常即删库重建），
+    LLM 自主重写 MEMORY.md 前留一份备份兜底，代价很小。
+    """
+    if not path.exists():
+        return
+    for i in range(keep, 1, -1):
+        older = path.with_name(f"{path.name}.bak.{i - 1}")
+        newer = path.with_name(f"{path.name}.bak.{i}")
+        if older.exists():
+            older.replace(newer)
+    shutil.copy2(path, path.with_name(f"{path.name}.bak.1"))
+
+
+def _read_last_consolidated(path: Path) -> Optional[datetime]:
+    if not path.exists():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except Exception:
+        return None
+    m = _MEMORY_TIMESTAMP_RE.search(text)
+    if not m:
+        return None
+    try:
+        return datetime.fromisoformat(m.group(1))
+    except ValueError:
+        return None
+
+
+def _write_last_consolidated(path: Path, ts: datetime) -> None:
+    """更新（或插入）soul/MEMORY.md 头部的节流时间戳标记。"""
+    stamp = f"<!-- last_consolidated: {ts.isoformat()} -->"
+    if path.exists():
+        text = path.read_text(encoding="utf-8")
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        text = ""
+    if _MEMORY_TIMESTAMP_RE.search(text):
+        new_text = _MEMORY_TIMESTAMP_RE.sub(stamp, text, count=1)
+    else:
+        new_text = stamp + "\n" + text
+    _atomic_write_text(path, new_text)
+
+
 class SimpleTaskScheduler:
     """简化版任务调度器"""
 
@@ -69,6 +151,10 @@ class SimpleTaskScheduler:
         # 由 fastapi_app.py 在 agent 创建后注入；CLI/测试环境保持 None
         self._provider_getter = None   # callable(user_id) -> provider | None
         self._inference_slot = None    # async context manager
+
+        # soul/MEMORY.md 路径（TODO-83 记忆归并），由文件位置锚定，不依赖 CWD；
+        # 测试通过覆盖此属性指向 tmp_path，避免触碰真实文件。
+        self._memory_md_path: Path = Path(__file__).resolve().parent.parent.parent / "soul" / "MEMORY.md"
 
         # 动作注册表
         self.actions: Dict[str, Callable] = {}
@@ -274,7 +360,8 @@ class SimpleTaskScheduler:
             quiet_hour_start: int = _QUIET_HOUR_START,
             quiet_hour_end: int = _QUIET_HOUR_END,
         ):
-            """心跳巡检：让 LLM 判断当前是否需要主动联系用户，需要才通过 im_message 发送。
+            """心跳巡检：让 LLM 判断当前是否需要主动联系用户，需要才通过 im_message 发送；
+            同时顺带触发一次节流的记忆归并（TODO-83，见 self._consolidate_memory）。
 
             与 llm_generate 的区别：llm_generate 总是把结果推给用户；heartbeat_check 默认沉默，
             只有 LLM 明确给出 SPEAK 判定时才真正发送消息，避免无意义的主动打扰。
@@ -294,60 +381,66 @@ class SimpleTaskScheduler:
             agent = self._agent
             if agent is None:
                 return {"success": False, "error": "agent not initialized"}
-            try:
-                result = await agent.chat(
-                    _HEARTBEAT_DECISION_PROMPT,
-                    use_tools=False,
-                    use_memory=True,
-                    skip_cache=True,
-                    user_id=user_id,
-                    channel="feishu_im",
-                )
-                content = (result.get("content", "") if isinstance(result, dict) else str(result)).strip()
-            except Exception as e:
-                logger.error(f"[heartbeat_check] LLM 判定调用失败: {e}")
-                return {"success": False, "error": str(e)}
 
-            if not content.upper().startswith("SPEAK:"):
-                if content.upper() != "SILENT":
-                    logger.warning(f"[heartbeat_check] LLM 输出格式不符合约定，按沉默处理: {content[:80]}")
-                return {"success": True, "sent": False, "reason": "silent"}
+            async def _run_decision() -> Dict[str, Any]:
+                try:
+                    result = await agent.chat(
+                        _HEARTBEAT_DECISION_PROMPT,
+                        use_tools=False,
+                        use_memory=True,
+                        skip_cache=True,
+                        user_id=user_id,
+                        channel="feishu_im",
+                    )
+                    content = (result.get("content", "") if isinstance(result, dict) else str(result)).strip()
+                except Exception as e:
+                    logger.error(f"[heartbeat_check] LLM 判定调用失败: {e}")
+                    return {"success": False, "error": str(e)}
 
-            message = content.split(":", 1)[1].strip()
-            if not message:
-                return {"success": True, "sent": False, "reason": "empty_speak"}
+                if not content.upper().startswith("SPEAK:"):
+                    if content.upper() != "SILENT":
+                        logger.warning(f"[heartbeat_check] LLM 输出格式不符合约定，按沉默处理: {content[:80]}")
+                    return {"success": True, "sent": False, "reason": "silent"}
 
-            _tm = self._tool_manager
-            if _tm is None:
-                from tools.tool_manager import tool_manager as _global_tm
-                _tm = _global_tm
-            im_tool = _tm.get_tool("im_message")
-            if im_tool is None:
-                logger.warning("[heartbeat_check] im_message 工具未注册，无法发送，判定结果丢弃")
-                return {"success": False, "error": "im_message tool not registered", "message": message}
+                message = content.split(":", 1)[1].strip()
+                if not message:
+                    return {"success": True, "sent": False, "reason": "empty_speak"}
 
-            try:
-                _send_result = im_tool(
-                    receiver_id=receiver_id,
-                    msg_type="text",
-                    content={"text": message},
-                    receive_id_type=receive_id_type,
-                )
-                # BaseTool.__call__ 内部吞掉异常，包装成 ToolResult(success=False, error=...)，
-                # 不会向外抛异常，必须显式检查 success 字段才能感知发送失败。
-                if hasattr(_send_result, "success") and not _send_result.success:
-                    raise RuntimeError(getattr(_send_result, "error", "未知错误"))
-            except Exception as e:
-                logger.error(f"[heartbeat_check] im_message 发送失败: {e}")
-                return {"success": False, "error": str(e), "message": message}
+                _tm = self._tool_manager
+                if _tm is None:
+                    from tools.tool_manager import tool_manager as _global_tm
+                    _tm = _global_tm
+                im_tool = _tm.get_tool("im_message")
+                if im_tool is None:
+                    logger.warning("[heartbeat_check] im_message 工具未注册，无法发送，判定结果丢弃")
+                    return {"success": False, "error": "im_message tool not registered", "message": message}
 
-            ts = datetime.now().isoformat()
-            try:
-                agent.memory.store(message, category="task", metadata={"source": "heartbeat_check", "role": "assistant", "timestamp": ts})
-            except Exception as _me:
-                logger.warning(f"[heartbeat_check] 写入短期记忆失败: {_me}")
-            logger.info(f"[heartbeat_check] 主动联系已发送，长度 {len(message)}")
-            return {"success": True, "sent": True, "message": message, "timestamp": ts}
+                try:
+                    _send_result = im_tool(
+                        receiver_id=receiver_id,
+                        msg_type="text",
+                        content={"text": message},
+                        receive_id_type=receive_id_type,
+                    )
+                    # BaseTool.__call__ 内部吞掉异常，包装成 ToolResult(success=False, error=...)，
+                    # 不会向外抛异常，必须显式检查 success 字段才能感知发送失败。
+                    if hasattr(_send_result, "success") and not _send_result.success:
+                        raise RuntimeError(getattr(_send_result, "error", "未知错误"))
+                except Exception as e:
+                    logger.error(f"[heartbeat_check] im_message 发送失败: {e}")
+                    return {"success": False, "error": str(e), "message": message}
+
+                ts = datetime.now().isoformat()
+                try:
+                    agent.memory.store(message, category="task", metadata={"source": "heartbeat_check", "role": "assistant", "timestamp": ts})
+                except Exception as _me:
+                    logger.warning(f"[heartbeat_check] 写入短期记忆失败: {_me}")
+                logger.info(f"[heartbeat_check] 主动联系已发送，长度 {len(message)}")
+                return {"success": True, "sent": True, "message": message, "timestamp": ts}
+
+            decision = await _run_decision()
+            decision["memory_consolidate"] = await self._consolidate_memory(agent)
+            return decision
 
         self.register_action("log", log_action)
         self.register_action("log_action", log_action)   # backward-compat alias
@@ -355,6 +448,54 @@ class SimpleTaskScheduler:
         self.register_action("heartbeat_check", heartbeat_check_action)
         self.register_action("system_info", system_info_action)
         self.register_action("test", test_action)
+
+    async def _consolidate_memory(self, agent) -> Dict[str, Any]:
+        """记忆归并（TODO-83）：节流读取 soul/MEMORY.md 头部时间戳标记，超过
+        _MEMORY_CONSOLIDATE_THROTTLE_HOURS 才触发一次仅授权 file 工具分类的 LLM 调用，
+        让其自主判断是否要把近期值得永久记录的内容合并进文件。
+
+        节流时间戳的读写完全由本方法（而非 LLM）负责，保证可靠，不依赖模型是否记得维护；
+        写入前先做一次轮转备份，写回时间戳用原子替换，防止写入中途崩溃损坏文件。
+        """
+        path = self._memory_md_path
+        last = _read_last_consolidated(path)
+        now = datetime.now()
+        if last is not None and (now - last) < timedelta(hours=_MEMORY_CONSOLIDATE_THROTTLE_HOURS):
+            return {"ran": False, "reason": "throttled"}
+
+        try:
+            _backup_memory_md(path)
+        except Exception as e:
+            logger.warning(f"[memory_consolidate] 备份失败（继续执行）: {e}")
+
+        try:
+            result = await agent.chat(
+                _MEMORY_CONSOLIDATE_PROMPT,
+                use_tools=True,
+                use_memory=True,
+                skip_cache=True,
+                allowed_tool_categories=["file"],
+            )
+            summary = (result.get("content", "") if isinstance(result, dict) else str(result)).strip()
+        except Exception as e:
+            logger.error(f"[memory_consolidate] LLM 归并调用失败: {e}")
+            summary = f"<error: {e}>"
+
+        try:
+            _write_last_consolidated(path, now)
+        except Exception as e:
+            logger.warning(f"[memory_consolidate] 写回节流时间戳失败: {e}")
+
+        try:
+            if path.exists():
+                n_lines = len(path.read_text(encoding="utf-8").splitlines())
+                if n_lines > 180:
+                    logger.warning(f"[memory_consolidate] soul/MEMORY.md 已达 {n_lines} 行，接近 200 行上限")
+        except Exception:
+            pass
+
+        logger.info(f"[memory_consolidate] 归并完成: {summary[:80]}")
+        return {"ran": True, "summary": summary[:200]}
 
     def register_action(self, name: str, func: Callable):
         """注册动作"""
