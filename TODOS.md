@@ -128,19 +128,19 @@
 
 ---
 
-## TODO-84: [SETUP] 从零接入飞书自建应用（用户侧手动操作）
+## ~~TODO-84: [SETUP] 从零接入飞书自建应用（用户侧手动操作）~~ ✅ 已完成（2026-06-26）
 
 **背景**：代码侧（Java WS 客户端、事件解析、卡片发送、渠道感知 system prompt、群聊静默、心跳主动联系、日历/待办只读工具）早在 TODO-21/79~82 全部落地，且 `feishu.enabled=false` 时 `FeishuWebSocketClient.isAutoStartup()` 直接跳过，不影响现有 PWA/CLI 使用。目前唯一缺的是真实的飞书自建应用凭证——这一步只能用户自己在浏览器里完成，AI 无法代为操作。
 
-**待完成（用户操作，详见 `docs/feishu-integration.md`）：**
-- [ ] 在 [飞书开放平台](https://open.feishu.cn) 创建自建应用，开启权限 `im:message:send_as_bot` + `im:message`
-- [ ] 「事件订阅」开启长连接接收，订阅 `im.message.receive_v1`（无需公网 IP）
-- [ ] 记录 `App ID` / `App Secret`；可选记录应用「凭证与基础信息」页的机器人 `open_id`（填 `FEISHU_BOT_OPEN_ID`，用于群聊精确判断 @）
-- [ ] 在 `.env.docker` 填入 `FEISHU_ENABLED=true` + 上述凭证（模板已在 `.env.docker.example` 里给出），`docker compose up -d` 重启
-- [ ] 飞书 App 里给机器人发一条消息，确认收到"思考中..."+ AI 回复卡片
-- [ ] 创建心跳巡检定时任务（`POST /api/tasks/create`，`action=heartbeat_check`，`receiver_id` 填自己的 open_id），验证安静时段外能收到主动消息、`soul/MEMORY.md` 头部时间戳会按 24h 节流更新
+**已完成：**
+- [x] 在 [飞书开放平台](https://open.feishu.cn) 创建自建应用，开启权限 `im:message:send_as_bot` + `im:message`
+- [x] 「事件订阅」开启长连接接收，订阅 `im.message.receive_v1`（无需公网 IP）
+- [x] 开通「读取用户发给机器人的单聊消息」权限（此权限是 P2P 事件的关键，最初缺失导致事件日志为空，详见 `docs/feishu-integration.md` 排查节）
+- [x] 记录凭证，`FEISHU_BOT_OPEN_ID=ou_8788d2ac4f9c24f15bc74ea1859bf9c5` 已填入 `.env.docker`
+- [x] 飞书 App 里给机器人发消息，确认全链路通（事件触达 WS → Java → Python agent → dolphin 推理 → 回复卡片）
+- [ ] 创建心跳巡检定时任务（用户 open_id: `ou_1d2e0c80f6feffa546a1b28664bb39c2`，见 `docs/feishu-integration.md`）
 
-**涉及文件**：`docs/feishu-integration.md`（已补充群聊行为 + 心跳巡检说明）、`.env.docker.example`（已补充 FEISHU_* 模板）
+**涉及文件**：`docs/feishu-integration.md`（已补充排查节 + 已知账号信息）、`.env.docker`（已填入 FEISHU_BOT_OPEN_ID）
 
 ---
 
