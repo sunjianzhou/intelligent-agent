@@ -396,7 +396,7 @@ ModelView.vue 已集成：云端服务商 CRUD（添加/编辑/删除/激活）+
 
 ---
 
-## TODO-55: [REFACTOR] SystemView 清理重复的"可用模型"和"云端服务商"面板✅ 已完成
+## ~~TODO-55: [REFACTOR] SystemView 清理重复的"可用模型"和"云端服务商"面板~~ ✅ 已完成
 
 **什么**: SystemView 底部的「可用模型」折叠卡 + 「云端服务商配置」卡（含全套 CRUD 弹窗）与 ModelView 功能完全重复。
 
@@ -415,7 +415,7 @@ ModelView.vue 已集成：云端服务商 CRUD（添加/编辑/删除/激活）+
 
 ---
 
-## TODO-56: [REFACTOR] SystemView 可配置参数面板移至 MCPView ✅ 已完成
+## ~~TODO-56: [REFACTOR] SystemView 可配置参数面板移至 MCPView~~ ✅ 已完成
 
 **什么**: SystemView 中的「资源配置」右列（可配置参数：并发数/队列/缓存/记忆）与 MCPView（工具配置中心）位置不符，且系统信息页应只展示状态，不做配置。
 
@@ -430,7 +430,7 @@ ModelView.vue 已集成：云端服务商 CRUD（添加/编辑/删除/激活）+
 
 ---
 
-## TODO-57: [NEW PAGE] 操作日志管理页 ✅ 已完成
+## ~~TODO-57: [NEW PAGE] 操作日志管理页~~ ✅ 已完成
 
 **什么**: 新增一个操作日志页面，展示用户操作与 AI 操作的时间线，按类型颜色区分。
 

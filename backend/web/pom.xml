@@ -116,11 +116,13 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- 飞书 WS 长连接（纯手写，无官方 SDK） -->
+        <!-- 飞书长连接官方 SDK：端点发现 + pbbp2 二进制帧协议，替代早期手写实现
+             （手写版直连静态 wss 地址导致握手失败，飞书长连接需先用 app_access_token
+             换取临时连接地址，再走自定义二进制协议，详见 TODO-84 排障记录） -->
         <dependency>
-            <groupId>org.java-websocket</groupId>
-            <artifactId>Java-WebSocket</artifactId>
-            <version>1.5.4</version>
+            <groupId>com.larksuite.oapi</groupId>
+            <artifactId>oapi-sdk</artifactId>
+            <version>2.4.19</version>
         </dependency>
 
         <!-- 集成测试用 MockWebServer（仅 test scope） -->

@@ -1,27 +1,27 @@
 package com.intelligent.agent.web.feishu;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lark.oapi.core.utils.Jsons;
+import com.lark.oapi.event.EventDispatcher;
+import com.lark.oapi.service.im.ImService;
+import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
+import com.lark.oapi.ws.Client;
 import lombok.extern.slf4j.Slf4j;
-import org.java_websocket.client.WebSocketClient;
-import org.java_websocket.handshake.ServerHandshake;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.SmartLifecycle;
-import org.springframework.http.*;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestTemplate;
 
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReentrantLock;
 
+/**
+ * 飞书长连接客户端：基于官方 oapi-sdk 的 {@link Client}（端点发现 + pbbp2 二进制帧 + 自动重连/心跳）。
+ * 早期版本手写直连静态 wss 地址，飞书长连接实际需要先用 app_access_token 换取临时连接地址再走二进制协议，
+ * 手写版无法通过握手（见 TODO-84 排障记录），故改为官方 SDK，仅保留业务路由层（{@link FeishuEventController}）。
+ */
 @Slf4j
 @Component
 public class FeishuWebSocketClient implements SmartLifecycle {
@@ -29,41 +29,18 @@ public class FeishuWebSocketClient implements SmartLifecycle {
     private final FeishuConfig config;
     private final FeishuEventController eventController;
     private final ExecutorService executor;
-    private final String feishuBase;
-
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final AtomicBoolean running     = new AtomicBoolean(false);
-    private final AtomicInteger currentDelay;
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
-            new java.util.concurrent.ThreadFactory() {
-                @Override
-                public Thread newThread(Runnable r) {
-                    Thread t = new Thread(r, "feishu-reconnect");
-                    t.setDaemon(true);
-                    return t;
-                }
-            });
+    private final AtomicBoolean running = new AtomicBoolean(false);
 
-    private volatile String appAccessToken;
-    private volatile long   appTokenExpiryMs = 0;
-    private final ReentrantLock tokenLock = new ReentrantLock();
-
-    private volatile WebSocketClient wsClient;
+    private volatile Client client;
 
     @Autowired
     public FeishuWebSocketClient(FeishuConfig config,
                                   FeishuEventController eventController,
                                   @Qualifier("feishuStreamExecutor") ExecutorService executor) {
-        this(config, eventController, executor, "https://open.feishu.cn");
-    }
-
-    FeishuWebSocketClient(FeishuConfig config, FeishuEventController eventController,
-                           ExecutorService executor, String feishuBase) {
         this.config          = config;
         this.eventController = eventController;
-        this.executor        = executor;
-        this.feishuBase      = feishuBase;
-        this.currentDelay    = new AtomicInteger(config.getReconnectDelaySeconds());
+        this.executor         = executor;
     }
 
     @Override
@@ -72,23 +49,40 @@ public class FeishuWebSocketClient implements SmartLifecycle {
     @Override
     public void start() {
         if (!config.isEnabled()) return;
-        validateCredentials();   // 凭据检查在网络操作之前，空则抛 IllegalStateException
+        validateCredentials();
         running.set(true);
         log.info("飞书 WS 客户端启动");
-        refreshAppAccessToken();
-        connect();
+
+        EventDispatcher dispatcher = EventDispatcher.newBuilder("", "")
+                .onP2MessageReceiveV1(new ImService.P2MessageReceiveV1Handler() {
+                    @Override
+                    public void handle(P2MessageReceiveV1 event) {
+                        forwardToEventController(event);
+                    }
+                })
+                .build();
+
+        client = new Client.Builder(config.getAppId(), config.getAppSecret())
+                .eventHandler(dispatcher)
+                .build();
+
+        // Client.start() 在连接失败时会同步重试（默认间隔 120s），放executor 异步执行，避免阻塞应用启动
+        executor.submit(() -> {
+            try {
+                client.start();
+                log.info("飞书 WS 已连接");
+            } catch (Exception e) {
+                log.error("飞书 WS 连接失败", e);
+            }
+        });
     }
 
     @Override
     public void stop() {
         running.set(false);
-        WebSocketClient ws = wsClient;
-        if (ws != null) {
-            try { ws.closeBlocking(); } catch (Exception e) {
-                log.warn("关闭飞书 WS 失败: {}", e.getMessage());
-            }
-        }
-        log.info("飞书 WS 客户端已停止");
+        // oapi-sdk 2.4.19（Maven Central 当前最新发布版）未暴露公开的 close()/stop() API，
+        // 无法主动断开底层连接；进程退出时由容器 SIGKILL 兜底回收，不影响功能正确性。
+        log.info("飞书 WS 客户端已停止（标记位，底层连接随进程退出回收）");
     }
 
     @Override
@@ -103,136 +97,17 @@ public class FeishuWebSocketClient implements SmartLifecycle {
         }
     }
 
-    private void ensureTokenValid() {
-        if (System.currentTimeMillis() < appTokenExpiryMs - 300_000L) return;
-        refreshAppAccessToken();
-    }
-
-    private void refreshAppAccessToken() {
-        tokenLock.lock();
+    /** 将官方 SDK 的类型化事件还原为业务层一直消费的 {header, event} JSON 信封，复用既有 routeEvent 逻辑不变。*/
+    private void forwardToEventController(P2MessageReceiveV1 event) {
         try {
-            if (System.currentTimeMillis() < appTokenExpiryMs - 300_000L) return;
-            String url = feishuBase + "/open-apis/auth/v3/app_access_token/internal";
-            Map<String, String> body = new HashMap<String, String>();
-            body.put("app_id",     config.getAppId());
-            body.put("app_secret", config.getAppSecret());
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setAcceptCharset(Collections.singletonList(StandardCharsets.UTF_8));
-
-            RestTemplate rt = new RestTemplate();
-            ResponseEntity<String> res = rt.exchange(
-                    url, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
-            if (res.getStatusCode().is2xxSuccessful()) {
-                Map<?, ?> json   = objectMapper.readValue(res.getBody(), Map.class);
-                appAccessToken   = (String)  json.get("app_access_token");
-                int expire       = (Integer) json.get("expire");
-                appTokenExpiryMs = System.currentTimeMillis() + (expire - 300L) * 1000L;
-                log.info("飞书 app_access_token 刷新成功");
-            }
+            Map<String, Object> header = new HashMap<>();
+            header.put("event_type", "im.message.receive_v1");
+            Map<String, Object> envelope = new HashMap<>();
+            envelope.put("header", header);
+            envelope.put("event", objectMapper.readValue(Jsons.DEFAULT.toJson(event.getEvent()), Map.class));
+            eventController.routeEvent(objectMapper.writeValueAsString(envelope));
         } catch (Exception e) {
-            log.error("刷新 app_access_token 失败", e);
-        } finally {
-            tokenLock.unlock();
-        }
-    }
-
-    private void connect() {
-        try {
-            Map<String, String> headers = new HashMap<String, String>();
-            headers.put("Authorization", "Bearer " + appAccessToken);
-
-            URI uri = new URI(config.getWsEndpoint());
-            wsClient = new WebSocketClient(uri, headers) {
-                @Override
-                public void onOpen(ServerHandshake h) {
-                    log.info("飞书 WS 已连接");
-                    currentDelay.set(config.getReconnectDelaySeconds());
-                }
-
-                @Override
-                public void onMessage(String raw) {
-                    handleFrame(raw);
-                }
-
-                @Override
-                public void onClose(int code, String reason, boolean remote) {
-                    log.warn("飞书 WS 断线 code={}, reason={}", code, reason);
-                    if (running.get()) scheduleReconnect();
-                }
-
-                @Override
-                public void onError(Exception ex) {
-                    log.error("飞书 WS 错误", ex);
-                }
-            };
-            wsClient.connect();
-        } catch (Exception e) {
-            log.error("飞书 WS 连接失败", e);
-            if (running.get()) scheduleReconnect();
-        }
-    }
-
-    private void scheduleReconnect() {
-        int delay = currentDelay.get();
-        currentDelay.set(nextDelay(delay));
-        log.info("飞书 WS 将在 {}s 后重连", delay);
-        scheduler.schedule(new Runnable() {
-            @Override
-            public void run() {
-                if (!running.get()) return;
-                ensureTokenValid();
-                connect();
-            }
-        }, delay, TimeUnit.SECONDS);
-    }
-
-    int nextDelay(int current) {
-        int next = current * 2;
-        return Math.min(next, config.getReconnectMaxDelaySeconds());
-    }
-
-    private void handleFrame(String raw) {
-        try {
-            Map<?, ?> frame  = objectMapper.readValue(raw, Map.class);
-            Object typeObj   = frame.get("type");
-            int    frameType = typeObj instanceof Integer ? (Integer) typeObj : -1;
-
-            if (frameType == 2 || frameType == 14) {
-                Map<String, Object> pong = new HashMap<String, Object>();
-                pong.put("type",    frameType);
-                pong.put("service", 0);
-                pong.put("body",    "pong");
-                WebSocketClient ws = wsClient;
-                if (ws != null && ws.isOpen()) {
-                    ws.send(objectMapper.writeValueAsString(pong));
-                }
-                return;
-            }
-
-            String bodyStr = (String) frame.get("body");
-            if (bodyStr == null || bodyStr.isEmpty()) return;
-
-            String encryptKey = config.getEncryptKey();
-            if (encryptKey != null && !encryptKey.trim().isEmpty()) {
-                try {
-                    bodyStr = FeishuCrypto.decrypt(bodyStr, encryptKey);
-                } catch (Exception e) {
-                    log.error("飞书 WS payload 解密失败（协议层异常），关闭连接触发重连", e);
-                    WebSocketClient ws = wsClient;
-                    if (ws != null) ws.close();
-                    return;
-                }
-            }
-
-            try {
-                eventController.routeEvent(bodyStr);
-            } catch (Exception e) {
-                log.warn("飞书事件路由失败（数据层异常，跳过本条）: {}", e.getMessage());
-            }
-
-        } catch (Exception e) {
-            log.error("handleFrame 解析失败: {}", e.getMessage());
+            log.error("飞书事件转换失败（跳过本条，不影响 WS 连接）: {}", e.getMessage());
         }
     }
 }

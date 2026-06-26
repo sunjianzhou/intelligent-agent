@@ -15,11 +15,8 @@ class FeishuWebSocketClientTest {
         config.setAppId(appId);
         config.setAppSecret(appSecret);
         config.setEncryptKey("test-key");
-        config.setReconnectDelaySeconds(5);
-        config.setReconnectMaxDelaySeconds(300);
         FeishuEventController controller = Mockito.mock(FeishuEventController.class);
-        return new FeishuWebSocketClient(config, controller,
-                Executors.newSingleThreadExecutor(), "https://feishu-mock.test");
+        return new FeishuWebSocketClient(config, controller, Executors.newSingleThreadExecutor());
     }
 
     @Test
@@ -51,11 +48,9 @@ class FeishuWebSocketClientTest {
     }
 
     @Test
-    void reconnectDelay_doublesEachTime_cappedAtMax() {
-        FeishuWebSocketClient client = buildClient(false, "id", "secret");
-        assertThat(client.nextDelay(5)).isEqualTo(10);
-        assertThat(client.nextDelay(10)).isEqualTo(20);
-        assertThat(client.nextDelay(160)).isEqualTo(300); // 320 → 上限 300
-        assertThat(client.nextDelay(300)).isEqualTo(300);
+    void start_noop_whenDisabled() {
+        FeishuWebSocketClient client = buildClient(false, "", "");
+        assertThatCode(client::start).doesNotThrowAnyException();
+        assertThat(client.isRunning()).isFalse();
     }
 }

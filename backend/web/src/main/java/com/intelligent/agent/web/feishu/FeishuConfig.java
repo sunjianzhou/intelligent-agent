@@ -16,9 +16,6 @@ public class FeishuConfig {
     private String appSecret = "";
     private String encryptKey = "";
     private String verificationToken = "";
-    private String wsEndpoint = "wss://open.feishu.cn/event/v2/websocket/connect";
-    private int reconnectDelaySeconds = 5;
-    private int reconnectMaxDelaySeconds = 300;
 
     /** 机器人自身的 open_id，用于在群聊 mentions 列表中精确判断"是否 @ 了机器人"。
      *  留空时退化为"群里只要有人被 @ 就当作可能 @ 了机器人"的低精度启发式。
@@ -56,12 +53,6 @@ public class FeishuConfig {
     public void setEncryptKey(String encryptKey) { this.encryptKey = encryptKey; }
     public String getVerificationToken() { return verificationToken; }
     public void setVerificationToken(String verificationToken) { this.verificationToken = verificationToken; }
-    public String getWsEndpoint() { return wsEndpoint; }
-    public void setWsEndpoint(String wsEndpoint) { this.wsEndpoint = wsEndpoint; }
-    public int getReconnectDelaySeconds() { return reconnectDelaySeconds; }
-    public void setReconnectDelaySeconds(int reconnectDelaySeconds) { this.reconnectDelaySeconds = reconnectDelaySeconds; }
-    public int getReconnectMaxDelaySeconds() { return reconnectMaxDelaySeconds; }
-    public void setReconnectMaxDelaySeconds(int reconnectMaxDelaySeconds) { this.reconnectMaxDelaySeconds = reconnectMaxDelaySeconds; }
     public String getBotOpenId() { return botOpenId; }
     public void setBotOpenId(String botOpenId) { this.botOpenId = botOpenId; }
 }
