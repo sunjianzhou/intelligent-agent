@@ -109,3 +109,49 @@ def test_calendar_list_logs_warning_on_nonzero_code(caplog):
         result = tool.execute(calendar_id="cal_err", start_time="1", end_time="2")
 
     assert result["code"] == 99991663
+
+
+# ── 新增：open_id 存在时优先用 user_access_token ─────────────────────────────
+
+@responses.activate
+def test_calendar_list_uses_user_token_when_open_id_provided():
+    """有 open_id + 已授权时，发出的请求带 user_access_token。"""
+    events_url = "https://open.feishu.cn/open-apis/calendar/v4/calendars/cal_u/events"
+    responses.add(responses.GET, events_url, json={"code": 0, "data": {"items": []}})
+
+    def fake_get_valid_token(open_id):   # 同步 mock
+        return "u-user-access-token"
+
+    with patch("tools.builtin_tools.feishu_calendar.get_valid_token", side_effect=fake_get_valid_token):
+        from tools.builtin_tools.feishu_calendar import FeishuCalendarTool
+        tool = FeishuCalendarTool()
+        result = tool.execute(calendar_id="cal_u", start_time="1", end_time="2", open_id="ou_test")
+
+    assert responses.calls[0].request.headers["Authorization"] == "Bearer u-user-access-token"
+    assert result["code"] == 0
+
+
+@responses.activate
+def test_calendar_list_falls_back_to_tenant_when_not_authorized():
+    """有 open_id 但未授权时，fallback 到 tenant_access_token。"""
+    from services.feishu_oauth import OAuthNotAuthorizedError
+
+    TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+    events_url = "https://open.feishu.cn/open-apis/calendar/v4/calendars/cal_fb/events"
+    responses.add(responses.POST, TOKEN_URL,
+                  json={"code": 0, "tenant_access_token": "tok-tenant", "expire": 7200})
+    responses.add(responses.GET, events_url, json={"code": 0, "data": {"items": []}})
+
+    def raise_not_auth(open_id):   # 同步 mock
+        raise OAuthNotAuthorizedError("未授权")
+
+    with patch("tools.builtin_tools.feishu_calendar.get_valid_token", side_effect=raise_not_auth), \
+         patch.dict(os.environ, {"FEISHU_APP_ID": "a", "FEISHU_APP_SECRET": "s"}):
+        import importlib
+        import im.feishu_client as fc
+        importlib.reload(fc)
+        from tools.builtin_tools.feishu_calendar import FeishuCalendarTool
+        tool = FeishuCalendarTool()
+        result = tool.execute(calendar_id="cal_fb", start_time="1", end_time="2", open_id="ou_test")
+
+    assert responses.calls[-1].request.headers["Authorization"] == "Bearer tok-tenant"
