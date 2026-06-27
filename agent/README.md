@@ -31,6 +31,7 @@ agent/
 │   ├── conversations_router.py /api/conversations/* 历史会话 CRUD（T4）+ retract 撤回端点
 │   ├── projects_router.py      /api/project/* 项目规格/任务树/上下文
 │   ├── cloud_router.py         /api/cloud/* 云端服务商 CRUD + 激活切换
+│   ├── feishu_oauth_router.py  /api/feishu/oauth/* 飞书用户 OAuth 授权（authorize/callback/status）
 │   └── metrics.py              Prometheus 指标 (/metrics)
 │
 ├── core/                       ReAct 推理核心（God Class 已拆分，commit 528b787）
@@ -68,7 +69,11 @@ agent/
 │       ├── web_search.py       DuckDuckGo 搜索
 │       ├── shell_tool.py       Shell 命令（受目录白名单限制）
 │       ├── image_tool.py       图片生成（SiliconFlow API / 本地 SD WebUI）
-│       └── database/           MySQL 查询工具
+│       ├── database/           MySQL 查询工具
+│       ├── feishu_calendar.py  查询飞书日历（支持 user_access_token / tenant fallback）
+│       ├── feishu_task.py      查询飞书任务（支持 user_access_token / tenant fallback）
+│       ├── feishu_calendar_create.py  创建日历事件（需 OAuth user_access_token）
+│       └── feishu_task_write.py       创建/完成任务（需 OAuth user_access_token）
 │
 ├── personas/                   角色系统 Python 模块
 │   ├── role_manager.py         RoleManager（角色 CRUD + 激活状态持久化）
@@ -94,11 +99,14 @@ agent/
 │   ├── system_default.yaml     默认 system prompt 模板
 │   └── system_dolphin.yaml     dolphin 专用模板（含双语无限制声明）
 │
+├── soul/
+│   └── loader.py               SoulLoader（读取 {project_root}/soul/*.md，构建灵魂层 system prompt）
+│                               数据文件：SOUL.md / USER.md / MEMORY.md / IDENTITY.md / HEARTBEAT.md / whisper.md
 ├── analytics/                  使用统计接口（满意度/响应时间/工具排名）
 ├── config/
 │   └── settings.py             Pydantic-settings 全量配置（含 .env 读取）
 ├── data/                       运行时数据目录（runtime_config.json、user 偏好等）
-└── tests/                      pytest 单元测试套件（246 个，含角色、记忆、调度、消息撤回等）
+└── tests/                      pytest 单元测试套件（318 个，含角色、记忆、调度、消息撤回、飞书 OAuth 等）
 ```
 
 ---
@@ -257,6 +265,8 @@ Java 后端通过 `X-User-Id` 头透传真实用户 ID，Python middleware 优�
 | `cloud_api_key` | 空 | 云端 LLM API Key |
 | `cloud_base_url` | 空（自动推断）| 云端 base URL，留空则按 provider 自动设置 |
 | `scheduler_max_concurrent_tasks` | `5` | 调度器最大并发任务数 |
+| `feishu_oauth_redirect_uri` | 空 | 飞书 OAuth 公网 callback URL（Cloudflare Tunnel 等）|
+| `feishu_oauth_encryption_key` | 空 | Fernet 密钥，user_access_token 加密存储用（`Fernet.generate_key()`）|
 
 ---
 
@@ -273,7 +283,7 @@ pip install -e ".[dev]"               # 含 black/isort/pylint/mypy
 conda activate python310
 python -m uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000 --reload
 
-# 运行单元测试（246 个，< 30s）
+# 运行单元测试（318 个，< 30s）
 pytest tests/ -v
 
 # 代码质量
@@ -325,6 +335,9 @@ black . && isort . && pylint . && mypy .
 | POST | `/api/cloud/providers/{id}/activate` | 激活服务商（立即切换全局 provider）|
 | POST | `/api/cloud/deactivate` | 停用云端，切回 Ollama |
 | GET | `/api/cloud/presets` | 列出已知服务商 URL 预设（7 家）|
+| GET | `/api/feishu/oauth/authorize?open_id=xxx` | 获取飞书 OAuth 授权 URL（需 JWT）|
+| GET | `/api/feishu/oauth/callback` | OAuth 回调，返回 HTML（无 JWT，由飞书服务器重定向）|
+| GET | `/api/feishu/oauth/status?open_id=xxx` | 查询 OAuth 授权状态（需 JWT）|
 
 ---
 

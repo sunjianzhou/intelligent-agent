@@ -60,7 +60,8 @@ backend/web/src/main/java/.../
 │   ├── FeishuMessageSender.java      发送文本/卡片消息，返回飞书 message_id；recall() 撤回 API
 │   ├── FeishuCardBuilder.java        飞书交互卡片 JSON 构建
 │   ├── FeishuCrypto.java             飞书事件签名验证
-│   └── FeishuRecallBridge.java       内部 assistant_message_id ↔ 飞书 message_id 映射（内存态，封顶500条），撤回时联动调用 recall()
+│   ├── FeishuRecallBridge.java       内部 assistant_message_id ↔ 飞书 message_id 映射（内存态，封顶500条），撤回时联动调用 recall()
+│   └── FeishuOAuthController.java    /feishu/oauth/* 代理（callback 无 JWT / authorize+status 有 JWT，proxyGetRaw() 透传 HTML）
 ├── service/
 │   ├── AgentService.java            Python SSE 流读取 + WS 推送（线程池），done 事件转发 user_message_id/assistant_message_id
 │   └── PythonProxyService.java      通用 HTTP 代理（GET/POST/PUT/PATCH/DELETE）

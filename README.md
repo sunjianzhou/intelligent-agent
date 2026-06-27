@@ -73,7 +73,7 @@
 | 多模态输入 | 聊天输入区支持图片附件/粘贴，base64 全链路透传至 Ollama images 字段（llava / qwen-vl 等） |
 | 消息撤回 | 用户可手动撤回任意历史消息（user/assistant），从对话 JSON + 短期记忆中真正删除，避免错误回复污染后续上下文；蒸馏来源标记排除检索，飞书消息联动官方撤回 API |
 
-**内置工具**：计算器 · 时间查询 · 文件读写 · DuckDuckGo 搜索 · Shell 命令 · MySQL 查询 · 图片生成 · 记忆存储/检索 · 定时提醒创建 · 知识库上传/检索
+**内置工具**：计算器 · 时间查询 · 文件读写 · DuckDuckGo 搜索 · Shell 命令 · MySQL 查询 · 图片生成 · 记忆存储/检索 · 定时提醒创建 · 知识库上传/检索 · 飞书日历查询 · 飞书任务查询 · 飞书日历创建（OAuth）· 飞书任务写入（OAuth）
 
 ---
 
@@ -296,6 +296,8 @@ cd frontend && npm install && npm run dev       # http://localhost:5173
 | `CORS_ALLOWED_ORIGINS` | `*` | 生产环境应改为具体域名 |
 | `LOG_LEVEL` | `WARNING` | 日志级别（`DEBUG` 用于开发调试） |
 | `CONVERSATION_MAX_MESSAGES` | `200` | 单会话保存的最大消息条数，超出后截断最旧消息 |
+| `FEISHU_OAUTH_REDIRECT_URI` | 空 | 飞书 OAuth 公网 callback URL（Cloudflare Tunnel 等）|
+| `FEISHU_OAUTH_ENCRYPTION_KEY` | 空 | Fernet 密钥，user_access_token 加密存储用（`Fernet.generate_key()`）|
 
 ### 客户端配置（`client/config.yaml`）
 
@@ -426,10 +428,10 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 | 层 | 测试框架 | 覆盖范围 |
 |------|------|------|
-| Agent 单元测试 | pytest（246 个） | 记忆系统、工具调用、调度器持久化、角色加载、上下文提取、项目接口、消息撤回等 |
+| Agent 单元测试 | pytest（318 个） | 记忆系统、工具调用、调度器持久化、角色加载、上下文提取、项目接口、消息撤回、飞书 OAuth 等 |
 | Backend 单元测试 | JUnit 5 | WebSocket 消息序列化、JWT 工具类、JSON 工具类 |
 | Frontend 单元测试 | Vitest | JWT 处理逻辑等关键工具函数 |
-| E2E 端到端测试 | pytest + httpx（63 个） | 从客户端发起 HTTP 请求打通 Java:8080 → Python:8000，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知全链路 |
+| E2E 端到端测试 | pytest + httpx（68 个） | 从客户端发起 HTTP 请求打通 Java:8080 → Python:8000，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知/消息撤回全链路 |
 
 ### 离线与移动端体验
 
@@ -467,7 +469,7 @@ intelligent_agent/
 │   ├── prompts/                    System prompt YAML（default + dolphin）
 │   ├── services/                   OllamaProvider / OpenAIProvider / MCPClient
 │   ├── config/settings.py          Pydantic 配置（.env 驱动）
-│   └── tests/                      pytest 测试套件（152 个）
+│   └── tests/                      pytest 测试套件（318 个）
 │
 ├── backend/web/                    Java Spring Boot 网关
 │   └── src/main/java/…/
@@ -580,6 +582,9 @@ intelligent_agent/
 | POST | `/api/cloud/providers` | 新建云端服务商配置 |
 | POST | `/api/cloud/providers/{id}/activate` | 激活指定服务商（切换全局 provider）|
 | POST | `/api/cloud/deactivate` | 停用云端，切回 Ollama |
+| GET | `/api/feishu/oauth/authorize?open_id=xxx` | 获取飞书 OAuth 授权 URL（需 JWT）|
+| GET | `/api/feishu/oauth/callback` | OAuth 回调，返回 HTML（无 JWT，由飞书服务器重定向）|
+| GET | `/api/feishu/oauth/status?open_id=xxx` | 查询 OAuth 授权状态（需 JWT）|
 
 ### 知识库
 
