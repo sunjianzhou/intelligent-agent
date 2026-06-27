@@ -333,7 +333,14 @@ class ToolDispatcherMixin:
                 self.tool_manager.register_tool(FeishuCalendarTool(), "im")
                 from tools.builtin_tools.feishu_task import FeishuTaskTool
                 self.tool_manager.register_tool(FeishuTaskTool(), "im")
-                logger.info("飞书工具已注册（im_message / feishu_calendar_list / feishu_task_list）")
+                from tools.builtin_tools.feishu_calendar_create import FeishuCalendarCreateTool
+                self.tool_manager.register_tool(FeishuCalendarCreateTool(), "im")
+                from tools.builtin_tools.feishu_task_write import FeishuTaskWriteTool
+                self.tool_manager.register_tool(FeishuTaskWriteTool(), "im")
+                logger.info(
+                    "飞书工具已注册（im_message / feishu_calendar_list / feishu_task_list"
+                    " / feishu_calendar_create / feishu_task_write）"
+                )
             else:
                 logger.debug("FEISHU_APP_ID 未配置，跳过飞书工具注册")
         except Exception as _im_err:
