@@ -118,13 +118,19 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 |------|------|------|
 | CalculatorTool | `calculator.py` | 数学计算（eval 沙箱） |
 | TimeTool | `time_tool.py` | 时间查询 |
-| FileTool | `file_tool.py` | 文件读写（受 filesystem_allowed_dirs 限制） |
+| FileTool | `file_tool.py` | 文件读写（受 filesystem_allowed_dirs 限制；`soul/MEMORY.md` 白名单） |
 | WebSearchTool | `web_search.py` | DuckDuckGo 搜索 |
 | ShellTool | `shell_tool.py` | Shell 命令（受目录白名单限制） |
 | DatabaseTool | `database/` | MySQL 查询 |
 | ImageGenerationTool | `image_tool.py` | 图片生成（ComfyUI/SD WebUI/diffusers/SiliconFlow 四种 Provider） |
+| feishu_calendar_list | `feishu_calendar.py` | 日历查询（tenant 身份，支持 user_access_token 优先） |
+| feishu_task_list | `feishu_task.py` | 待办查询（tenant 身份，支持 user_access_token 优先） |
+| feishu_calendar_create | `feishu_calendar_create.py` | 创建日历事件（user_access_token，OAuth 授权必需） |
+| feishu_task_write | `feishu_task_write.py` | 创建/完成任务（user_access_token，OAuth 授权必需） |
 
 另有通过 `FunctionTool` 动态注册的工具：`store_memory`、`search_memories`、`create_reminder`、`create_periodic_reminder` 等。
+
+**Feishu OAuth**（2026-06-27）：新增 `agent/services/feishu_oauth.py` Token Manager 和 `agent/api/feishu_oauth_router.py` 端点支持用户 OAuth 授权，获取 `user_access_token` 访问个人日历/待办。
 
 **知识库**（`api/knowledge_router.py`）：独立 FastAPI 路由，上传 .txt/.md/.pdf/.json（≤10MB），按段落/句子边界分块后写入 ChromaDB 独立集合（`knowledge_{user_id}`）。每次 `_build_messages_async()` 时语义检索注入 `[KNOWLEDGE]` 区块。
 
@@ -167,6 +173,8 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 | `jwt_secret` | 必填 | 与 Java 和 client 保持一致 |
 | `cloud_provider/model` | 空 | 配置后启用云端 LLM fallback |
 | `image_gen_provider` | `siliconflow` | 图片生成提供商 |
+| `feishu_oauth_redirect_uri` | 空 | OAuth 回调地址（需公网可达） |
+| `feishu_oauth_encryption_key` | 空 | user_access_token 加密密钥（Fernet 格式） |
 
 所有参数可通过 Web UI（`/admin/mcp` → 系统资源配置）动态修改，写入 `data/runtime_config.json`，重启后自动恢复。
 

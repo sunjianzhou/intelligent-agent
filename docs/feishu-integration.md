@@ -149,3 +149,35 @@ Agent 会自动调用 `im_message(receiver_id="ou_xxxxx", msg_type="text", conte
 | file | 文件 |
 | sticker | 表情包 |
 | emoji | Emoji |
+
+## 个人日历/任务 OAuth 授权（user_access_token）
+
+应用 `tenant_access_token` 只能访问应用自建或共享的日历/任务。要读写**你的私人日历和飞书任务**，
+需先完成一次 OAuth 授权，获取 `user_access_token`。
+
+### 一次性配置
+
+```env
+# .env.docker 追加
+FEISHU_OAUTH_REDIRECT_URI=https://{tunnel域名}/feishu/oauth/callback
+FEISHU_OAUTH_ENCRYPTION_KEY=<Fernet.generate_key() 输出>
+```
+
+生成 Fernet 密钥：
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+飞书开放平台后台：「安全设置」tab → 「重定向 URL」填入 tunnel callback 地址；
+「权限管理」开通 `contact:user.id:readonly` / `calendar:calendar` / `calendar:calendar:write` /
+`task:task` / `task:task:write`；「版本管理与发布」发布新版本。
+
+### 授权流程（每次 refresh_token 过期后重做，约 30 天一次）
+
+1. 启动 Cloudflare Tunnel：`docker compose --profile tunnel up -d`
+2. 在聊天中说「给我飞书日历授权链接」，agent 返回授权 URL
+3. 浏览器打开链接，点「允许」
+4. 浏览器跳转到 callback 页显示「授权成功」即完成
+
+之后 `feishu_calendar_list` / `feishu_task_list` 传入 `open_id` 参数即可访问个人数据；
+`feishu_calendar_create` / `feishu_task_write` 则必须传入已授权的 `open_id`。

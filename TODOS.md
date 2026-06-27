@@ -128,6 +128,19 @@
 
 ---
 
+## ~~TODO-85: 飞书个人日历/任务 OAuth 授权~~ ✅ 已完成（2026-06-27）
+
+**结果**：
+- `agent/services/feishu_oauth.py` — OAuth Token Manager（Fernet 加密 / asyncio.Lock 刷新 / state CSRF 防护）
+- `agent/api/feishu_oauth_router.py` — 3 个端点（authorize / callback / status）
+- `agent/tools/builtin_tools/feishu_calendar_create.py` — 创建日历事件（user_access_token）
+- `agent/tools/builtin_tools/feishu_task_write.py` — 创建/完成任务（user_access_token）
+- `feishu_calendar.py` / `feishu_task.py` — 升级为 user_access_token 优先，tenant fallback
+- `backend/.../feishu/FeishuOAuthController.java` — callback 透传无 JWT，authorize/status 有 JWT
+- Token 多用户 JSON（含 refresh_expires_at 30 天监控）+ Fernet 加密存储
+
+---
+
 ## ~~TODO-84: [SETUP] 从零接入飞书自建应用（用户侧手动操作）~~ ✅ 已完成（2026-06-26）
 
 **背景**：代码侧（Java WS 客户端、事件解析、卡片发送、渠道感知 system prompt、群聊静默、心跳主动联系、日历/待办只读工具）早在 TODO-21/79~82 全部落地，且 `feishu.enabled=false` 时 `FeishuWebSocketClient.isAutoStartup()` 直接跳过，不影响现有 PWA/CLI 使用。目前唯一缺的是真实的飞书自建应用凭证——这一步只能用户自己在浏览器里完成，AI 无法代为操作。
