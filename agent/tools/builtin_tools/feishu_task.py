@@ -63,6 +63,6 @@ class FeishuTaskTool(BaseTool):
         if open_id:
             try:
                 return get_valid_token(open_id)
-            except Exception as e:
+            except OAuthNotAuthorizedError as e:
                 logger.warning(f"user_access_token 获取失败，fallback 到 tenant token: {e}")
         return _get_tenant_access_token()

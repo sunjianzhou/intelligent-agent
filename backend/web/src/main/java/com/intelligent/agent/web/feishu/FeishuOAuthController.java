@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.servlet.http.HttpServletRequest;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 
 /**
  * 飞书 OAuth 代理 Controller。
@@ -40,7 +42,12 @@ public class FeishuOAuthController extends AbstractProxyController {
     public ResponseEntity<?> oauthStatus(
             @RequestParam("open_id") String openId,
             HttpServletRequest req) {
-        return proxyGet("/api/feishu/oauth/status?open_id=" + openId, req);
+        try {
+            String encodedOpenId = URLEncoder.encode(openId, "UTF-8");
+            return proxyGet("/api/feishu/oauth/status?open_id=" + encodedOpenId, req);
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException(e); // UTF-8 is always supported
+        }
     }
 
     /** 有 JWT：前端获取授权链接。 */
@@ -48,6 +55,11 @@ public class FeishuOAuthController extends AbstractProxyController {
     public ResponseEntity<?> authorize(
             @RequestParam("open_id") String openId,
             HttpServletRequest req) {
-        return proxyGet("/api/feishu/oauth/authorize?open_id=" + openId, req);
+        try {
+            String encodedOpenId = URLEncoder.encode(openId, "UTF-8");
+            return proxyGet("/api/feishu/oauth/authorize?open_id=" + encodedOpenId, req);
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException(e); // UTF-8 is always supported
+        }
     }
 }

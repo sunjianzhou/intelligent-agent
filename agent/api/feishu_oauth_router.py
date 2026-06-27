@@ -1,4 +1,7 @@
 """飞书 OAuth 端点：authorize / callback / status。"""
+import asyncio
+
+import requests
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -25,6 +28,14 @@ _HTML_DENIED = """<!DOCTYPE html><html><head><meta charset="utf-8">
 </body></html>"""
 
 
+def _error_html(detail: str) -> str:
+    return (
+        '<!DOCTYPE html><html><head><meta charset="utf-8">'
+        "<title>授权失败</title></head><body>"
+        f"<h2>&#x274C; 授权失败</h2><p>{detail}</p></body></html>"
+    )
+
+
 @router.get("/authorize")
 async def authorize(open_id: str = Query(..., description="用户 open_id")):
     """返回飞书 OAuth 授权链接。"""
@@ -46,11 +57,12 @@ async def callback(
         raise HTTPException(status_code=400, detail="缺少 code 或 state 参数")
 
     try:
-        exchange_code(code, state)
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, lambda: exchange_code(code, state))
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=400, detail=f"飞书 token 换取失败: {e}")
+        return HTMLResponse(content=_error_html(str(e)), status_code=400)
+    except (RuntimeError, requests.RequestException) as e:
+        return HTMLResponse(content=_error_html(f"飞书 token 换取失败: {e}"), status_code=400)
 
     return HTMLResponse(_HTML_SUCCESS)
 
