@@ -1,7 +1,7 @@
 # 智能体项目 — AI 上下文速查文档
 
 > **本文档专为大模型阅读设计**。新对话开始时先读此文件，5 分钟内建立完整项目认知，无需再反复询问基础背景。
-> 最后更新：2026-06-15
+> 最后更新：2026-06-27
 
 ---
 
@@ -127,6 +127,7 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 | feishu_task_list | `feishu_task.py` | 待办查询（tenant 身份，支持 user_access_token 优先） |
 | feishu_calendar_create | `feishu_calendar_create.py` | 创建日历事件（user_access_token，OAuth 授权必需） |
 | feishu_task_write | `feishu_task_write.py` | 创建/完成任务（user_access_token，OAuth 授权必需） |
+| im_message | `im/feishu_client.py`（`FeishuIMTool`） | 发送飞书 IM 消息（tenant access token，bot 身份） |
 
 另有通过 `FunctionTool` 动态注册的工具：`store_memory`、`search_memories`、`create_reminder`、`create_periodic_reminder` 等。
 
@@ -173,6 +174,8 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 | `jwt_secret` | 必填 | 与 Java 和 client 保持一致 |
 | `cloud_provider/model` | 空 | 配置后启用云端 LLM fallback |
 | `image_gen_provider` | `siliconflow` | 图片生成提供商 |
+| `feishu_app_id` | 空 | 飞书应用 App ID（环境变量 `FEISHU_APP_ID`） |
+| `feishu_app_secret` | 空 | 飞书应用 App Secret（环境变量 `FEISHU_APP_SECRET`） |
 | `feishu_oauth_redirect_uri` | 空 | OAuth 回调地址（需公网可达） |
 | `feishu_oauth_encryption_key` | 空 | user_access_token 加密密钥（Fernet 格式） |
 
@@ -205,9 +208,10 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 | `CloudProxyController` | `/api/cloud/*` | 云端服务商 CRUD + 激活切换代理 |
 | `AnalyticsProxyController` | `/api/analytics/*` | 统计分析代理 |
 | `ImageProxyController` | `/api/images/*` | 图片文件代理 |
+| `FeishuOAuthController` | `/feishu/oauth/*` | 飞书 OAuth 三端点透传（authorize / callback / status） |
 | `SpaController` | `/**` | Vue Router history mode 兜底 |
 
-所有代理 Controller 均继承 `AbstractProxyController`，统一 `proxy.get/post/put/delete/patch(path, userId)` 调用。
+所有代理 Controller 均继承 `AbstractProxyController`，统一 `proxy.get/post/put/delete/patch(path, userId)` 调用。`proxyGetRaw()` 方法返回原始 String（供 HTML 响应端点，如 OAuth callback 使用）。
 
 ### 4.3 WebSocket 消息类型
 
@@ -224,6 +228,7 @@ Java `AgentService` 中有 `@Scheduled(fixedDelay=5000)` 方法，每 5 秒轮�
 - 前端用户 token：有效期 24h，活跃用户通过 `X-New-Token` 响应头自动滑动续期
 - 服务间 token：Java → Python 用 `sub="java-service"` 的固定 token（临近过期自动刷新）
 - WS 握手：`JwtHandshakeInterceptor` 在握手阶段验证 query string token，无效直接 401
+- `JwtAuthFilter` 白名单精确化（2026-06-27）：从宽泛 `/feishu/` 改为三条精确路径：`/feishu/event`、`/feishu/callback/interactive`、`/feishu/oauth/callback`
 
 ---
 
@@ -331,6 +336,7 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 | J-02 | `PythonProxyService` 和 `AgentService` 各维护独立 serviceToken，重复逻辑 | 低 |
 | J-03 | `CloseableHttpClient.createDefault()` 无连接池配置，高并发下可能连接耗尽 | 低 |
 | J-04 | ✅ WS 握手 JWT 验证已实现（`JwtHandshakeInterceptor`） | — |
+| TODO-85 | ✅ 飞书个人日历/任务 OAuth 授权全栈（2026-06-27）：`feishu_oauth.py` + `feishu_oauth_router.py` + `FeishuOAuthController.java` | — |
 
 ### 前端
 
@@ -381,16 +387,17 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 | 多模态聊天输入（图片附件/粘贴，全链路 base64 透传） | 2026-06-15 |
 | diffusers 进程内推理增强（进度/img2img/热切换/锁） | 2026-06-15 |
 | LOW 级安全/质量问题全部清零（路径遍历/消息上限配置/函数拆分） | 2026-06-15 |
+| 飞书 OAuth 用户授权全栈（TODO-85）：OAuth Token Manager + 3 端点 + Java 透传 + 5 个飞书内置工具（日历读写/任务读写/IM） | 2026-06-27 |
 
 ---
 
-## 九、当前运行状态（2026-06-15）
+## 九、当前运行状态（2026-06-27）
 
-- **已提交到 GitHub**：所有修改均已推送 master 分支（最新 commit `9cb8bc9`）
-- **测试覆盖**：152 个 Agent 单元测试 + 63 个 E2E 测试，全部通过
+- **已提交到 GitHub**：所有修改均已推送 master 分支
+- **测试覆盖**：318 个 Agent 单元测试 + 63 个 E2E 测试，全部通过
 - **使用的模型**：`dolphin:latest`（无限制人格），支持切换到 qwen2.5:7b 等
 - **Python 环境**：conda `python310`（Python 3.10）
-- **待办**：TODO-1（HTTPS 生产部署）/ TODO-21（Feishu Bot）/ TODO-12（性能优化待触发条件）/ TODO-60~73（多模态持久化/前端超时/知识库质量等高中优先级 bug）
+- **待办**：TODO-1（HTTPS 生产部署）/ TODO-12（性能优化待触发条件）/ TODO-60~73（多模态持久化/前端超时/知识库质量等高中优先级 bug）
 
 ---
 
@@ -405,7 +412,7 @@ cd backend/web && ./mvnw spring-boot:run
 cd frontend && npm run dev
 
 # 测试
-cd agent && pytest tests/ -v                      # 单元测试（152个）
+cd agent && pytest tests/ -v                      # 单元测试（318个）
 cd tests/e2e && pytest -v                         # E2E 测试（63个，需服务运行）
 
 # Docker 全栈
