@@ -66,6 +66,9 @@ _pending_states: dict = {}
 # per-open_id threading.Lock，防止并发重复刷新
 _refresh_locks: defaultdict = defaultdict(threading.Lock)
 
+# 文件级锁：保护 _save_token 的 read-modify-write，防止跨用户互相覆盖
+_file_lock = threading.Lock()
+
 
 # ── 自定义异常 ────────────────────────────────────────────────────────────────
 
@@ -105,11 +108,12 @@ def _load_tokens() -> dict:
 
 
 def _save_token(open_id: str, data: dict) -> None:
-    tokens = _load_tokens()
-    tokens[open_id] = data
-    Path(_TOKEN_FILE).parent.mkdir(parents=True, exist_ok=True)
-    with open(_TOKEN_FILE, "w", encoding="utf-8") as f:
-        json.dump(tokens, f, ensure_ascii=False, indent=2)
+    with _file_lock:
+        tokens = _load_tokens()
+        tokens[open_id] = data
+        Path(_TOKEN_FILE).parent.mkdir(parents=True, exist_ok=True)
+        with open(_TOKEN_FILE, "w", encoding="utf-8") as f:
+            json.dump(tokens, f, ensure_ascii=False, indent=2)
 
 
 # ── 内部：Auth Header ─────────────────────────────────────────────────────────
