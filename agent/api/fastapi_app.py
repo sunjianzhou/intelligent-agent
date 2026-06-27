@@ -155,15 +155,15 @@ async def lifespan(app: FastAPI):
         except Exception as _te:
             logger.warning(f"教学推送注册失败（非致命）: {_te}")
 
-    # 飞书 OAuth 配置校验
-    if os.environ.get("FEISHU_ENABLED", "").lower() == "true":
+    # 飞书 OAuth 配置校验（与工具注册门控对齐：FEISHU_APP_ID 设置即激活）
+    if settings.feishu_app_id:
         if not settings.feishu_oauth_redirect_uri:
             raise RuntimeError(
-                "FEISHU_ENABLED=true 时必须配置 FEISHU_OAUTH_REDIRECT_URI"
+                "FEISHU_APP_ID 已设置时必须配置 FEISHU_OAUTH_REDIRECT_URI"
             )
         if not settings.feishu_oauth_encryption_key:
             raise RuntimeError(
-                "FEISHU_ENABLED=true 时必须配置 FEISHU_OAUTH_ENCRYPTION_KEY"
+                "FEISHU_APP_ID 已设置时必须配置 FEISHU_OAUTH_ENCRYPTION_KEY"
             )
 
     # JWT 密钥检查
