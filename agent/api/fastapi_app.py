@@ -1,6 +1,7 @@
 """Python 智能体 FastAPI 服务入口（精简版编排器）。"""
 import asyncio
 import logging
+import os
 import traceback
 from contextlib import asynccontextmanager
 
@@ -153,6 +154,17 @@ async def lifespan(app: FastAPI):
             _register_teaching(_state.agent.task_manager.scheduler)
         except Exception as _te:
             logger.warning(f"教学推送注册失败（非致命）: {_te}")
+
+    # 飞书 OAuth 配置校验
+    if os.environ.get("FEISHU_ENABLED", "").lower() == "true":
+        if not settings.feishu_oauth_redirect_uri:
+            raise RuntimeError(
+                "FEISHU_ENABLED=true 时必须配置 FEISHU_OAUTH_REDIRECT_URI"
+            )
+        if not settings.feishu_oauth_encryption_key:
+            raise RuntimeError(
+                "FEISHU_ENABLED=true 时必须配置 FEISHU_OAUTH_ENCRYPTION_KEY"
+            )
 
     # JWT 密钥检查
     if settings.jwt_enabled:

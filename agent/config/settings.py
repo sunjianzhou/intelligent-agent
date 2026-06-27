@@ -165,6 +165,11 @@ class Settings(BaseSettings):
     image_gen_diffusers_model: str = "runwayml/stable-diffusion-v1-5"
     image_gen_diffusers_device: str = "auto"   # auto | cuda | cpu | mps
 
+    # ── 飞书IM 相关配置 ────────────────────────────────────────────────────────
+    # 飞书 OAuth 用户授权
+    feishu_oauth_redirect_uri: str = ""      # 公网 callback URL（Cloudflare Tunnel 域名）
+    feishu_oauth_encryption_key: str = ""    # Fernet 密钥，python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
     model_config = ConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
 
