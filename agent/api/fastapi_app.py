@@ -299,6 +299,9 @@ app.include_router(image_router)
 from api.teaching_router import router as teaching_router
 app.include_router(teaching_router)
 
+from api.feishu_oauth_router import router as feishu_oauth_router
+app.include_router(feishu_oauth_router)
+
 app.middleware("http")(metrics_middleware)
 
 
@@ -317,7 +320,8 @@ async def rate_limit_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def jwt_auth_middleware(request: Request, call_next):
-    white_list = ["/health", "/", "/docs", "/openapi.json", "/redoc", "/metrics"]
+    white_list = ["/health", "/", "/docs", "/openapi.json", "/redoc", "/metrics",
+                  "/api/feishu/oauth/callback"]
     if request.url.path.startswith("/api/images/"):
         request.state.user_id = "anonymous"
         return await call_next(request)
