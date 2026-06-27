@@ -146,17 +146,39 @@ async def get_valid_token(open_id: str) -> str:
 
 ## 7. Feishu OAuth Scope 清单
 
-| scope | 用途 |
-|-------|------|
-| `contact:user.id:readonly` | 用 code 换 token 后识别用户身份（必须） |
-| `calendar:calendar` | 读个人日历事件列表 |
-| `calendar:calendar:write` | 创建/更新日历事件 |
-| `task:task` | 读飞书任务 |
-| `task:task:write` | 创建/完成任务 |
+| scope | 用途 | 个人测试企业可用性 |
+|-------|------|------------------|
+| `contact:user.id:readonly` | 用 code 换 token 后识别用户身份（必须） | ✅ 基础权限，无限制 |
+| `calendar:calendar` | 读个人日历事件列表 | ✅ 可用（已在 6-26 测试环境验证） |
+| `calendar:calendar:write` | 创建/更新日历事件 | ✅ 可用（与读权限同包） |
+| `task:task` | 读飞书任务 | ⚠️ 需实测（Task v2 API，2023 年后引入，理论上测试企业可用） |
+| `task:task:write` | 创建/完成任务 | ⚠️ 需实测（同上） |
+
+**个人测试企业 vs 企业正式应用的差异说明：**
+
+- **「应用发布」**：测试企业无需经过飞书市场审核。路径：「版本管理与发布」→ 创建版本 → 发布范围选「指定成员」（仅填自己）→ 确认发布即可。无需等待飞书审核。
+- **「重定向 URL」入口**：飞书开放平台 → 你的应用 → **「安全设置」tab**（与「凭证与基础信息」同级）→ 「重定向 URL」栏目。
+- **Task scope 受限替代方案**：若 `task:task` 在测试企业下申请失败（权限管理页提示"无法开通"），可退化为仅实现日历读写，任务工具继续使用 `tenant_access_token`（只能访问应用自建任务）；待日后迁移正式企业应用时再开通。
 
 ---
 
-## 8. 文件改动清单
+## 8. 工具总览表
+
+本次改动后，飞书相关工具共 7 个，分两层 token 体系：
+
+| 工具名 | 文件 | Token 类型 | 操作 | 状态 |
+|--------|------|-----------|------|------|
+| `im_message` | `feishu_client.py` | tenant | 发送 IM 消息（7 种类型） | 现有，不变 |
+| `feishu_calendar_list` | `feishu_calendar.py` | user（fallback tenant） | 读日历事件 | **修改** |
+| `feishu_task_list` | `feishu_task.py` | user（fallback tenant） | 读任务列表 | **修改** |
+| `feishu_calendar_create` | `feishu_calendar_create.py` | user（必须） | 创建/更新日历事件 | **新增** |
+| `feishu_task_write` | `feishu_task_write.py` | user（必须） | 创建/完成任务 | **新增** |
+
+> 写工具（`feishu_calendar_create` / `feishu_task_write`）不提供 tenant fallback——没有用户授权就没有权限写个人数据，应直接报错提示重新授权。
+
+---
+
+## 8b. 文件改动清单
 
 ### 新增（Python）
 
@@ -181,7 +203,7 @@ async def get_valid_token(open_id: str) -> str:
 
 | 文件 | 改动 |
 |------|------|
-| `backend/.../feishu/FeishuOAuthController.java` | 透传 `/feishu/oauth/callback`（无 JWT）和 `/feishu/oauth/status`（有 JWT） |
+| `backend/.../feishu/FeishuOAuthController.java` | 透传 `/feishu/oauth/callback`（无 JWT）+ `/feishu/oauth/status`（有 JWT）+ `/feishu/oauth/authorize`（有 JWT） |
 
 ---
 
@@ -245,8 +267,10 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 ## 12. 部署流程
 
+**适用账户**：个人测试企业下的个人账户（open_id: `ou_1d2e0c80f6feffa546a1b28664bb39c2`）。非个人账户（公司企业账户）不适用本设计。
+
 ```bash
-# 1. 生成 Fernet 密钥（只需一次，妥善备份）
+# 1. 生成 Fernet 密钥（只需一次，妥善备份至 .env.docker 同级安全位置）
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 
 # 2. 写入 .env.docker（FEISHU_OAUTH_REDIRECT_URI + FEISHU_OAUTH_ENCRYPTION_KEY）
@@ -254,7 +278,9 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 # 3. 启动 Cloudflare Tunnel（获取公网域名）
 docker compose --profile tunnel up -d
 
-# 4. 将 tunnel 域名填入飞书开放平台「重定向 URL」并发布新版本
+# 4. 飞书开放平台「安全设置」tab → 「重定向 URL」→ 填入 tunnel 域名
+#    「权限管理」→ 开通 7 节中的 scope
+#    「版本管理与发布」→ 创建版本 → 发布范围「指定成员」（仅自己）→ 发布
 
 # 5. 重建服务
 docker compose up -d --build
@@ -271,3 +297,16 @@ docker compose up -d --build
 - Web 端专属「飞书授权」按钮（聊天入口已够用）
 - 多租户（企业版）支持
 - WebSocket 实时推送 token 过期事件
+- **多飞书账户切换**：当前仅支持个人测试企业下的个人账户（单账户配置足够）。长期目标是阶段 6 将灵魂层迁移至 PWA，飞书作为过渡通道；届时 IM 通道可平滑切换，不需要在此阶段预建多账户切换机制。
+
+---
+
+## 14. 长期双线战略（背景说明）
+
+| 阶段 | 主通道 | 说明 |
+|------|--------|------|
+| 当前（短期） | 飞书 IM | 个人测试企业下账户，本设计跑通 |
+| 过渡期 | 飞书 IM + PWA 并行 | 两通道共存，灵魂层共享 |
+| 阶段 6（长期） | PWA（终极住所） | 飞书作为可选辅助通道，不再是主要住所 |
+
+架构原则：所有飞书工具均通过 `open_id` 参数化（不硬编码单一用户），为后续多账户或切换 PWA 保留最小扩展面。
