@@ -131,7 +131,7 @@
 ## ~~TODO-85: 飞书个人日历/任务 OAuth 授权~~ ✅ 已完成（2026-06-27）
 
 **结果**：
-- `agent/services/feishu_oauth.py` — OAuth Token Manager（Fernet 加密 / asyncio.Lock 刷新 / state CSRF 防护）
+- `agent/services/feishu_oauth.py` — OAuth Token Manager（Fernet 加密 / threading.Lock 刷新 / state CSRF 防护）
 - `agent/api/feishu_oauth_router.py` — 3 个端点（authorize / callback / status）
 - `agent/tools/builtin_tools/feishu_calendar_create.py` — 创建日历事件（user_access_token）
 - `agent/tools/builtin_tools/feishu_task_write.py` — 创建/完成任务（user_access_token）
