@@ -146,6 +146,22 @@ public abstract class AbstractProxyController {
         return errResponse();
     }
 
+    // ── RAW GET（非 JSON 响应，如 HTML OAuth 回调页） ─────────────────────────────
+
+    /**
+     * 代理 GET 请求，返回原始字符串（不解析为 JSON）。
+     * 用于返回 HTML 等非 JSON 响应的场景（如 OAuth callback 成功页）。
+     * 不附加 userId（用于无 JWT 的飞书回调等）。
+     */
+    protected ResponseEntity<String> proxyGetRaw(String path) {
+        try {
+            return proxy.get(path);
+        } catch (Exception e) {
+            log.error("GET raw {} 失败", path, e);
+            return ResponseEntity.status(500).body("Internal proxy error");
+        }
+    }
+
     // ── 公共工具 ──────────────────────────────────────────────────────────────
 
     protected ResponseEntity<Map<String, Object>> errResponse() {
