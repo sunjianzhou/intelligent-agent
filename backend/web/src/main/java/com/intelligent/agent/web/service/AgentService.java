@@ -148,7 +148,11 @@ public class AgentService {
                 body.put("scene_mentioned", Boolean.TRUE.equals(request.getSceneMentioned()));
             }
 
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, authHeaders());
+            HttpHeaders headers = authHeaders();
+            if (request.getUserId() != null && !request.getUserId().isEmpty()) {
+                headers.set("X-User-Id", request.getUserId());
+            }
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
             ResponseEntity<String> response = restTemplate.exchange(
                     url, HttpMethod.POST, entity, String.class);
 

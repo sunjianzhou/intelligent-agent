@@ -30,19 +30,56 @@
 
 ---
 
+## 启动速查
+
+### 前置：配置文件（必须，不在 git 里）
+
+```bash
+cp .env.example        .env           # compose 级变量（JWT_SECRET、ADMIN_PASSWORD 等）
+cp .env.docker.example .env.docker    # 容器运行时变量（含 IM 集成、云端 LLM 等）
+```
+
+两个文件都要填写 `JWT_SECRET`（≥32 字符随机串）和 `ADMIN_PASSWORD`，其余按需填写。  
+**第三方拿到此仓库后同样需要完成此步骤，否则所有 docker compose 命令均无法运行。**
+
+### 按需选择启动命令
+
+| 命令 | 启动的服务 | 适用场景 |
+|------|-----------|---------|
+| `docker compose up -d --build` | agent · backend · frontend | 纯本地使用，云端 LLM 或不需要公网 |
+| `docker compose --profile tunnel up -d --build` | agent · backend · frontend · **cloudflared** | 需要公网访问（企业微信/飞书回调），使用云端 LLM |
+| `docker compose --profile local up -d --build` | agent · backend · frontend · **ollama · comfyui** | 本地 GPU 推理，无需公网 |
+| `docker compose --profile local --profile tunnel up -d --build` | 全部服务 | 本地 GPU 推理 + 公网隧道 |
+
+> **重启宿主机后**：Docker Desktop 若已设置为随系统自启，容器会自动恢复，无需手动执行任何命令。  
+> 如需手动恢复，执行与原来相同的启动命令即可。Cloudflare 隧道会自动重连，域名和回调 URL 无需重新配置。
+
+### 企业微信 / 飞书接入额外需要
+
+| 步骤 | 说明 |
+|------|------|
+| 在 Cloudflare Zero Trust 创建 Tunnel | 获取 token 后填入 `.env` 的 `CLOUDFLARE_TUNNEL_TOKEN` |
+| 在 `.env.docker` 填写 IM 平台密钥 | 企业微信：`WECOM_*` 系列；飞书：`FEISHU_*` 系列 |
+| 在 IM 平台后台配置回调 URL | `https://<你的域名>/wecom/callback` 或 `/feishu/callback` |
+| 将服务器出口 IP 加入 IM 平台可信 IP | 发送消息走服务器真实 IP，不经 Cloudflare（`curl https://ipinfo.io/ip` 查询） |
+
+---
+
 ## 目录
 
-1. [模块介绍](#模块介绍)
-2. [快速上手](#快速上手)
-3. [配置说明](#配置说明)
-4. [核心功能详解](#核心功能详解)
-5. [非功能性能力](#非功能性能力)
-6. [项目结构](#项目结构)
-7. [API 参考](#api-参考)
-8. [最佳实践](#最佳实践)
-9. [开发指南](#开发指南)
-10. [常用运维命令](#常用运维命令)
-11. [常见问题](#常见问题)
+1. [启动速查](#启动速查)
+2. [模块介绍](#模块介绍)
+3. [快速上手](#快速上手)
+4. [配置说明](#配置说明)
+5. [核心功能详解](#核心功能详解)
+6. [非功能性能力](#非功能性能力)
+7. [项目结构](#项目结构)
+8. [API 参考](#api-参考)
+9. [最佳实践](#最佳实践)
+10. [开发指南](#开发指南)
+11. [常用运维命令](#常用运维命令)
+12. [公网接入（Cloudflare Tunnel）](#公网接入cloudflare-tunnel)
+13. [常见问题](#常见问题)
 
 ---
 
@@ -735,6 +772,132 @@ docker compose down -v                          # 同上 + 删除数据卷（慎
 cd agent && python tools/migrate_chromadb.py --dry-run
 cd agent && python tools/migrate_chromadb.py
 ```
+
+---
+
+## 公网接入（Cloudflare Tunnel）
+
+当前系统通过 **Cloudflare Tunnel** 对外暴露服务，无需公网 IP 和端口映射。
+
+### 工作原理
+
+```
+企业微信 / 飞书回调 / 外部浏览器
+        │  HTTPS  intelligent.eu.cc
+        ▼
+Cloudflare 边缘节点（全球 CDN，中国可访问）
+        │  Cloudflare Tunnel（ia-cloudflared 容器主动建立加密长连接）
+        ▼
+ia-cloudflared 容器
+        │  Docker 内网 HTTP
+        ▼
+ia-backend:8080（Java 网关）→ ia-agent:8000（Python AI）
+```
+
+`ia-cloudflared` 在启动时主动向 Cloudflare 建立隧道，域名 `intelligent.eu.cc` 的 DNS 指向该隧道，**不绑定宿主机 IP**。启动命令：
+
+```bash
+# 仅公网隧道（云端 LLM，不需要本地 Ollama）
+docker compose --profile tunnel up -d --build
+
+# 本地 Ollama 推理 + 公网隧道（两个 profile 同时指定）
+docker compose --profile local --profile tunnel up -d --build
+
+# 查看隧道连接状态
+docker logs ia-cloudflared --tail 20
+```
+
+> **profile 速查**：`local` = ollama + comfyui；`tunnel` = cloudflared + ngrok（二选一，当前用 cloudflared）；两者互不包含，按需组合。
+
+---
+
+### 服务重启的影响
+
+| 重启操作 | 影响 | 说明 |
+|----------|------|------|
+| `docker compose restart ia-backend` | 约 5-30s 不可用 | cloudflared 保持运行，backend 重启期间请求到达后无法转发 |
+| `docker compose restart ia-cloudflared` | 通常 <5s 短暂断连 | 重连 Cloudflare 极快，DNS 无任何变化 |
+| 宿主机重启 | 取决于 Docker Desktop 自启设置 | Docker Desktop 若随系统自启，`restart: unless-stopped` 会自动拉起全部容器，域名通常 1-2 分钟内恢复 |
+| 更换 tunnel token | 需手动重启 cloudflared | `docker compose restart ia-cloudflared` |
+
+> **关键结论**：企业微信 / 飞书的回调 URL（`https://intelligent.eu.cc/wecom/callback` 等）在重启后**无需重新配置**，域名绑定不变。
+
+---
+
+### 迁移到新服务器
+
+如需将整套系统迁移到另一台机器，按以下顺序操作：
+
+**第一步：在旧机器上导出数据卷**
+
+需要迁移的卷（按重要性排序）：
+
+| 卷名 | 内容 | 是否必须迁移 |
+|------|------|------------|
+| `agent_data` | 对话历史、任务、角色偏好、云端服务商配置、运行时参数 | **必须** |
+| `agent_chroma_data` | 短期记忆向量库（ChromaDB） | **必须**（否则记忆清零） |
+| `agent_chroma_data_longterm` | 长期记忆向量库（ChromaDB） | **必须**（否则记忆清零） |
+| `agent_cache` | HuggingFace embedding 模型缓存（`all-MiniLM-L6-v2`） | **必须**（`HF_HUB_OFFLINE=1` 下无此卷 Agent 无法启动） |
+| `ollama_models` | Ollama 本地推理模型（体积大，数 GB） | 可选：不迁移则在新机器重新 `ollama pull` |
+
+```bash
+# 必须迁移的四个卷
+docker run --rm -v agent_data:/data -v $(pwd):/backup alpine \
+  tar czf /backup/agent_data.tar.gz /data
+docker run --rm -v agent_chroma_data:/data -v $(pwd):/backup alpine \
+  tar czf /backup/agent_chroma_data.tar.gz /data
+docker run --rm -v agent_chroma_data_longterm:/data -v $(pwd):/backup alpine \
+  tar czf /backup/agent_chroma_data_longterm.tar.gz /data
+docker run --rm -v agent_cache:/data -v $(pwd):/backup alpine \
+  tar czf /backup/agent_cache.tar.gz /data
+
+# 可选：ollama 模型（体积大，也可到新机器重新 pull）
+docker run --rm -v ollama_models:/data -v $(pwd):/backup alpine \
+  tar czf /backup/ollama_models.tar.gz /data
+```
+
+**第二步：在新机器上准备代码和配置**
+
+```bash
+git clone <repo-url>
+
+# 手动拷贝（不在 git 里，含 tunnel token / 密钥等）：
+# .env.docker    ← 所有运行时密钥
+# .env           ← compose 变量（含 CLOUDFLARE_TUNNEL_TOKEN）
+
+# 恢复数据卷
+docker run --rm -v agent_data:/data -v $(pwd):/backup alpine \
+  tar xzf /backup/agent_data.tar.gz -C /
+docker run --rm -v agent_chroma_data:/data -v $(pwd):/backup alpine \
+  tar xzf /backup/agent_chroma_data.tar.gz -C /
+docker run --rm -v agent_chroma_data_longterm:/data -v $(pwd):/backup alpine \
+  tar xzf /backup/agent_chroma_data_longterm.tar.gz -C /
+docker run --rm -v agent_cache:/data -v $(pwd):/backup alpine \
+  tar xzf /backup/agent_cache.tar.gz -C /
+```
+
+**第三步：启动**
+
+```bash
+docker compose --profile tunnel up -d --build
+```
+
+Cloudflare Tunnel token **不绑定机器**。新机器用同一个 token 启动 `ia-cloudflared` 后，隧道自动切换过来，域名 `intelligent.eu.cc` 无需任何 DNS 改动。
+
+**第四步：更新 IM 平台可信 IP（如有）**
+
+企业微信/飞书等平台收到回调时走 Cloudflare Tunnel（入站），但 Java 后端**主动调用** IM 平台 API 发送消息时（出站），走的是新服务器的真实出口 IP，不经 Cloudflare。
+
+```bash
+# 查新机器出口 IP
+curl https://ipinfo.io/ip
+```
+
+然后去各平台后台更新 IP 白名单：
+- **企业微信**：应用管理 → 选应用 → **企业可信 IP** → 添加新 IP
+- **飞书**：若有出站 IP 白名单配置，同样更新
+
+回调 URL、Token、AES Key 等均不需要改动。
 
 ---
 

@@ -191,8 +191,8 @@ services:
     image: ngrok/ngrok:latest
     container_name: ia-ngrok
     command: "http --domain=${NGROK_DOMAIN:-think-roundish-unfold.ngrok-free.dev} backend:8080"
-    environment:
-      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    env_file:
+      - .env.docker
     restart: unless-stopped
     networks:
       - ia_net
@@ -207,12 +207,12 @@ services:
     profiles: [tunnel]
     image: cloudflare/cloudflared:latest
     container_name: ia-cloudflared
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-placeholder}
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     restart: unless-stopped
     networks:
       - ia_net
     depends_on:
-      frontend:
+      backend:
         condition: service_healthy
 
   # ── HTTPS 反向代理（可选，按需启动）────────────────────────

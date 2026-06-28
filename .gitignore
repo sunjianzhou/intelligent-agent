@@ -3,6 +3,9 @@
 !**/.env.example
 .env.docker
 
+# 本地基础设施备忘（含域名/tunnel/敏感 IP，不提交）
+LOCAL_INFRA.md
+
 # Python
 **/__pycache__/
 **/*.pyc
