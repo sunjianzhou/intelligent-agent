@@ -1,26 +1,45 @@
 # 智能体项目 — AI 上下文速查文档
 
 > **本文档专为大模型阅读设计**。新对话开始时先读此文件，5 分钟内建立完整项目认知，无需再反复询问基础背景。
-> 最后更新：2026-06-27
+> 最后更新：2026-06-28
 
 ---
 
-## 一、整体架构（三层）
+## 一、整体架构（三层 + 公网接入 + IM 渠道）
 
 ```
 浏览器 / CLI
     │  WebSocket + REST
+    │
+企业微信 / 飞书（IM 渠道）
+    │  HTTPS 回调 / WS 长连接
+    │
+    ▼
+[公网入口] intelligent.eu.cc（Cloudflare Tunnel，ia-cloudflared 容器）
+    │  HTTP 内网转发
     ▼
 Java 后端 (Spring Boot, port 8080)   ← 纯网关，无 AI 逻辑
+    │                                   含 WeComCallbackController、FeishuWebSocketClient
     │  HTTP + SSE
     ▼
 Python Agent (FastAPI, port 8000)    ← 所有 AI 逻辑在此
     │
-    ├── Ollama (port 11434)           ← 本地 LLM 推理
+    ├── Ollama (port 11434)           ← 本地 LLM 推理（--profile local）
+    ├── 云端 LLM（DashScope/DeepSeek 等）← Ollama 不可用时 fallback，IM 渠道默认走此
     └── ChromaDB (进程内)            ← 向量存储（具名 Docker 卷）
 ```
 
-**Docker 容器名**：`ia-frontend`(3000) / `ia-backend`(8080) / `ia-agent`(8000) / `ia-ollama`(11434)
+**Docker 容器名**：
+- 核心：`ia-frontend`(3000) / `ia-backend`(8080) / `ia-agent`(8000)
+- 可选：`ia-ollama`(11434, `--profile local`) / `ia-comfyui`(8188, `--profile local`) / `ia-cloudflared`(`--profile tunnel`)
+
+**profile 组合**：
+| 命令 | 启动内容 |
+|------|---------|
+| `docker compose up -d` | 核心三件套（无公网隧道） |
+| `docker compose --profile tunnel up -d` | + cloudflared（公网 + IM 回调） |
+| `docker compose --profile local up -d` | + ollama + comfyui（本地推理 + 图片生成） |
+| `docker compose --profile local --profile tunnel up -d` | 全量 |
 
 **前端热更新命令**（不需要重建镜像，~10秒）：
 ```bash
@@ -209,9 +228,16 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 | `AnalyticsProxyController` | `/api/analytics/*` | 统计分析代理 |
 | `ImageProxyController` | `/api/images/*` | 图片文件代理 |
 | `FeishuOAuthController` | `/feishu/oauth/*` | 飞书 OAuth 三端点透传（authorize / callback / status） |
+| `WeComCallbackController` | `/wecom/callback` | 企业微信 URL 验证（GET）+ 消息接收（POST）；异步处理，立即返回 200 |
 | `SpaController` | `/**` | Vue Router history mode 兜底 |
 
 所有代理 Controller 均继承 `AbstractProxyController`，统一 `proxy.get/post/put/delete/patch(path, userId)` 调用。`proxyGetRaw()` 方法返回原始 String（供 HTML 响应端点，如 OAuth callback 使用）。
+
+**企业微信相关类**：
+- `WeComConfig`：读取 `WECOM_*` 环境变量（corpId / agentId / secret / token / aesKey）
+- `WeComCrypto`：SHA1 签名验证 + AES-CBC 消息解密 + 加密（PKCS#7 block=32）
+- `WeComMessageSender`：调用微信 API 发送消息（维护 access_token，自动刷新）
+- `AgentService.chatFull()`：通过 `X-User-Id` 头将真实用户 ID（`wecom:SunJianZhou`、`feishu:ou_xxx`）透传到 Python Agent；2026-06-28 修复前此头缺失，导致 IM 消息以 `java-service` 身份处理（影响模型选择、记忆隔离）
 
 ### 4.3 WebSocket 消息类型
 
@@ -391,12 +417,17 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 
 ---
 
-## 九、当前运行状态（2026-06-27）
+## 九、当前运行状态（2026-06-28）
 
 - **已提交到 GitHub**：所有修改均已推送 master 分支
 - **测试覆盖**：318 个 Agent 单元测试 + 63 个 E2E 测试，全部通过
-- **使用的模型**：`dolphin:latest`（无限制人格），支持切换到 qwen2.5:7b 等
+- **使用的模型**：Web UI 用户默认 `dolphin:latest`；IM 渠道（企业微信/飞书）用户默认云端 `gemma4-31B`
 - **Python 环境**：conda `python310`（Python 3.10）
+- **公网接入**：Cloudflare Tunnel（`ia-cloudflared`）→ `intelligent.eu.cc`，中国可访问
+- **已接通的 IM 渠道**：
+  - 飞书（Feishu）：WS 长连接，启动自动建立，P2P + 群聊均支持
+  - 企业微信（WeCom）：HTTP 回调 `https://intelligent.eu.cc/wecom/callback`，已验证端到端收发
+- **IM 渠道用户隔离**：`feishu:{open_id}` / `wecom:{userName}` 各有独立记忆和模型偏好
 - **待办**：TODO-1（HTTPS 生产部署）/ TODO-12（性能优化待触发条件）/ TODO-60~73（多模态持久化/前端超时/知识库质量等高中优先级 bug）
 
 ---
@@ -415,8 +446,11 @@ cd frontend && npm run dev
 cd agent && pytest tests/ -v                      # 单元测试（318个）
 cd tests/e2e && pytest -v                         # E2E 测试（63个，需服务运行）
 
-# Docker 全栈
-docker compose up -d
+# Docker 全栈（按需选 profile）
+docker compose up -d                                            # 核心三件套
+docker compose --profile tunnel up -d --build                  # + 公网隧道（IM 回调）
+docker compose --profile local up -d --build                   # + ollama + comfyui（本地 GPU）
+docker compose --profile local --profile tunnel up -d --build  # 全量
 
 # 强杀 Windows 上卡住的 Python agent
 wmic process where "commandline like '%uvicorn%'" delete
