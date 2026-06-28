@@ -182,8 +182,26 @@ services:
       retries: 3
       start_period: 10s
 
-  # ── Cloudflare Tunnel（外网访问，按需启动）──────────────────
+  # ── ngrok 公网隧道（外网访问，按需启动）────────────────────
   # 启动方式：docker-compose --profile tunnel up -d
+  # 使用前在 .env.docker 中设置 NGROK_AUTHTOKEN 和 NGROK_DOMAIN
+  # 静态域名：think-roundish-unfold.ngrok-free.dev（绑定到 Java backend:8080）
+  ngrok:
+    profiles: [tunnel]
+    image: ngrok/ngrok:latest
+    container_name: ia-ngrok
+    command: "http --domain=${NGROK_DOMAIN:-think-roundish-unfold.ngrok-free.dev} backend:8080"
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    restart: unless-stopped
+    networks:
+      - ia_net
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # ── Cloudflare Tunnel（外网访问，按需启动）──────────────────
+  # 启动方式：docker-compose --profile tunnel up -d（与 ngrok 二选一）
   # 使用前在 .env.docker 中设置 CLOUDFLARE_TUNNEL_TOKEN=<token>
   cloudflared:
     profiles: [tunnel]

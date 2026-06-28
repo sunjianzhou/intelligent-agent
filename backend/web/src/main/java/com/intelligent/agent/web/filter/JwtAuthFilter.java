@@ -36,6 +36,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             "/feishu/event",              // 飞书 Webhook 事件接收端点（外部回调，无 JWT）
             "/feishu/callback/interactive", // 飞书卡片回调，由 FeishuCrypto.verifyEventSignature 鉴权
             "/feishu/oauth/callback",     // 飞书 OAuth 回调（用户浏览器重定向，无 JWT）
+            "/wecom/callback",            // 企业微信回调（由 WeComCrypto.verifySignature 鉴权）
             "/ws",
             // 前端静态资源（生产模式由 Java 直接提供）
             "/index.html",

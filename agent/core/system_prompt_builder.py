@@ -23,7 +23,7 @@ class SystemPromptBuilder:
 
     # 不注入 whisper（私密档案）段的渠道：消息会离开本机，发往受平台内容政策约束
     # 的第三方 IM，必须保持克制风格。新增渠道时在此追加。
-    _WHISPER_EXCLUDED_CHANNELS = {"feishu_im"}
+    _WHISPER_EXCLUDED_CHANNELS = {"feishu_im", "wecom"}
 
     def build(
         self,
