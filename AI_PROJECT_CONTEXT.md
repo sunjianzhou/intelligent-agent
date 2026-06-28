@@ -8,15 +8,20 @@
 ## 一、整体架构（三层 + 公网接入 + IM 渠道）
 
 ```
-浏览器 / CLI
-    │  WebSocket + REST
+浏览器（PWA）/ CLI
     │
 企业微信 / 飞书（IM 渠道）
     │  HTTPS 回调 / WS 长连接
     │
     ▼
-[公网入口] intelligent.eu.cc（Cloudflare Tunnel，ia-cloudflared 容器）
-    │  HTTP 内网转发
+[公网入口] intelligent.eu.cc（Cloudflare Tunnel → ia-frontend:80）
+    │
+    │  前端 Nginx 路由：
+    │  /         → Vue SPA（PWA 可安装）
+    │  /api/*    → proxy → backend:8080
+    │  /ws       → proxy → backend:8080（WebSocket Upgrade）
+    │  /wecom/*  → proxy → backend:8080（企业微信回调）
+    │  /feishu/* → proxy → backend:8080（飞书回调）
     ▼
 Java 后端 (Spring Boot, port 8080)   ← 纯网关，无 AI 逻辑
     │                                   含 WeComCallbackController、FeishuWebSocketClient
@@ -24,8 +29,8 @@ Java 后端 (Spring Boot, port 8080)   ← 纯网关，无 AI 逻辑
     ▼
 Python Agent (FastAPI, port 8000)    ← 所有 AI 逻辑在此
     │
-    ├── Ollama (port 11434)           ← 本地 LLM 推理（--profile local）
-    ├── 云端 LLM（DashScope/DeepSeek 等）← Ollama 不可用时 fallback，IM 渠道默认走此
+    ├── Ollama (port 11434)           ← 本地 LLM 推理（--profile local，默认模型 dolphin:latest）
+    ├── 云端 LLM（按需在 /admin/models 激活，不作全局默认）
     └── ChromaDB (进程内)            ← 向量存储（具名 Docker 卷）
 ```
 
@@ -421,13 +426,15 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 
 - **已提交到 GitHub**：所有修改均已推送 master 分支
 - **测试覆盖**：318 个 Agent 单元测试 + 63 个 E2E 测试，全部通过
-- **使用的模型**：Web UI 用户默认 `dolphin:latest`；IM 渠道（企业微信/飞书）用户默认云端 `gemma4-31B`
+- **全局默认模型**：`dolphin:latest`（所有渠道统一，云端配置已注释，按需在 `/admin/models` 激活）
 - **Python 环境**：conda `python310`（Python 3.10）
-- **公网接入**：Cloudflare Tunnel（`ia-cloudflared`）→ `intelligent.eu.cc`，中国可访问
+- **公网接入**：Cloudflare Tunnel（`ia-cloudflared`）→ `intelligent.eu.cc` → `ia-frontend:80`
+  - PWA 已可从手机公网安装（iOS Safari：分享 → 添加到主屏幕）
 - **已接通的 IM 渠道**：
   - 飞书（Feishu）：WS 长连接，启动自动建立，P2P + 群聊均支持
   - 企业微信（WeCom）：HTTP 回调 `https://intelligent.eu.cc/wecom/callback`，已验证端到端收发
 - **IM 渠道用户隔离**：`feishu:{open_id}` / `wecom:{userName}` 各有独立记忆和模型偏好
+- **飞书心跳巡检**：已暂停（dolphin 无法正确执行开放式主动联系决策，每次输出无意义占位消息；如需恢复建议搭配云端模型）
 - **待办**：TODO-1（HTTPS 生产部署）/ TODO-12（性能优化待触发条件）/ TODO-60~73（多模态持久化/前端超时/知识库质量等高中优先级 bug）
 
 ---
