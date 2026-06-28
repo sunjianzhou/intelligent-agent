@@ -171,6 +171,8 @@ class Settings(BaseSettings):
     feishu_app_secret: str = ""              # 已绑定 FEISHU_APP_SECRET 环境变量
     feishu_oauth_redirect_uri: str = ""      # 公网 callback URL（Cloudflare Tunnel 域名）
     feishu_oauth_encryption_key: str = ""    # Fernet 密钥，python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    feishu_heartbeat_receiver_id: str = ""   # 心跳巡检接收方 open_id（留空=不注册心跳任务）
+    feishu_heartbeat_cron: str = "0 * * * *" # 心跳巡检频率，默认每小时整点
 
     model_config = ConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 

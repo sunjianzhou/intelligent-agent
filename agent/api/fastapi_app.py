@@ -155,6 +155,34 @@ async def lifespan(app: FastAPI):
         except Exception as _te:
             logger.warning(f"教学推送注册失败（非致命）: {_te}")
 
+        # 飞书心跳巡检任务（TODO-84）：feishu_heartbeat_receiver_id 设置时自动注册，
+        # 已存在则跳过，防止重启后重复创建。
+        if settings.feishu_app_id and settings.feishu_heartbeat_receiver_id:
+            try:
+                _sch = _state.agent.task_manager.scheduler
+                _hb_exists = any(t.action == "heartbeat_check" for t in _sch.tasks.values())
+                if not _hb_exists:
+                    _sch.create_cron_task(
+                        name="飞书心跳巡检",
+                        action="heartbeat_check",
+                        cron_expression=settings.feishu_heartbeat_cron,
+                        args={
+                            "receiver_id": settings.feishu_heartbeat_receiver_id,
+                            "receive_id_type": "open_id",
+                            "user_id": "java-service",
+                        },
+                        description="定期巡检是否需要主动联系用户，安静时段自动跳过",
+                        tags=["heartbeat", "feishu"],
+                    )
+                    logger.info(
+                        f"飞书心跳巡检任务已注册，接收方: {settings.feishu_heartbeat_receiver_id}"
+                        f"，频率: {settings.feishu_heartbeat_cron}"
+                    )
+                else:
+                    logger.info("飞书心跳巡检任务已存在，跳过重复注册")
+            except Exception as _hb_err:
+                logger.warning(f"飞书心跳巡检任务注册失败（非致命）: {_hb_err}")
+
     # 飞书 OAuth 配置校验（与工具注册门控对齐：FEISHU_APP_ID 设置即激活）
     if settings.feishu_app_id:
         if not settings.feishu_oauth_redirect_uri:

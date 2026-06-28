@@ -151,7 +151,7 @@
 - [x] 开通「读取用户发给机器人的单聊消息」权限（此权限是 P2P 事件的关键，最初缺失导致事件日志为空，详见 `docs/feishu-integration.md` 排查节）
 - [x] 记录凭证，`FEISHU_BOT_OPEN_ID=ou_8788d2ac4f9c24f15bc74ea1859bf9c5` 已填入 `.env.docker`
 - [x] 飞书 App 里给机器人发消息，确认全链路通（事件触达 WS → Java → Python agent → dolphin 推理 → 回复卡片）
-- [ ] 创建心跳巡检定时任务（用户 open_id: `ou_1d2e0c80f6feffa546a1b28664bb39c2`，见 `docs/feishu-integration.md`）
+- [x] 创建心跳巡检定时任务（用户 open_id: `ou_1d2e0c80f6feffa546a1b28664bb39c2`，见 `docs/feishu-integration.md`）✅ 已完成（2026-06-28）
 
 **涉及文件**：`docs/feishu-integration.md`（已补充排查节 + 已知账号信息）、`.env.docker`（已填入 FEISHU_BOT_OPEN_ID）
 
