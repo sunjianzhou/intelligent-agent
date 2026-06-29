@@ -22,13 +22,16 @@
         </div>
         <StatusBar />
       </div>
+      <!-- 移动端底部导航（桌面端通过 CSS display:none 隐藏） -->
+      <BottomTabBar @open-more="showMorePanel = true" />
+      <MorePanel v-model="showMorePanel" />
     </div>
     <ConfirmDialog />
   </div>
 </template>
 
 <script setup>
-import { onMounted, computed, watch } from 'vue'
+import { onMounted, onUnmounted, computed, watch, ref } from 'vue'
 import { useWebSocketStore } from '@/stores/websocket'
 import { useAuthStore } from '@/stores/auth'
 import { useErrorBusStore } from '@/stores/errorBus'
@@ -36,6 +39,8 @@ import { useProjectStore } from '@/stores/project'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import Header from '@/components/layout/Header.vue'
 import StatusBar from '@/components/layout/StatusBar.vue'
+import BottomTabBar from '@/components/layout/BottomTabBar.vue'
+import MorePanel from '@/components/layout/MorePanel.vue'
 import LoginView from '@/views/LoginView.vue'
 import InstallPrompt from '@/components/InstallPrompt.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -44,6 +49,7 @@ const websocketStore = useWebSocketStore()
 const authStore      = useAuthStore()
 const projectStore   = useProjectStore()
 useErrorBusStore()   // 激活 store，确保 api.js 首次调用前已初始化
+const showMorePanel  = ref(false)
 const isMockMode     = computed(() => websocketStore.isMockMode)
 const isLoginPage    = computed(() => !authStore.isLoggedIn)
 
@@ -76,6 +82,19 @@ watch(
 onMounted(() => {
   // 首屏已登录且 WS 尚未建立时兜底连接（watch immediate 通常已覆盖）
   if (authStore.isLoggedIn && !websocketStore.isConnected) _doConnect()
+
+  // iOS PWA 键盘弹出时 visualViewport 收缩，将差值写入 CSS 变量
+  let vpCleanup
+  if (window.visualViewport) {
+    const handler = () => {
+      const kb = Math.max(0, window.innerHeight - window.visualViewport.height)
+      document.documentElement.style.setProperty('--keyboard-height', `${kb}px`)
+    }
+    handler() // 立即初始化，避免首次渲染前变量未定义
+    window.visualViewport.addEventListener('resize', handler)
+    vpCleanup = () => window.visualViewport.removeEventListener('resize', handler)
+  }
+  onUnmounted(() => vpCleanup?.())
 })
 </script>
 
