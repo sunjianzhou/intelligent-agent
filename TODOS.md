@@ -656,3 +656,15 @@ AbortController + 30s 超时早已实现；补 `options.timeout` 支持。commit
 
 ---
 
+## TODO-PWA-1: BottomTabBar / MorePanel 导航数据源统一（📌 低优先级）
+
+**背景**：`routes.config.js` 是项目唯一导航数据源（CLAUDE.md 明文约定），但 `BottomTabBar.vue` 和 `MorePanel.vue` 在 2026-06-29 的移动端 PWA 改造中直接硬编码了路径/图标/标签数组，未从 `NAV_ITEMS`/`ADMIN_ITEMS` 派生。  
+**风险**：后续只改 `routes.config.js` 新增页面时，BottomTabBar / MorePanel 会静默遗漏，造成移动端导航不一致。
+
+**期望做法**：
+1. `BottomTabBar.vue` 从 `routes.config.js` 的 `NAV_ITEMS` 中取聊天/角色/记忆三项，"更多"Tab 保持 emit `open-more`
+2. `MorePanel.vue` 的常用组 / AI 能力组 / 运维组从 `NAV_ITEMS`/`ADMIN_ITEMS`/`SYSTEM_ITEMS` 按 `group`/`adminLevel` 字段筛选
+
+**涉及文件**：`frontend/src/components/layout/BottomTabBar.vue`, `frontend/src/components/layout/MorePanel.vue`, `frontend/src/config/routes.config.js`
+
+---

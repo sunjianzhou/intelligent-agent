@@ -2274,7 +2274,7 @@ onUnmounted(() => {
    *
    * ⚠️  清空按钮的确认必须使用 useConfirmDialogStore，严禁 window.confirm()。
    *     window.confirm() 在 PWA/WebView 模式下被浏览器静默拦截，曾是 7 次重复 bug 的根因。
-   *     ChatView.vue 中的 handleClearChat() 已正确使用 confirmDialog.open()，实现前请 grep 验证：
+   *     ChatView.vue 中的 handleClearChat() 已正确使用 confirmDialog.confirm()，实现前请 grep 验证：
    *     grep -n "window.confirm\|handleClearChat" frontend/src/views/ChatView.vue
    */
   .toolbar-export-wrap { display: none; }
