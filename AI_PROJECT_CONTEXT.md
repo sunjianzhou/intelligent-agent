@@ -1,7 +1,7 @@
 # 智能体项目 — AI 上下文速查文档
 
 > **本文档专为大模型阅读设计**。新对话开始时先读此文件，5 分钟内建立完整项目认知，无需再反复询问基础背景。
-> 最后更新：2026-06-28
+> 最后更新：2026-06-29
 
 ---
 
@@ -349,15 +349,15 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 | D-03 | `_TEXT_TOOL_CALLING_PATTERNS` 硬编码，新模型需改源码 | 低 |
 | D-04 | ✅ L1 缓存 key 已包含 persona 维度 | — |
 | D-05 | `asyncio.ensure_future` 在模块级别调用，依赖 uvicorn 复用事件循环 | 低 |
-| TODO-60 | 多模态图片未持久化到对话历史（`_append_messages()` 未存 `images_b64`） | 高 |
-| TODO-62 | diffusers `_progress_state` 无锁全局变量，多用户并发时进度信息错乱 | 高 |
-| TODO-63 | `knowledge_router` 上传日志泄露物理路径 | 高(安全) |
-| TODO-64 | 多模态"图片前缀"文本两处重复硬编码 | 中 |
-| TODO-65 | diffusers 模型加载裸 `except Exception` 吞掉异常 | 高 |
-| TODO-66 | `project_id` 未写入对话历史 metadata | 高 |
-| TODO-71 | `knowledge_router` 先读文件再检查大小，大文件先占内存再拒绝 | 中 |
-| TODO-74 | `knowledge_router` 按固定字符数分块，不考虑句子/段落边界 | 中 |
-| TODO-75 | 缺少请求 traceID，三层链路无法关联追踪 | 中 |
+| TODO-60 | ✅ 多模态图片持久化到对话历史（2026-06-16） | — |
+| TODO-62 | ✅ diffusers `_progress_state` 加锁，无锁并发问题修复（2026-06-16） | — |
+| TODO-63 | ✅ `knowledge_router` 上传日志去除物理路径（2026-06-16） | — |
+| TODO-64 | ✅ 多模态图片前缀提取为 `MULTIMODAL_IMAGE_PREFIX` 常量（早期实现） | — |
+| TODO-65 | ✅ diffusers 裸 `except` 补 `exc_info=True`（2026-06-16） | — |
+| TODO-66 | ✅ `project_id` 写入对话历史 metadata（2026-06-16） | — |
+| TODO-71 | ✅ `knowledge_router` 文件大小优先检查 + 状态码 413（2026-06-16） | — |
+| TODO-74 | ✅ `knowledge_router` 段落/句子感知智能分块 + overlap（2026-06-16） | — |
+| TODO-75 | ✅ 请求 traceID 全链路：`ChatRequest.request_id` + 前端 `crypto.randomUUID()`（2026-06-16） | — |
 
 ### Java 后端
 
@@ -376,13 +376,13 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 | F-02 | 角色文件标题与"角色设定"功能名歧义 | 低 |
 | F-04 | 会话历史标题更新依赖异步 `_persist()`，Sidebar 可能延迟刷新 | 低 |
 | F-05 | `api.js` 中 `switchModel` 动态 import 与静态 import 混用 | 低 |
-| TODO-61 | 前端历史会话加载丢弃图片数据（loadSession 不恢复 imagePreview） | 高 |
-| TODO-67 | `api.js` 所有 fetch 无全局超时，网络卡顿时 UI 冻结 | 高 |
-| TODO-68 | `websocket.js` 遗留 6 条 console.log 未清理 | 中 |
-| TODO-69 | 反馈提交失败无用户提示（仅 console.error） | 中 |
-| TODO-70 | 附图按钮上传中无禁用态，用户可重复点击覆盖 | 中 |
-| TODO-72 | `uploadKnowledgeFile` 绕过通用 request()，无统一错误处理 | 中 |
-| TODO-73 | 分支对话丢弃附图数据 | 中 |
+| TODO-61 | ✅ 前端历史会话加载恢复图片数据（2026-06-16） | — |
+| TODO-67 | ✅ `api.js` 全局请求超时（AbortController + 30s，早期实现） | — |
+| TODO-68 | ✅ `websocket.js` console.log 全部改为 warn/error（早期实现） | — |
+| TODO-69 | ✅ 反馈提交失败有 `ElMessage.error` 提示（早期实现） | — |
+| TODO-70 | ✅ 附图按钮上传中 `isReadingImage` disabled 绑定（早期实现） | — |
+| TODO-72 | ✅ `uploadKnowledgeFile` 改用通用 `request()`，60s 超时（2026-06-16） | — |
+| TODO-73 | ✅ 分支对话 `branchFromMessage` 补复制 `imagePreview`/`images_b64`（2026-06-16） | — |
 
 ### 基础设施
 
@@ -418,6 +418,7 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 | 多模态聊天输入（图片附件/粘贴，全链路 base64 透传） | 2026-06-15 |
 | diffusers 进程内推理增强（进度/img2img/热切换/锁） | 2026-06-15 |
 | LOW 级安全/质量问题全部清零（路径遍历/消息上限配置/函数拆分） | 2026-06-15 |
+| 多模态图片持久化 + 前端历史恢复 + diffusers 并发锁 + 知识库智能分块 + 请求 traceID 等（TODO-60~75） | 2026-06-16 |
 | 飞书 OAuth 用户授权全栈（TODO-85）：OAuth Token Manager + 3 端点 + Java 透传 + 5 个飞书内置工具（日历读写/任务读写/IM） | 2026-06-27 |
 
 ---
@@ -435,7 +436,7 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
   - 企业微信（WeCom）：HTTP 回调 `https://intelligent.eu.cc/wecom/callback`，已验证端到端收发
 - **IM 渠道用户隔离**：`feishu:{open_id}` / `wecom:{userName}` 各有独立记忆和模型偏好
 - **飞书心跳巡检**：已暂停（dolphin 无法正确执行开放式主动联系决策，每次输出无意义占位消息；如需恢复建议搭配云端模型）
-- **待办**：TODO-1（HTTPS 生产部署）/ TODO-12（性能优化待触发条件）/ TODO-60~73（多模态持久化/前端超时/知识库质量等高中优先级 bug）
+- **待办**：TODO-12（性能优化 #4/#5/#8，待触发条件）/ TODO-IMG-1（SD WebUI 进度/img2img/采样器，低优先级）/ TODO-IMG-6（NSFW 过滤，生产加固 P3）
 
 ---
 
