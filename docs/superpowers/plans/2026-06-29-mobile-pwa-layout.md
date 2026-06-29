@@ -106,22 +106,18 @@ git commit -m "feat(mobile): update viewport-fit=cover and PWA meta for iPhone 1
 
 /* ── 移动端全局基础（iPhone 16 PWA 适配）────────────────── */
 
-/* 防止 iOS Safari 自动放大 <16px 表单字体触发页面缩放 */
+/* 防止 iOS Safari 在 font-size < 16px 时自动放大页面触发缩放（iOS 临界值为 16px） */
 input,
 textarea,
 select {
+  font-size: 16px;
   -webkit-text-size-adjust: 100%;
-}
-
-/* 移动端主内容区为固定 Tab Bar 留出空间 */
-@media (max-width: 768px) {
-  .main-content {
-    padding-bottom: calc(56px + env(safe-area-inset-bottom)) !important;
-  }
 }
 ```
 
-- [ ] **Step 3: 更新 `App.vue` `<style>` 中的 `body` 和 `.main-layout`**
+- [ ] **Step 3: 更新 `App.vue` `<style>` 中的 `body`、`.main-layout` 和移动端 padding**
+
+> **说明**：移动端 `.main-content` 的 padding-bottom 规则放在 `App.vue` 自己的 `<style>` 块内（与 `.main-content` 原始定义同文件），利用 CSS 加载顺序自然覆盖，无需 `!important`。
 
 在 `frontend/src/App.vue` 的 `<style>` 块中，将：
 
@@ -166,6 +162,17 @@ body {
   height: 100dvh;
   background: var(--color-bg);
   display: flex;
+}
+```
+
+并在 `App.vue` 的 `<style>` 块末尾追加（放在同文件内，利用加载顺序覆盖，无需 `!important`）：
+
+```css
+/* 移动端：为 Tab Bar + Home Indicator 留出底部空间 */
+@media (max-width: 768px) {
+  .main-content {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom));
+  }
 }
 ```
 
@@ -710,19 +717,24 @@ import MorePanel    from '@/components/layout/MorePanel.vue'
 const showMorePanel = ref(false)
 ```
 
-3. 在 `onMounted(() => {` 块中追加 keyboard 监听：
+3. 在 `onMounted(() => {` 块中追加 keyboard 监听（含初始调用 + `onUnmounted` 清理）：
 
 ```js
 onMounted(() => {
   if (authStore.isLoggedIn && !websocketStore.isConnected) _doConnect()
 
   // iOS PWA 键盘弹出时 visualViewport 收缩，将差值写入 CSS 变量
+  let vpCleanup
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', () => {
+    const handler = () => {
       const kb = Math.max(0, window.innerHeight - window.visualViewport.height)
       document.documentElement.style.setProperty('--keyboard-height', `${kb}px`)
-    })
+    }
+    handler() // 立即初始化，避免首次渲染前变量未定义
+    window.visualViewport.addEventListener('resize', handler)
+    vpCleanup = () => window.visualViewport.removeEventListener('resize', handler)
   }
+  onUnmounted(() => vpCleanup?.())
 })
 ```
 
@@ -800,6 +812,12 @@ import { PAGE_CONFIGS } from '@/config/routes.config'
 ```
 
 检查 template 是否还有 `NAV_ITEMS` 用到，若无则从 import 中删除。
+
+删除后运行以下命令验证无残留（均应输出空）：
+
+```bash
+grep -n "NAV_ITEMS\|ADMIN_ITEMS\|showMobileMenu\|mobile-menu-btn\|mobile-drawer\|mobile-nav" frontend/src/components/layout/Header.vue
+```
 
 - [ ] **Step 4: 从 `<style scoped>` 中删除汉堡相关 CSS**
 
@@ -904,7 +922,8 @@ const showRoleModelSheet = ref(false)
 ```js
 const activeRoleName = computed(() => {
   if (!activeRoleId.value) return '默认助手'
-  return availableRoles.value.find(r => r.roleId === activeRoleId.value)?.roleCard?.name || activeRoleId.value
+  const role = availableRoles.value.find(r => r.roleId === activeRoleId.value)
+  return role?.roleCard?.name || role?.name || activeRoleId.value
 })
 ```
 
@@ -967,7 +986,7 @@ const activeRoleName = computed(() => {
 在 ChatView.vue `<style scoped>` 的 `@media (max-width: 768px)` 块中追加以下内容：
 
 ```css
-  /* 桌面端 config-bar 在移动端隐藏 */
+  /* 桌面端 config-bar 在移动端隐藏（由角色/模型徽章替代） */
   .config-bar { display: none; }
 
   /* 移动端徽章行 */
@@ -977,7 +996,17 @@ const activeRoleName = computed(() => {
     padding: 6px 0 4px;
   }
 
-  /* 导出按钮在移动端隐藏（低频操作，从工具栏移除） */
+  /*
+   * 移动端 input-toolbar 按钮可见性：
+   *   历史（fa-history） — 保留：高频操作，拇指友好
+   *   清空（fa-trash）  — 保留：需要确认对话框，由 useConfirmDialogStore 实现
+   *   导出（fa-download）— 隐藏：低频，通过 MorePanel 访问
+   *
+   * ⚠️  清空按钮的确认必须使用 useConfirmDialogStore，严禁 window.confirm()。
+   *     window.confirm() 在 PWA/WebView 模式下被浏览器静默拦截，曾是 7 次重复 bug 的根因。
+   *     ChatView.vue 中的 handleClearChat() 已正确使用 confirmDialog.open()，实现前请 grep 验证：
+   *     grep -n "window.confirm\|handleClearChat" frontend/src/views/ChatView.vue
+   */
   .toolbar-export-wrap { display: none; }
 ```
 
@@ -1116,6 +1145,78 @@ git commit -m "feat(mobile): mobile role/model chips + RoleModelSheet, hide conf
 
 ---
 
+---
+
+## Task 9: 真机测试 — iPhone 16 + 兜底机型
+
+**Files:**
+- 无代码改动；本 Task 为验收关卡
+
+**Interfaces:**
+- Consumes: 所有 Task 1-8 完成并提交
+
+- [ ] **Step 1: 确认 Cloudflare Tunnel 可访问**
+
+```bash
+# 确认 https://intelligent.eu.cc 可访问，前端为最新构建
+curl -s -o /dev/null -w "%{http_code}" https://intelligent.eu.cc
+# 预期输出：200
+```
+
+若未构建，先执行 `cd frontend && npm run build`。
+
+- [ ] **Step 2: iPhone 16（主目标机型）全功能验证**
+
+用 Safari 打开 `https://intelligent.eu.cc`，按以下清单逐项测试：
+
+| # | 验证项 | 预期结果 |
+|---|--------|---------|
+| 1 | 底部 Tab Bar 显示 | 4 Tab 等宽，无溢出截断 |
+| 2 | 底部 Tab Bar 位置 | Tab Bar 下缘贴合 Home Indicator，不被系统手势区遮挡 |
+| 3 | 导航切换 | 点击"角色"/"记忆"/"更多"正确跳转或打开 MorePanel |
+| 4 | MorePanel 内容 | 三分组全部显示，点击"项目"正确跳转并关闭面板 |
+| 5 | Header | 无汉堡按钮，显示页面标题 + 连接状态 |
+| 6 | ChatView 徽章 | 角色/模型徽章显示在输入框上方 |
+| 7 | RoleModelSheet | 点击徽章弹出底部抽屉，选择角色后名称更新 |
+| 8 | 键盘弹出 | 点击输入框后 input-area 上移，不被键盘遮挡 |
+| 9 | 键盘收起 | 收起键盘后布局复位，无残留 padding |
+| 10 | 清空对话 | 点击清空后弹出确认对话框（非 window.confirm），确认后清空 |
+| 11 | 历史 | 历史按钮可见且正常工作 |
+| 12 | 桌面端回归 | 在 1280px 宽窗口下，Tab Bar 不可见，config-bar 正常显示 |
+
+- [ ] **Step 3: iPhone 16 Pro — Dynamic Island 适配**
+
+1. 用 Safari 打开页面，竖屏模式
+2. 确认页面顶部内容不被 Dynamic Island 遮挡
+3. 横屏切换时，Tab Bar 底部安全区自适应
+
+- [ ] **Step 4: iPhone SE 3（375×667，无 Home Indicator）**
+
+1. 打开页面，确认 Tab Bar 底部无多余 padding（`env(safe-area-inset-bottom)` = 0）
+2. 内容区高度正确，无额外空白
+
+- [ ] **Step 5: 安卓兜底（Pixel / 三星，可选）**
+
+1. 用 Chrome 打开 `https://intelligent.eu.cc`
+2. 确认 Tab Bar 显示正常，env() 值有效
+3. 键盘弹出后输入区不被遮挡
+
+- [ ] **Step 6: Lighthouse PWA 审计**
+
+在 Safari DevTools 或 Chrome → Lighthouse → PWA 类别执行审计：
+
+目标：PWA 分数 ≥ 90，无 Installability 错误。
+
+- [ ] **Step 7: 验收确认**
+
+全部验证项通过后，在此 Task 做最终提交标记：
+
+```bash
+git tag mobile-pwa-v1 -m "feat: iPhone 16 PWA layout optimization complete"
+```
+
+---
+
 ## 自审检查结果
 
 **Spec 覆盖度：**
@@ -1137,6 +1238,7 @@ git commit -m "feat(mobile): mobile role/model chips + RoleModelSheet, hide conf
 | RoleModelSheet（基于 BottomSheet） | Task 8 |
 | 导出按钮移动端隐藏 | Task 8 |
 | 死 CSS 清理 | Task 8 |
+| 真机测试（iPhone 16 / SE 3 / Android / Lighthouse） | Task 9 |
 
 **类型一致性：**
 - `onRoleChange(roleId: string)` — Task 8 传字符串，与 ChatView 现有实现一致（`const roleId = e.target ? e.target.value : e`）
