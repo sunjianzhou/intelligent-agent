@@ -1,7 +1,7 @@
 # 智能体项目 — AI 上下文速查文档
 
 > **本文档专为大模型阅读设计**。新对话开始时先读此文件，5 分钟内建立完整项目认知，无需再反复询问基础背景。
-> 最后更新：2026-06-29
+> 最后更新：2026-06-29（下午）
 
 ---
 
@@ -297,7 +297,7 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 - 配置：工具管理 / Skill 管理 / MCP 配置
 - 系统：模型管理 / 任务管理 / 操作日志 / 统计分析 / 系统信息
 
-**移动端（≤768px）**：汉堡菜单展开，分常用导航 + 管理后台两段；聊天页 config-bar 额外显示模型/角色切换。
+**移动端（≤768px）**：底部 4-Tab Bar 固定导航（聊天 / 角色 / 记忆 / 更多），"更多"弹出 MorePanel（三分组：常用 / AI 能力 / 运维与系统 + 退出登录）；聊天页 config-bar 隐藏，改为角色/模型徽章（点击弹出 RoleModelSheet 底部抽屉）；iOS safe-area / dvh / keyboard-height 已适配（iPhone 16 PWA）。
 
 ### 5.4 状态管理（Pinia）
 
@@ -420,10 +420,11 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 | LOW 级安全/质量问题全部清零（路径遍历/消息上限配置/函数拆分） | 2026-06-15 |
 | 多模态图片持久化 + 前端历史恢复 + diffusers 并发锁 + 知识库智能分块 + 请求 traceID 等（TODO-60~75） | 2026-06-16 |
 | 飞书 OAuth 用户授权全栈（TODO-85）：OAuth Token Manager + 3 端点 + Java 透传 + 5 个飞书内置工具（日历读写/任务读写/IM） | 2026-06-27 |
+| iPhone 16 PWA 移动端布局全量优化：底部 4-Tab Bar + MorePanel + BottomSheet 公共组件 + safe-area/dvh/keyboard 适配 + ChatView 角色/模型徽章 + 汉堡菜单移除 | 2026-06-29 |
 
 ---
 
-## 九、当前运行状态（2026-06-28）
+## 九、当前运行状态（2026-06-29）
 
 - **已提交到 GitHub**：所有修改均已推送 master 分支
 - **测试覆盖**：318 个 Agent 单元测试 + 63 个 E2E 测试，全部通过
@@ -436,7 +437,8 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
   - 企业微信（WeCom）：HTTP 回调 `https://intelligent.eu.cc/wecom/callback`，已验证端到端收发
 - **IM 渠道用户隔离**：`feishu:{open_id}` / `wecom:{userName}` 各有独立记忆和模型偏好
 - **飞书心跳巡检**：已暂停（dolphin 无法正确执行开放式主动联系决策，每次输出无意义占位消息；如需恢复建议搭配云端模型）
-- **待办**：TODO-12（性能优化 #4/#5/#8，待触发条件）/ TODO-IMG-1（SD WebUI 进度/img2img/采样器，低优先级）/ TODO-IMG-6（NSFW 过滤，生产加固 P3）
+- **移动端 PWA**：iPhone 16 适配完成（底部 Tab Bar / safe-area / dvh / 键盘遮挡修复）；待 TODO-PWA-1（BottomTabBar/MorePanel 导航数据源统一至 routes.config.js）
+- **待办**：TODO-12（性能优化 #4/#5/#8，待触发条件）/ TODO-PWA-1（导航数据源统一）/ TODO-IMG-1（SD WebUI 进度/img2img/采样器，低优先级）/ TODO-IMG-6（NSFW 过滤，生产加固 P3）
 
 ---
 
