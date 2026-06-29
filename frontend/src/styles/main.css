@@ -38,6 +38,9 @@
 
   /* 页面内容区最大宽度（全屏外壳下，避免页面自身的旧 max-width 在宽屏上留出大片空白） */
   --content-max-width: 1280px;
+
+  /* 移动端键盘高度（由 visualViewport 事件动态写入） */
+  --keyboard-height: 0px;
 }
 
 /* 颜色 — 深色主题覆盖 */
@@ -186,4 +189,14 @@ body {
 .input:focus {
   outline: none; border-color: var(--color-primary);
   box-shadow: 0 0 0 3px rgba(102,126,234,0.15);
+}
+
+/* ── 移动端全局基础（iPhone 16 PWA 适配）────────────────── */
+
+/* 防止 iOS Safari 在 font-size < 16px 时自动放大页面触发缩放（iOS 临界值为 16px） */
+input,
+textarea,
+select {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
 }

@@ -90,6 +90,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
   background: var(--color-bg);
   height: 100vh;
+  height: 100dvh; /* dvh fallback：iOS 15.4+ 支持，旧版降级到 100vh */
   overflow: hidden;
 }
 
@@ -101,7 +102,8 @@ body {
 
 .main-layout {
   width: 100%;
-  height: 100%;
+  height: 100vh;
+  height: 100dvh;
   background: var(--color-bg);
   display: flex;
 }
@@ -334,4 +336,11 @@ body {
 [data-theme="dark"] .disk-bar-wrap,
 [data-theme="dark"] .process-bar-wrap,
 [data-theme="dark"] .rank-bar-wrap       { background: #373a40 !important; }
+
+/* 移动端：为 Tab Bar + Home Indicator 留出底部空间 */
+@media (max-width: 768px) {
+  .main-content {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom));
+  }
+}
 </style>
