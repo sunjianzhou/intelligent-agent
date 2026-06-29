@@ -355,6 +355,25 @@
 
     <!-- 输入区 -->
     <div class="input-area">
+      <!-- 移动端：角色/模型选择徽章（点击弹出底部抽屉） -->
+      <div class="mobile-config-chips">
+        <button
+          class="mobile-chip mobile-chip-role"
+          :aria-label="`当前角色：${activeRoleName}`"
+          @click="showRoleModelSheet = true"
+        >
+          <i class="fas fa-id-card" aria-hidden="true" />
+          <span>{{ activeRoleName }}</span>
+        </button>
+        <button
+          class="mobile-chip mobile-chip-model"
+          :aria-label="`当前模型：${currentModel || '默认'}`"
+          @click="showRoleModelSheet = true"
+        >
+          <i class="fas fa-robot" aria-hidden="true" />
+          <span>{{ currentModel || '默认' }}</span>
+        </button>
+      </div>
       <!-- 图片附件预览 -->
       <div v-if="attachedImagePreview" class="attached-img-row">
         <img :src="attachedImagePreview" class="attached-thumb" />
@@ -444,6 +463,54 @@
         </div>
       </div>
     </div>
+
+    <!-- 移动端：角色 + 模型选择底部抽屉 -->
+    <BottomSheet v-model="showRoleModelSheet" title="角色与模型">
+      <!-- 角色列表 -->
+      <div class="rms-section-title">角色</div>
+      <button
+        class="rms-option"
+        :class="{ active: !activeRoleId }"
+        :aria-selected="!activeRoleId"
+        @click="onRoleChange(''); showRoleModelSheet = false"
+      >
+        <i class="fas fa-robot rms-icon" aria-hidden="true" />
+        <span>默认助手</span>
+        <i v-if="!activeRoleId" class="fas fa-check rms-check" aria-hidden="true" />
+      </button>
+      <button
+        v-for="r in availableRoles"
+        :key="r.roleId"
+        class="rms-option"
+        :class="{ active: r.roleId === activeRoleId }"
+        :aria-selected="r.roleId === activeRoleId"
+        :aria-label="r.roleCard?.name || r.roleId"
+        @click="onRoleChange(r.roleId); showRoleModelSheet = false"
+      >
+        <i class="fas fa-id-card rms-icon" aria-hidden="true" />
+        <span>{{ r.roleCard?.name || r.roleId }}</span>
+        <i v-if="r.roleId === activeRoleId" class="fas fa-check rms-check" aria-hidden="true" />
+      </button>
+
+      <div class="rms-divider" />
+
+      <!-- 模型列表 -->
+      <div class="rms-section-title">模型</div>
+      <button
+        v-for="m in availableModels"
+        :key="m"
+        class="rms-option"
+        :class="{ active: m === currentModel }"
+        :aria-selected="m === currentModel"
+        :aria-label="m"
+        @click="handleConfigSwitch(m); showRoleModelSheet = false"
+      >
+        <i class="fas fa-cube rms-icon" aria-hidden="true" />
+        <span>{{ m }}</span>
+        <i v-if="m === currentModel" class="fas fa-check rms-check" aria-hidden="true" />
+      </button>
+      <div v-if="availableModels.length === 0" class="rms-empty">暂无可用模型</div>
+    </BottomSheet>
   </div>
 </template>
 
@@ -504,6 +571,7 @@ import { listRoles } from '@/services/roleStorage'
 import {
   getActiveRoleApi, activateRoleApi, deactivateRoleApi, syncRoleToServer,
 } from '@/services/api'
+import BottomSheet from '@/components/common/BottomSheet.vue'
 
 // ── marked 配置 ────────────────────────────────────────────
 marked.setOptions({
@@ -537,10 +605,17 @@ const currentModel     = computed(() => store.currentModel)
 // ── 配置条：角色 + 模型 ────────────────────────────────────
 const availableRoles       = ref([])
 const activeRoleId         = ref('')
+const activeRoleName = computed(() => {
+  if (!activeRoleId.value) return '默认助手'
+  const role = availableRoles.value.find(r => r.roleId === activeRoleId.value)
+  return role?.roleCard?.name || role?.name || activeRoleId.value
+})
 const roleActivating       = ref(false)
 const configDropdownOpen   = ref(false)
 const configSwitchingModel = ref('')
 const configSwitcherRef    = ref(null)
+// 移动端角色/模型选择底部抽屉
+const showRoleModelSheet   = ref(false)
 
 const loadRoleConfig = async () => {
   availableRoles.value = await listRoles()
@@ -2038,23 +2113,6 @@ onUnmounted(() => {
 [data-theme="dark"] .branch-badge { color: #a5b4fc; background: #2a2a5a; }
 .history-slide-enter-active, .history-slide-leave-active { transition: transform 0.25s ease; }
 .history-slide-enter-from, .history-slide-leave-to { transform: translateX(-100%); }
-.clear-float-btn {
-  width: 36px; height: 36px;
-  border-radius: 50%;
-  border: 1px solid #ffd0cd;
-  background: var(--color-surface);
-  color: #e53935;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  transition: all 0.2s;
-}
-.clear-float-btn:hover {
-  border-color: #e53935;
-  background: #fff5f5;
-  box-shadow: 0 3px 12px rgba(229,57,53,0.25);
-}
 
 /* 定时通知气泡底部链接 */
 .notif-task-link {
@@ -2193,13 +2251,33 @@ onUnmounted(() => {
   .chat-input        { font-size: 16px !important; } /* 防止 iOS 自动缩放 */
   .input-area        { padding: var(--space-2) !important; }
   .message-row.user  { justify-content: flex-end; }
-  .export-float      { bottom: 70px; left: 8px; }
-  .clear-float       { bottom: 26px; left: 8px; }
-  .history-float     { bottom: 114px; left: 8px; }
   .history-panel     { width: min(240px, 85vw); }
   .tool-calls-card,
   .tool-running-card { max-width: 95% !important; }
   .search-bar-input  { font-size: 16px !important; }
+
+  /* 桌面端 config-bar 在移动端隐藏（由角色/模型徽章替代） */
+  .config-bar { display: none; }
+
+  /* 移动端徽章行 */
+  .mobile-config-chips {
+    display: flex;
+    gap: 8px;
+    padding: 6px 0 4px;
+  }
+
+  /*
+   * 移动端 input-toolbar 按钮可见性：
+   *   历史（fa-history） — 保留：高频操作，拇指友好
+   *   清空（fa-trash）  — 保留：需要确认对话框，由 useConfirmDialogStore 实现
+   *   导出（fa-download）— 隐藏：低频，通过 MorePanel 访问
+   *
+   * ⚠️  清空按钮的确认必须使用 useConfirmDialogStore，严禁 window.confirm()。
+   *     window.confirm() 在 PWA/WebView 模式下被浏览器静默拦截，曾是 7 次重复 bug 的根因。
+   *     ChatView.vue 中的 handleClearChat() 已正确使用 confirmDialog.open()，实现前请 grep 验证：
+   *     grep -n "window.confirm\|handleClearChat" frontend/src/views/ChatView.vue
+   */
+  .toolbar-export-wrap { display: none; }
 }
 
 /* ── CoT 思维过程块 ──────────────────────────────────────────*/
@@ -2246,4 +2324,105 @@ details[open] .cot-summary::before { transform: rotate(90deg); }
 [data-theme="dark"] .cot-block { border-color: #3a3b42; background: #252630; }
 [data-theme="dark"] .cot-summary { background: #2a2b38; color: #9ea8f0; }
 [data-theme="dark"] .cot-content { color: #8e8f9a; }
+
+/* 移动端徽章（仅在移动端通过父元素显示） */
+.mobile-config-chips { display: none; }
+
+@media (max-width: 768px) {
+  .mobile-config-chips { display: flex; }
+}
+
+.mobile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  cursor: pointer;
+  max-width: min(140px, 35vw);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s;
+}
+
+.mobile-chip:hover { border-color: var(--color-primary); }
+
+.mobile-chip-role {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #4f46e5;
+}
+
+.mobile-chip-role i { color: #6366f1; font-size: 0.72rem; }
+
+.mobile-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* RoleModelSheet 内部样式 */
+.rms-section-title {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 10px 20px 4px;
+}
+
+.rms-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 20px;
+  background: none;
+  border: none;
+  color: var(--color-text);
+  font-size: 0.95rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rms-option:hover,
+.rms-option:active { background: var(--color-surface-raised); }
+
+.rms-option.active { color: var(--color-primary); font-weight: 500; }
+
+.rms-icon {
+  width: 20px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.rms-option.active .rms-icon { color: var(--color-primary); }
+
+.rms-check {
+  margin-left: auto;
+  color: var(--color-primary);
+  font-size: 0.85rem;
+}
+
+.rms-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 6px 0;
+}
+
+.rms-empty {
+  padding: 12px 20px;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
 </style>
