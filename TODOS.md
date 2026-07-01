@@ -656,15 +656,265 @@ AbortController + 30s 超时早已实现；补 `options.timeout` 支持。commit
 
 ---
 
-## TODO-PWA-1: BottomTabBar / MorePanel 导航数据源统一（📌 低优先级）
+## TODO-PWA-1: BottomTabBar / MorePanel 导航数据源统一（📌 W2 收尾）
 
 **背景**：`routes.config.js` 是项目唯一导航数据源（CLAUDE.md 明文约定），但 `BottomTabBar.vue` 和 `MorePanel.vue` 在 2026-06-29 的移动端 PWA 改造中直接硬编码了路径/图标/标签数组，未从 `NAV_ITEMS`/`ADMIN_ITEMS` 派生。  
 **风险**：后续只改 `routes.config.js` 新增页面时，BottomTabBar / MorePanel 会静默遗漏，造成移动端导航不一致。
 
 **期望做法**：
 1. `BottomTabBar.vue` 从 `routes.config.js` 的 `NAV_ITEMS` 中取聊天/角色/记忆三项，"更多"Tab 保持 emit `open-more`
-2. `MorePanel.vue` 的常用组 / AI 能力组 / 运维组从 `NAV_ITEMS`/`ADMIN_ITEMS`/`SYSTEM_ITEMS` 按 `group`/`adminLevel` 字段筛选
+2. `MorePanel.vue` 的常用组 / AI 能力组 / 运维组从 `NAV_ITEMS`/`CONFIG_ITEMS`/`SYSTEM_ITEMS` 按分组规则筛选（常用=知识库+项目+图片；AI 能力=工具+Skill+MCP；运维=模型+任务+日志+统计+系统），不再硬编码三组数组
 
 **涉及文件**：`frontend/src/components/layout/BottomTabBar.vue`, `frontend/src/components/layout/MorePanel.vue`, `frontend/src/config/routes.config.js`
+
+---
+
+## W1 心证层 + 5 信号自动撤回触发器（2026-07-01 ~ 2026-07-07）
+
+> **设计依据**：2026-07-01 顶层战略对齐报告（府邸底层能力建设），含 heart-record plan 三段设计 + 5 信号整合。
+
+---
+
+### TODO-84: soul/heart.md 心证永久档 + SoulLoader 加载
+
+**目标**：在 `soul/` 下新增 `heart.md`（心证铁卷），SoulLoader 作为可选文件加载（缺失时不报错）。
+
+**文件结构**：
+```markdown
+# 心证铁卷
+
+## 主人心证
+<!-- 用户主动标记的永久记忆：关键决策 / 不可逆教训 / 已验证的规律 -->
+
+## 主人教诲
+<!-- 用户对 Agent 的长期行为指令 -->
+
+## 智能体对主人的承诺
+<!-- Agent 对用户的承诺 -->
+
+## 主人对智能体的承诺
+<!-- 用户对 Agent 的承诺 -->
+```
+
+**待完成**：
+- [ ] 创建 `soul/heart.md`（git-tracked，含上述四段结构 + 占位说明）
+- [ ] `agent/soul/loader.py`：`SoulData` 新增 `heart: str` 字段；`OPTIONAL` 列表追加 `"heart"`；`load()` 按 `whisper` 同模式读取（不存在时 `heart=""`）
+- [ ] `agent/tests/test_soul_loader.py`：追加 `test_missing_heart_is_silent`（heart.md 缺失时 `data.heart == ""`）和 `test_heart_content_loaded`（文件存在时内容正确读入）
+
+**涉及文件**：`soul/heart.md`, `agent/soul/loader.py`, `agent/tests/test_soul_loader.py`
+
+---
+
+### TODO-85: SystemPromptBuilder 插入 heart 段
+
+**目标**：在 system prompt 组装顺序中插入 heart 段，位置在 ③MEMORY 之后、④HEARTBEAT 之前。
+
+**修改后顺序**：①SOUL → ②USER → ③MEMORY → **③.5 HEART（心证铁卷）**→ ④HEARTBEAT → ⑤persona → ⑥whisper → ⑦tool_overlay
+
+**理由**：心证优先级高于自动蒸馏的 MEMORY（用户显式标记 > LLM 自动归并），低于 HEARTBEAT（先知道记住什么，再按铁规思考）。
+
+**待完成**：
+- [ ] `agent/core/system_prompt_builder.py`：在 ③MEMORY 段之后插入心证段 `self._wrap("【心证铁卷】", d.heart)`，非空时追加
+- [ ] `agent/core/system_prompt_builder.py`：新增 `_HEART_EXCLUDED_CHANNELS = {"feishu_im", "wecom"}`，心证内容不发送到外部 IM 渠道（与 whisper 同策略）
+- [ ] `agent/tests/test_system_prompt_builder.py`：追加 `test_heart_nonempty_appears` + `test_heart_empty_absent` + `test_heart_before_heartbeat_order` 三个测试
+
+**涉及文件**：`agent/core/system_prompt_builder.py`, `agent/tests/test_system_prompt_builder.py`
+
+---
+
+### TODO-86: heart_record 工具（append/list/delete）
+
+**目标**：注册 `heart_record` 为 builtin tool，供 LLM 在用户说"记住这个"时自动调用。三个 action：
+- `append(content, tags=None, weight="normal")` — 追加心证到合适分区
+- `list(category=None)` — 列出心证（可按分区筛选）
+- `delete(id)` — 删除心证（v2.0 考虑）
+
+**工具注册参数 schema**：
+```python
+parameters = [
+    ToolParameter(name="action", type="string", required=True,
+                  description="append | list | delete"),
+    ToolParameter(name="content", type="string", required=False,
+                  description="心证内容（action=append 时必填）"),
+    ToolParameter(name="category", type="string", required=False,
+                  description="分区：主人心证 | 主人教诲 | 智能体对主人的承诺 | 主人对智能体的承诺"),
+    ToolParameter(name="tags", type="string", required=False,
+                  description="逗号分隔标签（可选）"),
+    ToolParameter(name="weight", type="string", required=False,
+                  description="normal | high | critical，默认 normal"),
+]
+```
+
+**写入规则**：
+- `append`：在 `soul/heart.md` 对应 `## 分区名` 下追加 `- [{{date}}] {{content}}` 行，按分区归类
+- `list`：读取 heart.md，按分区 + 标签筛选返回
+- `delete`：从 heart.md 中移除对应行，先备份 `.bak`
+
+**边界保护**：
+- 写入前做轮转备份（`.bak.1`~`.bak.5`，与 MEMORY.md 同策略）
+- 只允许操作 `soul/heart.md`，不操作其他 soul 文件
+
+**待完成**：
+- [ ] 创建 `agent/tools/builtin_tools/heart_record.py`
+- [ ] `agent/core/tool_dispatcher.py` `_init_tools` 注册 `heart_record`（无环境变量依赖，始终注册）
+- [ ] `agent/tests/test_heart_record.py`：append/list/delete 各 1 用例 + 分区归类 1 用例 + 备份 1 用例 = 5 用例
+
+**涉及文件**：`agent/tools/builtin_tools/heart_record.py`, `agent/core/tool_dispatcher.py`, `agent/tests/test_heart_record.py`
+
+---
+
+### TODO-87: _detect_branch_failure() 5 信号整合
+
+**目标**：在 `conversation_flow.py` 的 `chat()` 和 `chat_stream()` 两个 ReAct 循环中，每轮 `_execute_tool_round()` 之后调用 `_detect_branch_failure()`，检测到分支失败时自动撤回最近 2 轮 + 注入 `[BRANCH_RESET]` 系统消息 + 重新进入循环。
+
+**5 信号**：
+1. 同工具同错误 3 次（`tool_dispatcher.py` 的 `_execute_tool_round` 统计）
+2. LLM 输出连续 2 轮重复 >80% 相似度（Jaccard 词级相似度，无需外部库）
+3. 用户显式纠偏（"不对/重来/换个思路"，由 chat_router 预检注入 flag）
+4. 5 轮内 1 次 RuntimeError + 1 次空响应 → 立即触发
+5. 工具调用失败分级超限：业务错（401/403）重试 1 次、系统错（5xx/超时）重试 3 次，超限触发
+
+**检测窗口**：最近 5 轮（`_BRANCH_FAILURE_WINDOW = 5`）
+
+**待完成**：
+- [ ] `agent/core/conversation_flow.py`：新增 `_detect_branch_failure(round_history, iteration, max_iterations) -> Optional[str]` 私有方法
+- [ ] `agent/core/conversation_flow.py`：新增 `_text_similarity(a, b) -> float` 静态方法（Jaccard）
+- [ ] `agent/core/conversation_flow.py`：新增 `_auto_retract_last_n_rounds(messages, n, user_id) -> None` 方法
+- [ ] `agent/core/conversation_flow.py`：`chat()` L394 后插入 `_detect_branch_failure` 检测 + 撤回逻辑
+- [ ] `agent/core/conversation_flow.py`：`chat_stream()` L638 后插入同逻辑
+- [ ] `agent/core/conversation_flow.py`：`chat()`/`chat_stream()` 签名追加 `retract_on_failure: bool = True` 参数（默认开启，测试时可关闭）
+- [ ] `agent/core/tool_dispatcher.py`：`_execute_tool_round` 内对每个工具调用加入错误分级重试（`_is_auth_error` 判定 → 业务错 1 次 / 系统错 3 次），轮次结果标记 `_retry_exhausted`
+- [ ] `agent/core/tool_dispatcher.py`：新增 `_is_auth_error(exec_result) -> bool` 静态方法
+- [ ] `agent/tests/test_branch_detector.py`：5 信号各 1 用例 + 集成场景 2 用例 + 边界（关闭开关）1 用例 = 8 用例
+
+**涉及文件**：`agent/core/conversation_flow.py`, `agent/core/tool_dispatcher.py`, `agent/tests/test_branch_detector.py`
+
+---
+
+## W2 PWA 导航统一 + L1/L2 缓存（2026-07-07 ~ 2026-07-14）
+
+---
+
+### TODO-88: L1 响应缓存（prometheus 风格，5min TTL）
+
+**目标**：在 `agent/core/` 新增 `l1_cache.py`，对高频 prompt 模板做 hash 化缓存，命中即返回不调 LLM。插入到 `agent.chat()` 的最早入口。
+
+**缓存 key**：`sha256(prompt + model_name + persona_hash + memory_snapshot_id)[:16]`
+
+**TTL**：5min（`settings.l1_cache_ttl_seconds = 300`）
+
+**边界保护**：TTL 过期后自动淘汰；缓存条目上限 100 条（LRU）；命中时写 `cache_hits_total` metrics；memory 发生写入时清空当前 user 的 L1（防止脏读）
+
+**待完成**：
+- [ ] 创建 `agent/core/l1_cache.py`：`L1Cache` 类（`get(key) / set(key, response) / invalidate_user(user_id)`，线程安全 `threading.Lock`）
+- [ ] `agent/config/settings.py`：追加 `l1_cache_ttl_seconds: int = 300` + `l1_cache_max_entries: int = 100`
+- [ ] `agent/core/agent.py`：在 `chat()` 的 `_build_messages_async` 之前插入 L1 查询；在 `chat()` 返回前写 L1
+- [ ] `agent/tests/test_l1_cache.py`：命中/未命中/TTL 过期（mock time）/LRU 淘汰/用户隔离 各 1 用例 = 5 用例
+- [ ] **边界测试**：`test_l1_boundary_ttl_expired_not_hit`（5min 后同一 prompt 不命中）+ `test_l1_boundary_prompt_diff_no_false_hit`（不同 prompt 不互串）
+
+**涉及文件**：`agent/core/l1_cache.py`, `agent/config/settings.py`, `agent/core/agent.py`, `agent/tests/test_l1_cache.py`
+
+---
+
+### TODO-89: L2 语义缓存（ChromaDB 风格，24h TTL）
+
+**目标**：对短期对话上下文做语义缓存——用户问题与 24h 内已编码的历史问题向量相似度 ≥ 0.85 时，返回缓存响应。
+
+**缓存 key**：`user_id + embedding(prompt)`，存入 ChromaDB 独立 collection `l2_semantic_cache`
+
+**TTL**：24h（`settings.l2_cache_ttl_hours = 24`）
+
+**相似度阈值**：0.85（`settings.l2_similarity_threshold = 0.85`）
+
+**待完成**：
+- [ ] 创建 `agent/core/l2_cache.py`：`L2SemanticCache` 类（`search(user_id, prompt_vec) / store(user_id, prompt_vec, response)`，复用 `embedding_model`）
+- [ ] `agent/config/settings.py`：追加 `l2_cache_ttl_hours` + `l2_similarity_threshold`
+- [ ] `agent/core/agent.py`：在 L1 未命中后、LLM 调用前插入 L2 查询；返回后写 L2
+- [ ] `agent/tests/test_l2_cache.py`：语义命中/未命中/用户隔离/过期淘汰 各 1 用例 = 4 用例
+
+**涉及文件**：`agent/core/l2_cache.py`, `agent/config/settings.py`, `agent/core/agent.py`, `agent/tests/test_l2_cache.py`
+
+---
+
+## W3 模型量化 + 图片补齐 + L3/L4 命中率（2026-07-14 ~ 2026-07-21）
+
+---
+
+### TODO-90: Ollama 量化模型拉取 + keep_alive 调优
+
+**目标**：拉取 dolphin 量化版本，降低显存占用；调整 `keep_alive` 参数使模型常驻内存以复用 KV cache。
+
+**量化格式**：`q4_K_M`（4-bit 量化，精度损失 < 2%，显存降低 ~60%）
+
+**keep_alive 参数**：当前默认 `OLLAMA_KEEP_ALIVE` 为 5min，改为 `-1`（永久驻留）或 `24h`（兼顾其他模型切换）
+
+**待完成**：
+- [ ] `ollama pull dolphin:7b-q4_K_M`（或当前使用的模型对应量化版）
+- [ ] `.env.docker` / `.env` 追加 `OLLAMA_KEEP_ALIVE=-1`
+- [ ] 在 `agent/services/ollama_provider.py` 的 `chat()` 调用中确认 `keep_alive` 参数已透传
+
+**涉及文件**：`.env.docker`, `.env`, `agent/services/ollama_provider.py`（只读确认）
+
+---
+
+### TODO-91: L3/L4 命中率监控
+
+**目标**：在 `/api/metrics` 中暴露 ChromaDB 长期记忆检索命中率 + 蒸馏快照追溯完整性。
+
+**L3 指标**：长期记忆检索命中率（`retrieve()` 返回非空结果的比例）、平均相似度分数、检索耗时 p50/p99
+
+**L4 指标**：蒸馏源追溯覆盖率（有 `source_message_ids` 的长期记忆条目占比）、快照备份数
+
+**待完成**：
+- [ ] `agent/api/metrics.py`：新增 `l3_retrieve_hits / l3_retrieve_total / l3_avg_similarity / l3_retrieve_ms_p50 / l3_retrieve_ms_p99`
+- [ ] `agent/memory/long_term.py`：`retrieve()` 中埋点统计命中率
+- [ ] `agent/memory/distiller.py`：蒸馏完成后统计 `source_message_ids` 覆盖率
+- [ ] `agent/tests/test_metrics.py`：L3 指标端点可返回数据（1 用例）
+
+**涉及文件**：`agent/api/metrics.py`, `agent/memory/long_term.py`, `agent/memory/distiller.py`, `agent/tests/test_metrics.py`
+
+---
+
+## W4 全量回归 + 迁移验证首跑 + 文档同步（2026-07-21 ~ 2026-07-28）
+
+---
+
+### TODO-92: 迁移验证检查表首跑 + 文档同步
+
+**目标**：用户在府邸对话框中触发 `@verify migration-readiness`，跑首次 3 维 7 项检查表，记录打分；四个根目录 MD 同步至 2026-07-28。
+
+**迁移验证检查表（每 2 周 1 次）**：
+
+| 维度 | 检查项 | 打分（0-100） |
+|------|--------|--------------|
+| 对话体验 | 响应速度：府邸与飞书同 prompt 回复耗时差异 < 20% | |
+| | 上下文深度：10 轮连续对话后能准确引用前 3 轮细节 | |
+| | 工具调用成功率 ≥ 飞书（相同任务集） | |
+| 记忆持久化 | 无丢失：5 条跨会话测试记忆 24h 后全部可检索 | |
+| | 无错位：蒸馏后不张冠李戴 | |
+| 心证管理 | heart.md 同步率：飞书端心证 5 条全在府邸 heart.md 中 | |
+| | 府邸能准确复述 3 条心证铁卷 | |
+
+**三项全部 100% 的那天 = 迁移日。**
+
+**待完成**：
+- [ ] 在 `@verify migration-readiness` 触发后 Agent 按检查表逐项提问用户打分，记录到 `soul/heart.md` 底部 `## 迁移验证记录` 段
+- [ ] 全量测试回归：`pytest tests/ -v`（含 W1/W2 新增 ~23 用例）全绿
+- [ ] `mvn test` BUILD SUCCESS；`npm run test` 全绿
+- [ ] `README.md` / `TODOS.md` / `CLAUDE.md` / `AI_PROJECT_CONTEXT.md` 全部日期更新至 2026-07-28，内容一致
+- [ ] `docs/superpowers/plans/2026-07-01-heart-record.md` 归档标记完成
+
+**涉及文件**：四个根目录 MD、`docs/superpowers/plans/2026-07-01-heart-record.md`
+
+---
+
+### 排期总览
+
+```
+W1 (7/01-7/07): TODO-84~87  心证层 + 5 信号自动撤回触发器
+W2 (7/07-7/14): TODO-PWA-1 + TODO-88~89  PWA 导航统一 + L1/L2 缓存
+W3 (7/14-7/21): TODO-90~91  模型量化 + 图片补齐 + L3/L4 命中率
+W4 (7/21-7/28): TODO-92     全量回归 + 迁移验证首跑 + 文档同步
+```
 
 ---
