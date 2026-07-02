@@ -132,6 +132,29 @@ class MemoryDistiller:
         if stored > 0:
             logger.info(f"记忆提炼: user={user_id} 新增 {stored} 条事实")
 
+        # ── L4 指标埋点：蒸馏源覆盖率 + 快照备份数 ──────────
+        try:
+            from api.metrics import l4_distill_source_coverage, l4_distill_snapshot_backups
+            # 计算有 source_message_ids 的长期记忆条目占比
+            if hasattr(long_term_memory, 'collection') and long_term_memory.collection:
+                all_meta = long_term_memory.collection.get(include=["metadatas"])
+                total = len(all_meta.get("ids", []))
+                if total > 0:
+                    with_source = sum(
+                        1 for m in all_meta.get("metadatas", [])
+                        if isinstance(m, dict) and m.get("source_message_ids")
+                    )
+                    l4_distill_source_coverage.set(with_source / total)
+
+            # 快照备份数（soul/MEMORY.md.bak.*）
+            import glob
+            from pathlib import Path as _Path
+            soul_dir = _Path(__file__).resolve().parent.parent.parent / "soul"
+            bak_count = len(glob.glob(str(soul_dir / "MEMORY.md.bak.*")))
+            l4_distill_snapshot_backups.set(bak_count)
+        except Exception:
+            pass
+
         self.reset_count(user_id)
         return stored
 

@@ -61,7 +61,7 @@ async def get_runtime_config():
         "active_inferences":  int(inference_active._value.get()) if hasattr(inference_active, "_value") else 0,
         "concurrency_slots":  _sem_val(_state._inference_sem) if _state._inference_sem else settings.inference_concurrency,
         "queue_slots":        _sem_val(_state._queue_sem)     if _state._queue_sem     else settings.inference_queue_size,
-        "l1_cache_entries":   len(_state.agent._response_cache) if _state.agent else 0,
+        "l1_cache_entries":   _state.agent.l1_cache.size if _state.agent else 0,
         "l2_cache_entries":   l2_entries,
         "short_term_entries": _state.agent.memory.short_term.count() if _state.agent else 0,
         "long_term_entries":  _state.agent.memory.long_term.count()  if _state.agent else 0,
@@ -69,8 +69,8 @@ async def get_runtime_config():
     cfg = {
         "inference_concurrency":      settings.inference_concurrency,
         "inference_queue_size":       settings.inference_queue_size,
-        "response_cache_max_size":    getattr(_state.agent, "_cache_max_size",  settings.response_cache_max_size)    if _state.agent else settings.response_cache_max_size,
-        "response_cache_ttl_secs":    getattr(_state.agent, "_cache_ttl_secs",  settings.response_cache_ttl_secs)    if _state.agent else settings.response_cache_ttl_secs,
+        "response_cache_max_size":    settings.l1_cache_max_entries,
+        "response_cache_ttl_secs":    settings.l1_cache_ttl_seconds,
         "semantic_cache_threshold":   getattr(_state.agent._semantic_cache, "threshold",   settings.semantic_cache_threshold)   if (_state.agent and _state.agent._semantic_cache) else settings.semantic_cache_threshold,
         "semantic_cache_max_entries": getattr(_state.agent._semantic_cache, "max_entries", settings.semantic_cache_max_entries) if (_state.agent and _state.agent._semantic_cache) else settings.semantic_cache_max_entries,
         "short_term_max_size":        _state.agent.memory.short_term.max_size  if _state.agent else settings.short_term_max_size,
@@ -108,11 +108,11 @@ async def patch_runtime_config(body: dict):
                 settings.inference_queue_size = v
                 _state._queue_sem = asyncio.Semaphore(v)
             elif key == "response_cache_max_size":
-                settings.response_cache_max_size = v
-                if _state.agent: _state.agent._cache_max_size = v
+                settings.l1_cache_max_entries = v
+                if _state.agent: _state.agent.l1_cache._max = v
             elif key == "response_cache_ttl_secs":
-                settings.response_cache_ttl_secs = v
-                if _state.agent: _state.agent._cache_ttl_secs = v
+                settings.l1_cache_ttl_seconds = v
+                if _state.agent: _state.agent.l1_cache._ttl = v
             elif key == "semantic_cache_threshold":
                 settings.semantic_cache_threshold = v
                 if _state.agent and _state.agent._semantic_cache: _state.agent._semantic_cache.threshold = v

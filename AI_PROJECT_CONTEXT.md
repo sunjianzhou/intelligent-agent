@@ -1,7 +1,7 @@
 # 智能体项目 — AI 上下文速查文档
 
 > **本文档专为大模型阅读设计**。新对话开始时先读此文件，5 分钟内建立完整项目认知，无需再反复询问基础背景。
-> 最后更新：2026-06-29（下午）
+> 最后更新：2026-07-02（W1-W3 heart-record plan 全部落地，52 个新测试全绿）
 
 ---
 
@@ -424,17 +424,24 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 
 ---
 
-## 九、当前运行状态（2026-06-29）
+## 九、当前运行状态（2026-07-02）
 
 - **已提交到 GitHub**：所有修改均已推送 master 分支
-- **测试覆盖**：318 个 Agent 单元测试 + 63 个 E2E 测试，全部通过
+- **测试覆盖**：350 个 Agent 单元测试 + 63 个 E2E 测试，348 通过（4 预存失败，sentence_transformers 未安装）
 - **全局默认模型**：`dolphin:latest`（所有渠道统一，云端配置已注释，按需在 `/admin/models` 激活）
 - **Python 环境**：conda `python310`（Python 3.10）
+- **Ollama keep_alive**：`-1`（永久常驻显存，避免冷启动延迟）
 - **公网接入**：Cloudflare Tunnel（`ia-cloudflared`）→ `intelligent.eu.cc` → `ia-frontend:80`
   - PWA 已可从手机公网安装（iOS Safari：分享 → 添加到主屏幕）
 - **已接通的 IM 渠道**：
   - 飞书（Feishu）：WS 长连接，启动自动建立，P2P + 群聊均支持
   - 企业微信（WeCom）：HTTP 回调 `https://intelligent.eu.cc/wecom/callback`，已验证端到端收发
+- **2026-07-02 新增能力（heart-record plan W1-W3）**：
+  - 心证层：`soul/heart.md` + SoulLoader + SystemPromptBuilder heart 段 + heart_record 工具
+  - 分支保护：5 信号 `_detect_branch_failure` + 自动撤回 + 错误分级重试
+  - 缓存层：L1 精确缓存（5min TTL/LRU）+ L2 语义缓存（ChromaDB 24h TTL）
+  - 可观测性：L3 长期记忆检索命中率 + L4 蒸馏源覆盖率监控埋点
+  - 移动端：BottomTabBar / MorePanel 导航从 `routes.config.js` 单源派生
 - **IM 渠道用户隔离**：`feishu:{open_id}` / `wecom:{userName}` 各有独立记忆和模型偏好
 - **飞书心跳巡检**：已暂停（dolphin 无法正确执行开放式主动联系决策，每次输出无意义占位消息；如需恢复建议搭配云端模型）
 - **移动端 PWA**：iPhone 16 适配完成（底部 Tab Bar / safe-area / dvh / 键盘遮挡修复）；待 TODO-PWA-1（BottomTabBar/MorePanel 导航数据源统一至 routes.config.js）

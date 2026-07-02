@@ -1,4 +1,4 @@
-"""Tests for SystemPromptBuilder — 9 cases covering section order, whisper, persona, HEARTBEAT."""
+"""Tests for SystemPromptBuilder — 12 cases covering section order, whisper, persona, HEARTBEAT, heart."""
 import os
 import sys
 import pytest
@@ -10,11 +10,12 @@ from soul.loader import SoulData
 
 
 def _make_soul(soul="灵魂内容", user="用户画像", memory="精选记忆",
-               identity="霖君身份", heartbeat="自检铁规内容", whisper=""):
+               identity="霖君身份", heartbeat="自检铁规内容", whisper="", heart=""):
     loader = MagicMock()
     loader.data = SoulData(
         soul=soul, user=user, memory=memory,
         identity=identity, heartbeat=heartbeat, whisper=whisper,
+        heart=heart,
     )
     return loader
 
@@ -88,3 +89,27 @@ def test_heartbeat_content_in_prompt():
     result = SystemPromptBuilder().build(_make_soul(heartbeat="禁止编造数据"))
     assert "【自检铁规】" in result
     assert "禁止编造数据" in result
+
+
+def test_heart_nonempty_appears():
+    """心证非空时出现在 prompt 中。"""
+    from core.system_prompt_builder import SystemPromptBuilder
+    result = SystemPromptBuilder().build(_make_soul(heart="记住：用户讨厌冗余回答"))
+    assert "【心证铁卷】" in result
+    assert "记住：用户讨厌冗余回答" in result
+
+
+def test_heart_empty_absent():
+    """心证为空时不出现【心证铁卷】段。"""
+    from core.system_prompt_builder import SystemPromptBuilder
+    result = SystemPromptBuilder().build(_make_soul(heart=""))
+    assert "【心证铁卷】" not in result
+
+
+def test_heart_before_heartbeat_order():
+    """心证段应在 HEARTBEAT 之前出现（③.5 < ④）。"""
+    from core.system_prompt_builder import SystemPromptBuilder
+    result = SystemPromptBuilder().build(_make_soul(heart="心证铁卷内容"))
+    heart_pos = result.index("【心证铁卷】")
+    heartbeat_pos = result.index("【自检铁规】")
+    assert heart_pos < heartbeat_pos

@@ -459,6 +459,9 @@ class LongTermMemory(BaseMemory):
 
     def retrieve(self, query: Union[str, MemoryQuery], limit: int = 5) -> List[MemorySearchResult]:
         """检索记忆（基于向量相似度）"""
+        import time as _time
+        _t0 = _time.perf_counter()
+
         if isinstance(query, str):
             query_obj = MemoryQuery(text=query, limit=limit)
         else:
@@ -506,7 +509,25 @@ class LongTermMemory(BaseMemory):
 
         # 按分数排序
         search_results.sort(key=lambda x: x.score, reverse=True)
-        return search_results[:query_obj.limit]
+        final = search_results[:query_obj.limit]
+
+        # ── L3 指标埋点 ────────────────────────────────────
+        try:
+            from api.metrics import (
+                l3_retrieve_hits, l3_retrieve_total,
+                l3_retrieve_avg_similarity, l3_retrieve_duration_ms,
+            )
+            l3_retrieve_total.inc()
+            if final:
+                l3_retrieve_hits.inc()
+                top_sim = final[0].similarity
+                l3_retrieve_avg_similarity.set(top_sim)
+            elapsed_ms = (_time.perf_counter() - _t0) * 1000
+            l3_retrieve_duration_ms.observe(elapsed_ms)
+        except Exception:
+            pass
+
+        return final
 
     def _batch_update_access_records(self, memories: List[MemoryItem]) -> None:
         """把多个 MemoryItem 的访问记录一次性批量写回 ChromaDB。"""

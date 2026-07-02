@@ -1,6 +1,7 @@
 # Heart-Record Plan — 心证层落地
 
 > 设计依据：2026-07-01 顶层战略对齐报告（府邸底层能力建设）。
+> **状态：✅ 已完成（2026-07-02）** — W1-W3 全部落地，W4 迁移验证首跑 + 文档同步完成。
 
 **Goal:** 新增 soul/heart.md 心证永久档，通过 heart_record 工具供 LLM 在用户说"记住这个"时自动读写，SystemPromptBuilder 在 ③MEMORY 之后注入【心证铁卷】段。
 

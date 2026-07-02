@@ -4,6 +4,7 @@
   ① SOUL + IDENTITY  ← 铁律最前
   ② USER
   ③ MEMORY
+  ③.5 HEART（心证铁卷）← 用户显式标记的永久记忆，优先级高于自动蒸馏
   ④ HEARTBEAT        ← 自检铁规段
   ⑤ persona          ← 来自 role_ctx（无角色时跳过）
   ⑥ whisper          ← 非空时追加
@@ -24,6 +25,10 @@ class SystemPromptBuilder:
     # 不注入 whisper（私密档案）段的渠道：消息会离开本机，发往受平台内容政策约束
     # 的第三方 IM，必须保持克制风格。新增渠道时在此追加。
     _WHISPER_EXCLUDED_CHANNELS = {"feishu_im", "wecom"}
+
+    # 不注入 heart（心证铁卷）段的渠道：与 whisper 相同的约束——心证内容属于用户
+    # 私密信息，不应发送到外部 IM 平台。
+    _HEART_EXCLUDED_CHANNELS = {"feishu_im", "wecom"}
 
     def build(
         self,
@@ -47,6 +52,10 @@ class SystemPromptBuilder:
 
         # ③ MEMORY
         sections.append(self._wrap("【精选记忆】", d.memory))
+
+        # ③.5 HEART（心证铁卷）——用户显式标记 > LLM 自动蒸馏，非空且渠道未被排除时追加
+        if d.heart.strip() and channel not in self._HEART_EXCLUDED_CHANNELS:
+            sections.append(self._wrap("【心证铁卷】", d.heart))
 
         # ④ HEARTBEAT（自检铁规段）
         sections.append(self._wrap("【自检铁规】", d.heartbeat))

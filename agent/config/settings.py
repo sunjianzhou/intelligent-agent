@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     response_cache_max_size: int = 500   # 最多缓存条数（LRU 淘汰）
     response_cache_ttl_secs: int = 3600  # 缓存有效期（秒）
 
+    # L1Cache 独立类配置（agent/core/l1_cache.py）
+    l1_cache_ttl_seconds: int = 300     # 缓存有效期（秒），默认 5min
+    l1_cache_max_entries: int = 100     # 最大缓存条目数（LRU 淘汰）
+
     # L2 语义响应缓存（ChromaDB response_cache collection）
     semantic_cache_threshold: float = 0.92  # 余弦相似度命中阈值
     semantic_cache_ttl_secs: int = 86400    # 缓存有效期（秒），默认 24h
@@ -85,7 +89,7 @@ class Settings(BaseSettings):
     ollama_num_gpu: int = -1
     # 模型在显存中的常驻时长：Ollama 默认空闲 5 分钟卸载模型，大模型重新加载需几秒到几十秒。
     # "-1"=永久常驻，"30m"=30分钟，"0"=用完即卸载。可通过 OLLAMA_KEEP_ALIVE 环境变量覆盖
-    ollama_keep_alive: str = "30m"
+    ollama_keep_alive: str = "-1"
 
     # 工具结果注入到上下文时的字符上限：超过则自动截断并附说明
     tool_result_max_chars: int = 3000

@@ -22,6 +22,18 @@ from core._context_vars import _last_message_vec_ctx
 class ToolDispatcherMixin:
     """工具调度（意图过滤 + 解析 + 执行 + LLM 工具调用）。"""
 
+    # ── 错误分级常量 ────────────────────────────────────────────
+    _AUTH_ERROR_PATTERNS = [
+        "401", "403", "unauthorized", "forbidden", "auth",
+        "permission denied", "access denied",
+    ]
+
+    @staticmethod
+    def _is_auth_error(error_text: str) -> bool:
+        """判断工具错误是否为鉴权/权限类（401/403），用于分级重试决策。"""
+        lower = error_text.lower()
+        return any(p in lower for p in ToolDispatcherMixin._AUTH_ERROR_PATTERNS)
+
     # ═══════════════════════════════════════════════════════════════
     # 意图分类描述（用于 embedding 相似度匹配）
     # ═══════════════════════════════════════════════════════════════
@@ -284,6 +296,9 @@ class ToolDispatcherMixin:
         self.tool_manager.register_tool(AdvancedCalculatorTool(), "math")
         self.tool_manager.register_tool(TimeTool(), "utility")
         self.tool_manager.register_tool(FileTool(), "file")
+
+        from tools.builtin_tools.heart_record import HeartRecordTool
+        self.tool_manager.register_tool(HeartRecordTool(), "memory")
 
         from tools.builtin_tools.web_search import WebSearchTool
         self.tool_manager.register_tool(WebSearchTool(), "web")
@@ -746,12 +761,17 @@ class ToolDispatcherMixin:
     ) -> Tuple[List[Dict[str, Any]], bool]:
         """执行一轮工具调用，共享于 chat / chat_stream。
 
+        每个工具调用内置错误分级重试：
+          - 鉴权/权限错（401/403）→ 重试 1 次
+          - 系统错（5xx/超时/其他）  → 重试 3 次
+        重试耗尽时在 round_log 中标记 _retry_exhausted=True。
+
         Returns:
             (tool_call_log_entries, should_abort)
             - tool_call_log_entries: 本轮新增的工具调用日志
             - should_abort: True 表示所有调用都是重复的，应终止迭代
         """
-        tasks = []
+        # 收集去重后的工具调用
         tc_list = []
         for tc in tool_calls_from_model:
             func = tc.get("function", {})
@@ -772,30 +792,69 @@ class ToolDispatcherMixin:
                 logger.info(f"跳过重复工具调用: {tool_name}")
                 continue
             executed_tool_keys.add(dedup_key)
-            tasks.append(self._execute_tool_call({"tool": tool_name, "args": tool_args}))
             tc_list.append({"tool_name": tool_name, "tool_args": tool_args})
 
-        if not tasks:
+        if not tc_list:
             logger.warning("所有工具调用均为重复，终止迭代")
             return [], True
 
-        exec_results = await asyncio.gather(*tasks, return_exceptions=True)
+        # 并发执行，每个工具调用内置重试
+        async def _exec_one_with_retry(tool_name: str, tool_args: dict) -> Tuple[dict, ToolResult, bool]:
+            """执行单个工具调用，含分级重试。返回 (item, result, retry_exhausted)。"""
+            auth_max = 1
+            sys_max = 3
+            auth_count = 0
+            sys_count = 0
+
+            while True:
+                result = await self._execute_tool_call(
+                    {"tool": tool_name, "args": tool_args}
+                )
+                if result.success:
+                    return {"tool_name": tool_name, "tool_args": tool_args}, result, False
+
+                is_auth = self._is_auth_error(str(result.error or ""))
+                if is_auth:
+                    auth_count += 1
+                    if auth_count > auth_max:
+                        return {"tool_name": tool_name, "tool_args": tool_args}, result, True
+                else:
+                    sys_count += 1
+                    if sys_count > sys_max:
+                        return {"tool_name": tool_name, "tool_args": tool_args}, result, True
+
+                await asyncio.sleep(0.05)
+
+        exec_tasks = [
+            _exec_one_with_retry(item["tool_name"], item["tool_args"])
+            for item in tc_list
+        ]
+        exec_results = await asyncio.gather(*exec_tasks, return_exceptions=True)
+
         round_log = []
-        for item, exec_result in zip(tc_list, exec_results):
+        for exec_entry in exec_results:
+            if isinstance(exec_entry, Exception):
+                logger.warning(f"工具执行异常: {exec_entry}")
+                continue
+
+            item, exec_result, retry_exhausted = exec_entry
             tool_name = item["tool_name"]
             tool_args = item["tool_args"]
 
-            if isinstance(exec_result, Exception):
-                exec_result = ToolResult(success=False, error=str(exec_result),
-                                         data=None, execution_time=0)
             log_entry = {
                 "tool": tool_name,
                 "args": tool_args,
                 "success": exec_result.success,
                 "result": str(exec_result.data)[:200] if exec_result.success else exec_result.error,
             }
+            if retry_exhausted:
+                log_entry["_retry_exhausted"] = True
             round_log.append(log_entry)
-            logger.info(f"[FC] {tool_name} → {'成功' if exec_result.success else '失败'}")
+
+            logger.info(
+                f"[FC] {tool_name} → {'成功' if exec_result.success else '失败'}"
+                + (" (重试耗尽)" if retry_exhausted else "")
+            )
             messages.append({"role": "tool", "content": self._format_tool_result(exec_result)})
 
             # 持久化工具调用日志（WANT-004）

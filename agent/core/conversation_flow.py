@@ -26,6 +26,26 @@ from prompts.prompt_manager import prompt_manager
 
 _SPEC_REVIEW_EVERY = 5  # inject spec reminder every N turns per project
 
+# ── 分支失败检测常量 ────────────────────────────────────────────
+_BRANCH_FAILURE_WINDOW = 5       # 检测窗口（最近 N 轮）
+_SIMILARITY_THRESHOLD = 0.8      # Jaccard 相似度阈值（>80% 视为重复）
+_SIGNAL_1_SAME_ERROR_COUNT = 3   # 同工具同错误次数阈值
+_SIGNAL_2_CONSECUTIVE_DUP = 2    # 连续重复轮数阈值
+_RETRACT_ROUNDS_ON_FAILURE = 2   # 分支失败时撤回最近 N 轮
+
+
+def _text_jaccard_similarity(a: str, b: str) -> float:
+    """计算两段文本的词级 Jaccard 相似度（0~1），无外部库依赖。"""
+    if not a or not b:
+        return 0.0
+    set_a = set(a.split())
+    set_b = set(b.split())
+    if not set_a or not set_b:
+        return 0.0
+    intersection = len(set_a & set_b)
+    union = len(set_a | set_b)
+    return intersection / union if union > 0 else 0.0
+
 
 class ConversationFlowMixin:
     """对话主流程：消息构建 + ReAct chat/chat_stream。"""
@@ -271,6 +291,126 @@ class ConversationFlowMixin:
             logger.warning(f"_maybe_extract_context 异常 (user={user_id}, project={project_id}): {exc}")
 
     # ═══════════════════════════════════════════════════════════════
+    # 分支失败检测 + 自动撤回
+    # ═══════════════════════════════════════════════════════════════
+
+    def _detect_branch_failure(
+        self,
+        round_history: List[Dict[str, Any]],
+        iteration: int,
+        max_iterations: int,
+        user_correction: bool = False,
+    ) -> Optional[str]:
+        """检测当前分支是否已进入失败螺旋。
+
+        5 信号覆盖，任一命中即返回失败原因字符串，否则返回 None。
+        检测窗口：最近 _BRANCH_FAILURE_WINDOW 轮。
+        """
+        if not round_history:
+            return None
+
+        window = round_history[-_BRANCH_FAILURE_WINDOW:]
+
+        # ── 信号 3：用户显式纠偏（最高优先级，无需窗口） ──
+        if user_correction:
+            return "user_correction: 用户显式纠偏（不对/重来/换个思路）"
+
+        # ── 信号 5：工具重试耗尽 ──
+        for r in window:
+            for tr in r.get("tool_results", []):
+                if tr.get("_retry_exhausted"):
+                    tool_name = tr.get("tool", "?")
+                    return f"tool_retry_exhausted: 工具 {tool_name} 错误重试耗尽"
+
+        # ── 信号 1：同工具同错误 3 次 ──
+        error_counts: Dict[str, int] = {}
+        for r in window:
+            for tr in r.get("tool_results", []):
+                if not tr.get("success"):
+                    key = f"{tr.get('tool', '?')}:{tr.get('result', '')[:80]}"
+                    error_counts[key] = error_counts.get(key, 0) + 1
+        for key, count in error_counts.items():
+            if count >= _SIGNAL_1_SAME_ERROR_COUNT:
+                tool = key.split(":")[0]
+                return f"same_tool_same_error: 工具 {tool} 相同错误 {count} 次"
+
+        # ── 信号 2：LLM 输出连续 2 轮重复 >80% ──
+        texts = [r.get("assistant_text", "") for r in window]
+        consecutive_dup = 0
+        for i in range(1, len(texts)):
+            if texts[i] and texts[i - 1]:
+                sim = _text_jaccard_similarity(texts[i - 1], texts[i])
+                if sim > _SIMILARITY_THRESHOLD:
+                    consecutive_dup += 1
+                    if consecutive_dup >= _SIGNAL_2_CONSECUTIVE_DUP:
+                        return f"consecutive_duplicate: LLM 连续 {consecutive_dup + 1} 轮输出相似度 >{_SIMILARITY_THRESHOLD}"
+                else:
+                    consecutive_dup = 0
+
+        # ── 信号 4：5 轮内 RuntimeError + 空响应 → 立即触发 ──
+        has_runtime_err = any(r.get("has_runtime_error") for r in window)
+        has_empty = any(r.get("has_empty_response") for r in window)
+        if has_runtime_err and has_empty:
+            return "runtime_error_and_empty: 窗口内同时存在 RuntimeError 和空响应"
+
+        return None
+
+    def _auto_retract_last_n_rounds(
+        self, messages: List[Dict[str, str]], n: int, user_id: str
+    ) -> int:
+        """从 messages 中移除最近 N 轮 assistant+tool 消息，并清理短期记忆。
+
+        返回实际移除的消息数。
+        """
+        removed = 0
+        rounds_found = 0
+        indices_to_remove = []
+        message_ids_to_forget = []
+
+        # 从后向前扫描，找到最近 N 个 assistant 消息
+        for i in range(len(messages) - 1, -1, -1):
+            m = messages[i]
+            if m.get("role") == "assistant":
+                rounds_found += 1
+                # 标记从当前 assistant 到其后的 tool 消息（包括自身）
+                j = i
+                while j < len(messages) and messages[j].get("role") in ("assistant", "tool"):
+                    if j not in indices_to_remove:
+                        indices_to_remove.append(j)
+                    j += 1
+                if rounds_found >= n:
+                    break
+
+        if not indices_to_remove:
+            return 0
+
+        # 收集要清除的记忆 message_id
+        for idx in indices_to_remove:
+            m = messages[idx]
+            mid = (m.get("_message_id") or
+                   (m.get("metadata", {}) or {}).get("message_id"))
+            if mid:
+                message_ids_to_forget.append(mid)
+
+        # 从 messages 中移除（从大到小排序以保持索引正确）
+        for idx in sorted(indices_to_remove, reverse=True):
+            messages.pop(idx)
+            removed += 1
+
+        # 从短期记忆中清除对应条目
+        if message_ids_to_forget and hasattr(self, 'memory') and self.memory:
+            try:
+                self.memory.short_term.delete_by_ids(message_ids_to_forget)
+            except Exception as exc:
+                logger.debug(f"_auto_retract: 短期记忆清理失败（非致命）: {exc}")
+
+        logger.info(
+            f"分支失败 → 自动撤回最近 {n} 轮（移除 {removed} 条消息，"
+            f"清理 {len(message_ids_to_forget)} 条短期记忆），user={user_id}"
+        )
+        return removed
+
+    # ═══════════════════════════════════════════════════════════════
     # ReAct 主循环 — chat()
     # ═══════════════════════════════════════════════════════════════
 
@@ -290,7 +430,9 @@ class ConversationFlowMixin:
                    channel: str = "web",
                    scene_chat_type: Optional[str] = None,
                    scene_mentioned: bool = False,
-                   allowed_tool_categories: Optional[List[str]] = None) -> dict:
+                   allowed_tool_categories: Optional[List[str]] = None,
+                   retract_on_failure: bool = True,
+                   user_correction: bool = False) -> dict:
         """非流式聊天（ReAct 循环）。
         provider_override: 若传入，则本次请求使用该 provider（per-user 隔离）。
         persona_override:  若传入，则本次请求使用该角色内容（per-user 角色隔离）。
@@ -300,6 +442,8 @@ class ConversationFlowMixin:
         scene_mentioned:   group 场景下是否被显式 @ 提及。
         allowed_tool_categories: 非 None 时硬限制本次对话可用的工具分类（代码层强制），
                           用于受限的内部自动化场景（如记忆归并只允许 file 分类）。
+        retract_on_failure: True 时启用 5 信号分支失败检测+自动撤回（默认开启，测试时可关闭）。
+        user_correction:   用户消息是否包含纠偏关键词（不对/重来/换个思路），触发信号 3。
         """
         if provider_override is not None:
             _request_provider_ctx.set(provider_override)
@@ -318,7 +462,7 @@ class ConversationFlowMixin:
         # ── 缓存命中检查（仅纯知识类：use_tools=False，且未要求跳过缓存）────────────
         if not use_tools and not skip_cache:
             # L1：精确匹配
-            cached = self._cache_get(message)
+            cached = self._cache_get(message, user_id=user_id)
             if cached is not None:
                 cache_hits_total.labels(level="L1").inc()
                 logger.debug(f"[L1-cache] 命中: {message[:40]}")
@@ -330,7 +474,7 @@ class ConversationFlowMixin:
                 sem_hit = self._semantic_cache.get(message, model=eff_model)
                 if sem_hit is not None:
                     cache_hits_total.labels(level="L2").inc()
-                    self._cache_put(message, sem_hit)   # 回填 L1
+                    self._cache_put(message, sem_hit, user_id=user_id)   # 回填 L1
                     return {"content": sem_hit, "tool_calls": [], "_from_cache": "L2"}
                 cache_misses_total.labels(level="L2").inc()
 
@@ -363,7 +507,7 @@ class ConversationFlowMixin:
             if (not skip_cache
                     and full_response
                     and not self._is_error_response(full_response)):
-                self._cache_put(message, full_response)
+                self._cache_put(message, full_response, user_id=user_id)
                 if self._semantic_cache is not None:
                     self._semantic_cache.put(message, full_response, model=eff_model)
             return {"content": full_response, "tool_calls": []}
@@ -372,6 +516,9 @@ class ConversationFlowMixin:
         executed_tool_keys: set = set()
         response_set = False
         full_response = ""
+        round_history: List[Dict[str, Any]] = []
+        _branch_reset_count = 0
+        _MAX_BRANCH_RESETS = 1  # 每次对话最多撤回 1 次，防止无限循环
 
         for i in range(max_iterations):
             result = await self._call_model_with_tools(
@@ -396,6 +543,18 @@ class ConversationFlowMixin:
             )
             tool_call_log.extend(round_log)
 
+            # ── 构建本轮记录，用于分支失败检测 ──
+            round_entry = {
+                "assistant_text": content,
+                "tool_results": round_log,
+                "has_runtime_error": any(
+                    "RuntimeError" in str(tr.get("result", ""))
+                    for tr in round_log
+                ),
+                "has_empty_response": not content.strip(),
+            }
+            round_history.append(round_entry)
+
             if should_abort:
                 messages.append({
                     "role": "system",
@@ -404,6 +563,32 @@ class ConversationFlowMixin:
                 full_response = await self._call_model(messages)
                 response_set = True
                 break
+
+            # ── 分支失败检测（5 信号） ──
+            if retract_on_failure and _branch_reset_count < _MAX_BRANCH_RESETS:
+                failure_reason = self._detect_branch_failure(
+                    round_history, i, max_iterations,
+                    user_correction=user_correction,
+                )
+                if failure_reason:
+                    logger.warning(
+                        f"分支失败检测触发: {failure_reason}，trace={_trace_id}"
+                    )
+                    self._auto_retract_last_n_rounds(
+                        messages, _RETRACT_ROUNDS_ON_FAILURE, user_id
+                    )
+                    messages.append({
+                        "role": "system",
+                        "content": (
+                            f"[BRANCH_RESET] 检测到推理分支进入失败螺旋"
+                            f"（原因: {failure_reason}），已自动撤回最近几轮操作。"
+                            "请换个思路重新回答，避免重复之前的错误。"
+                        ),
+                    })
+                    round_history.clear()
+                    _branch_reset_count += 1
+                    # 继续循环，让 LLM 在 [BRANCH_RESET] 后重新推理
+                    continue
 
         # ── 工具执行后强制指定回答格式 ───────────────────
         if tool_call_log and not response_set:
@@ -535,7 +720,9 @@ class ConversationFlowMixin:
                           assistant_message_id: Optional[str] = None,
                           channel: str = "web",
                           scene_chat_type: Optional[str] = None,
-                          scene_mentioned: bool = False):
+                          scene_mentioned: bool = False,
+                          retract_on_failure: bool = True,
+                          user_correction: bool = False):
         """SSE 流式聊天（ReAct 循环 + 流式最终回答）。
         cancel_event：客户端断连时由 FastAPI 端点设置，通知底层停止生产。
         provider_override: 若传入，则本次请求使用该 provider（per-user 隔离）。
@@ -543,6 +730,8 @@ class ConversationFlowMixin:
         channel:           请求来源渠道（"web"/"feishu_im"/...），决定 system prompt 是否注入私密档案段。
         scene_chat_type:   多人会话场景标记（如飞书 "group"/"p2p"），group 时注入静默规则。
         scene_mentioned:   group 场景下是否被显式 @ 提及。
+        retract_on_failure: True 时启用 5 信号分支失败检测+自动撤回（默认开启，测试时可关闭）。
+        user_correction:   用户消息是否包含纠偏关键词（不对/重来/换个思路），触发信号 3。
         """
         if provider_override is not None:
             _request_provider_ctx.set(provider_override)
@@ -603,6 +792,9 @@ class ConversationFlowMixin:
         # ── ReAct 工具循环 ──────────────────────────────
         executed_tool_keys: set = set()
         content = ""
+        round_history: List[Dict[str, Any]] = []
+        _branch_reset_count = 0
+        _MAX_BRANCH_RESETS = 1
 
         for i in range(max_iterations):
             result = await self._call_model_with_tools(
@@ -640,12 +832,52 @@ class ConversationFlowMixin:
                 yield ('tool_call', entry)
             tool_call_log.extend(round_log)
 
+            # ── 构建本轮记录 + 分支失败检测 ──
+            round_entry = {
+                "assistant_text": content,
+                "tool_results": round_log,
+                "has_runtime_error": any(
+                    "RuntimeError" in str(tr.get("result", ""))
+                    for tr in round_log
+                ),
+                "has_empty_response": not content.strip(),
+            }
+            round_history.append(round_entry)
+
             if should_abort:
                 messages.append({
                     "role": "system",
                     "content": "工具已执行完毕，请直接基于已有的工具结果用中文回答用户问题，不要再调用工具。"
                 })
                 break
+
+            if retract_on_failure and _branch_reset_count < _MAX_BRANCH_RESETS:
+                failure_reason = self._detect_branch_failure(
+                    round_history, i, max_iterations,
+                    user_correction=user_correction,
+                )
+                if failure_reason:
+                    logger.warning(
+                        f"chat_stream 分支失败检测触发: {failure_reason}"
+                    )
+                    self._auto_retract_last_n_rounds(
+                        messages, _RETRACT_ROUNDS_ON_FAILURE, user_id
+                    )
+                    messages.append({
+                        "role": "system",
+                        "content": (
+                            f"[BRANCH_RESET] 检测到推理分支进入失败螺旋"
+                            f"（原因: {failure_reason}），已自动撤回最近几轮操作。"
+                            "请换个思路重新回答，避免重复之前的错误。"
+                        ),
+                    })
+                    round_history.clear()
+                    _branch_reset_count += 1
+                    yield ('branch_reset', {
+                        "reason": failure_reason,
+                        "retracted_rounds": _RETRACT_ROUNDS_ON_FAILURE,
+                    })
+                    continue
 
         if tool_call_log:
             yield ('tool_calls_done', tool_call_log)

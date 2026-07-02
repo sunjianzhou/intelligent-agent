@@ -81,6 +81,37 @@ scheduler_tasks_executed_total = Counter(
     ["outcome"],  # outcome: success | failed
 )
 
+# ── L3: 长期记忆检索命中率 ─────────────────────────────────────
+
+l3_retrieve_hits = Counter(
+    "l3_retrieve_hits_total",
+    "L3 long-term memory retrieval hits (non-empty results)",
+)
+l3_retrieve_total = Counter(
+    "l3_retrieve_total",
+    "L3 long-term memory retrieval attempts",
+)
+l3_retrieve_avg_similarity = Gauge(
+    "l3_retrieve_avg_similarity",
+    "L3 average cosine similarity of top-1 retrieval result",
+)
+l3_retrieve_duration_ms = Histogram(
+    "l3_retrieve_duration_ms",
+    "L3 retrieval latency in milliseconds",
+    buckets=[1, 5, 10, 25, 50, 100, 250, 500, 1000],
+)
+
+# ── L4: 蒸馏快照追溯完整性 ─────────────────────────────────────
+
+l4_distill_source_coverage = Gauge(
+    "l4_distill_source_coverage_ratio",
+    "L4 ratio of long-term memory entries with source_message_ids",
+)
+l4_distill_snapshot_backups = Gauge(
+    "l4_distill_snapshot_backups",
+    "L4 number of snapshot backup files",
+)
+
 
 # ── 中间件 ────────────────────────────────────────────────────
 

@@ -424,6 +424,7 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 | 能力 | 实现方式 |
 |------|----------|
+| L1 精确缓存 | `L1Cache` 类，SHA256(prompt+model+persona) 精确匹配，5min TTL，LRU 淘汰 100 条上限 |
 | 语义缓存 | L2 余弦相似度 ≥ 0.92 时直接返回历史响应，命中即跳过 LLM 调用 |
 | 双信号量并发控制 | `_inference_sem`（实际推理并发上限，`INFERENCE_CONCURRENCY`）+ `_queue_sem`（排队上限），防止 CPU 推理时多请求互相争抢导致全部超时 |
 | 流式输出 | SSE 逐 token 推送，前端 `requestAnimationFrame` 节流渲染，完成后整体重渲染 Markdown，避免逐 token 重排版的性能损耗 |
@@ -438,6 +439,8 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 | 云端 Fallback | 本地 Ollama 不可达时自动切换到 DashScope / DeepSeek / ZhipuAI / Moonshot 等云端 Provider，服务不中断 |
 | 网关过载保护 | Java 网关线程池满时直接返回 503，不阻塞 Tomcat 工作线程，避免雪崩 |
 | WebSocket 自动重连 | 前端检测连接断开后自动重连，并在重连成功且模型/角色列表为空时补拉一次（规避容器重启时序问题） |
+| 分支失败自动撤回 | 5 信号实时检测 ReAct 推理失败螺旋（同工具同错误/连续重复输出/用户纠偏/空响应+RTE/重试耗尽），命中即自动撤回最近 2 轮 + 注入 `[BRANCH_RESET]` 重新推理 |
+| 工具错误分级重试 | 鉴权错（401/403）重试 1 次，系统错（5xx/超时）重试 3 次，避免瞬时故障导致对话中断 |
 | ChromaDB 自愈 | 检测到向量库 schema 不一致时自动迁移/重建，提供 `migrate_chromadb.py --dry-run` 预演模式 |
 | 容器健康探针 | `docker-compose.yml` 为 agent / backend / frontend 三层均配置 `healthcheck`，编排时按依赖顺序等待健康 |
 
@@ -446,7 +449,7 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 | 能力 | 实现方式 |
 |------|----------|
 | 健康检查 | `GET /health`（Agent）/ `GET /api/health`（Backend 代理），供容器探针和负载均衡器探测 |
-| Prometheus 指标 | `GET /metrics` 暴露 HTTP 请求量/延迟分布、LLM 推理计数与耗时（按 model + outcome 维度）、工具调用统计，可直接接入 Grafana |
+| Prometheus 指标 | `GET /metrics` 暴露 HTTP 请求量/延迟分布、LLM 推理计数与耗时（按 model + outcome 维度）、工具调用统计、L3 长期记忆检索命中率+相似度+延迟（p50/p99）、L4 蒸馏源覆盖率+快照数，可直接接入 Grafana |
 | 实时系统监控面板 | `/admin/system` 页面展示 CPU / 内存 / GPU / 磁盘占用与进程排行 |
 | 运营统计面板 | `/admin/stats` 页面展示满意度、响应时间分布、工具调用排名 |
 | 分级日志 | `LOG_LEVEL` 环境变量控制（`DEBUG`/`INFO`/`WARNING`），Agent / Backend 各自独立配置 |
@@ -465,7 +468,7 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 | 层 | 测试框架 | 覆盖范围 |
 |------|------|------|
-| Agent 单元测试 | pytest（318 个） | 记忆系统、工具调用、调度器持久化、角色加载、上下文提取、项目接口、消息撤回、飞书 OAuth 等 |
+| Agent 单元测试 | pytest（350 个） | 记忆系统、工具调用、调度器持久化、角色加载、上下文提取、项目接口、消息撤回、飞书 OAuth、心证管理、分支检测、L1 缓存等 |
 | Backend 单元测试 | JUnit 5 | WebSocket 消息序列化、JWT 工具类、JSON 工具类 |
 | Frontend 单元测试 | Vitest | JWT 处理逻辑等关键工具函数 |
 | E2E 端到端测试 | pytest + httpx（68 个） | 从客户端发起 HTTP 请求打通 Java:8080 → Python:8000，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知/消息撤回全链路 |

@@ -69,8 +69,10 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { NAV_ITEMS, CONFIG_ITEMS, SYSTEM_ITEMS } from '@/config/routes.config.js'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 
 const props = defineProps({ modelValue: { type: Boolean, required: true } })
@@ -79,23 +81,14 @@ const emit = defineEmits(['update:modelValue'])
 const router    = useRouter()
 const authStore = useAuthStore()
 
-const COMMON_ITEMS = [
-  { name: 'project',   label: '项目',    icon: 'fas fa-folder-open', path: '/project'   },
-  { name: 'knowledge', label: '知识库',  icon: 'fas fa-book',        path: '/knowledge' },
-  { name: 'image',     label: '图片生成', icon: 'fas fa-image',      path: '/image'     },
-]
-const AI_ITEMS = [
-  { name: 'admin-models', label: '模型管理',   icon: 'fas fa-robot', path: '/admin/models' },
-  { name: 'admin-skills', label: 'Skill 管理', icon: 'fas fa-magic', path: '/admin/skills' },
-  { name: 'admin-mcp',    label: 'MCP 配置',   icon: 'fas fa-plug',  path: '/admin/mcp'    },
-]
-const OPS_ITEMS = [
-  { name: 'admin-tools',  label: '工具管理', icon: 'fas fa-tools',           path: '/admin/tools'  },
-  { name: 'admin-tasks',  label: '任务管理', icon: 'fas fa-tasks',           path: '/admin/tasks'  },
-  { name: 'admin-logs',   label: '操作日志', icon: 'fas fa-clipboard-list',  path: '/admin/logs'   },
-  { name: 'admin-stats',  label: '统计分析', icon: 'fas fa-chart-bar',       path: '/admin/stats'  },
-  { name: 'admin-system', label: '系统信息', icon: 'fas fa-info-circle',     path: '/admin/system' },
-]
+// 从 routes.config.js 派生三组导航，不再硬编码
+const COMMON_ITEMS = computed(() =>
+  NAV_ITEMS.filter(item => ['project', 'knowledge', 'image'].includes(item.name))
+)
+
+const AI_ITEMS = computed(() => CONFIG_ITEMS)
+
+const OPS_ITEMS = computed(() => SYSTEM_ITEMS)
 
 const go = (path) => {
   emit('update:modelValue', false)

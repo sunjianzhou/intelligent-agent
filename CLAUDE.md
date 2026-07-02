@@ -33,7 +33,7 @@ cd agent
 pip install -e ".[dev]"
 python -m uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000 --reload
 
-pytest tests/ -v                          # full suite (~250 tests)
+pytest tests/ -v                          # full suite (~350 tests)
 pytest tests/test_some_file.py::test_name -v   # single test
 black . && isort .                        # formatting (line-length 88, black profile)
 ```
@@ -88,16 +88,35 @@ Per-request isolation (multi-user) is done via `ContextVar`s in `core/_context_v
 ```
 _build_messages_async()  → injects short-term memory + long-term semantic recall
                              + project context + task list + spec (every 10 turns)
+                             + [HEART 心证铁卷] (user-explicit permanent memories)
 _call_model_with_tools()  → first LLM call
-  ├── tool calls present → _execute_tool_round() → append results → loop (max 5 rounds)
+  ├── tool calls present → _execute_tool_round() → append results
+  │                         ├── per-tool error-graded retry (auth×1 / system×3)
+  │                         └── _detect_branch_failure() 5-signal check
+  │                              └── triggered → auto-retract 2 rounds + [BRANCH_RESET]
   └── no tool calls       → _stream_tokens_async()  (SSE)
 ```
 
 Models without native function calling (dolphin, phi2, orca-*) fall back to text-tool parsing, supporting JSON / `<tool_call>` tags / markdown code blocks / plain text.
 
-### Two-tier memory
+### Branch failure detection (5 signals)
+
+After each tool round, `_detect_branch_failure()` checks a 5-round window:
+1. Same tool + same error ≥3 times
+2. LLM output ≥2 consecutive rounds Jaccard similarity >80%
+3. User explicit correction ("不对/重来/换个思路")
+4. RuntimeError + empty response in same window → immediate
+5. Tool retry exhaustion (`_retry_exhausted` flag)
+
+Triggered → auto-retract last 2 rounds + inject `[BRANCH_RESET]` system message + loop continues. Max 1 reset per conversation.
+
+### Two-tier memory + heart + cache
 
 Short-term memory is an in-process deque (TTL 24h, last 100 messages). Every 5 turns, `MemoryDistiller` extracts facts into long-term memory (ChromaDB, `all-MiniLM-L6-v2` embeddings); every 10 turns `SessionSummarizer` writes a stage summary. When a `project_id` is present, `ContextExtractor` additionally pulls project-specific nuggets into a per-project ChromaDB collection every 8 turns, injected back as `[PROJECT CONTEXT]`.
+
+**Heart layer** (`soul/heart.md`): User-explicit permanent memory, separate from auto-distilled LTM. `heart_record` builtin tool (append/list/delete) lets the LLM read/write on user command. System prompt injects【心证铁卷】at position ③.5 (after MEMORY, before HEARTBEAT), excluded from external IM channels (feishu_im/wecom).
+
+**Response cache**: L1 exact-match cache (`core/l1_cache.py`, 5min TTL, LRU 100 entries) + L2 semantic cache (`memory/semantic_cache.py`, ChromaDB cosine similarity, 24h TTL). Only active when `use_tools=False` (pure knowledge queries).
 
 ### Project system
 

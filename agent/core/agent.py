@@ -10,8 +10,6 @@ IntelligentAgent 通过 Mixin 继承将职责拆分到三个专注模块：
 import asyncio
 import hashlib
 import threading
-import time
-from collections import OrderedDict
 from typing import Dict, Any, Optional, List
 
 from loguru import logger
@@ -90,7 +88,7 @@ class IntelligentAgent(ConversationFlowMixin, ToolDispatcherMixin, MemoryWriterM
             logger.warning(f"灵魂文件缺失，使用空白灵魂降级: {e}")
             from soul.loader import SoulData
             class _EmptySoul:
-                data = SoulData(soul="", user="", memory="", identity="", heartbeat="", whisper="")
+                data = SoulData(soul="", user="", memory="", identity="", heartbeat="", whisper="", heart="")
             self.soul = _EmptySoul()
         self.prompt_builder = SystemPromptBuilder()
 
@@ -110,11 +108,14 @@ class IntelligentAgent(ConversationFlowMixin, ToolDispatcherMixin, MemoryWriterM
         except Exception as e:
             logger.warning(f"任务调度器初始化失败，跳过: {e}")
 
-        # L1 精确响应缓存（OrderedDict LRU，并发读写需锁保护）
-        self._response_cache: OrderedDict = OrderedDict()
-        self._response_cache_lock = threading.Lock()
-        self._cache_max_size: int = getattr(settings, 'response_cache_max_size', 500)
-        self._cache_ttl_secs: int = getattr(settings, 'response_cache_ttl_secs', 3600)
+        # L1 精确响应缓存（独立 L1Cache 类，prometheus 风格 5min TTL）
+        from core.l1_cache import L1Cache
+        self.l1_cache = L1Cache(
+            ttl_seconds=getattr(settings, 'l1_cache_ttl_seconds', 300),
+            max_entries=getattr(settings, 'l1_cache_max_entries', 100),
+        )
+        # 向后兼容别名（conversation_flow.py 通过 self._cache_get/_cache_put 调用）
+        self._response_cache = self.l1_cache
 
         # L2 语义响应缓存（ChromaDB response_cache collection）
         self._semantic_cache = None
@@ -343,8 +344,9 @@ class IntelligentAgent(ConversationFlowMixin, ToolDispatcherMixin, MemoryWriterM
     # L1 精确响应缓存
     # ═══════════════════════════════════════════════════════════════
 
-    def _cache_key(self, message: str) -> str:
+    def _cache_key(self, message: str, user_id: str = "") -> str:
         """生成精确匹配缓存键（sha256 of message + model + persona）。
+
         加入 persona 维度：同一问题在不同角色下响应不同，不应互相命中缓存。
         """
         _, eff_model = self._get_eff_provider()
@@ -353,29 +355,20 @@ class IntelligentAgent(ConversationFlowMixin, ToolDispatcherMixin, MemoryWriterM
         raw = f"{message}|{eff_model or ''}|{persona_sig}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
-    def _cache_get(self, message: str) -> Optional[str]:
+    def _cache_get(self, message: str, user_id: str = "") -> Optional[str]:
         """查询 L1 缓存，命中则返回响应字符串，过期或未命中返回 None。"""
-        key = self._cache_key(message)
-        with self._response_cache_lock:
-            entry = self._response_cache.get(key)
-            if entry is None:
-                return None
-            response, expire_ts = entry
-            if time.time() > expire_ts:
-                del self._response_cache[key]
-                return None
-            self._response_cache.move_to_end(key)
-            return response
+        key = self._cache_key(message, user_id=user_id)
+        return self.l1_cache.get(key)
 
-    def _cache_put(self, message: str, response: str) -> None:
+    def _cache_put(self, message: str, response: str, user_id: str = "") -> None:
         """写入 L1 缓存（含 LRU 淘汰）。"""
-        key = self._cache_key(message)
-        expire_ts = time.time() + self._cache_ttl_secs
-        with self._response_cache_lock:
-            self._response_cache[key] = (response, expire_ts)
-            self._response_cache.move_to_end(key)
-            while len(self._response_cache) > self._cache_max_size:
-                self._response_cache.popitem(last=False)
+        key = self._cache_key(message, user_id=user_id)
+        self.l1_cache.set(key, response)
+
+    def _invalidate_l1_for_user(self, user_id: str) -> None:
+        """记忆写入后使该用户的 L1 缓存失效（递增 snapshot，旧 key 自然过期）。"""
+        if user_id and user_id != "default":
+            self.l1_cache.invalidate_user(user_id)
 
     # ═══════════════════════════════════════════════════════════════
     # 核心模型调用

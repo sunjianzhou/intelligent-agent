@@ -17,23 +17,31 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { NAV_ITEMS } from '@/config/routes.config.js'
 
-const emit = defineEmits(['open-more'])
-const route  = useRoute()
+const emit  = defineEmits(['open-more'])
+const route = useRoute()
 const router = useRouter()
 
-const MAIN_PATHS = ['/chat', '/roles/editor', '/memory']
+// 从 routes.config.js 的 NAV_ITEMS 派生底部 Tab（聊天/角色配置/记忆）
+const BOTTOM_TAB_NAMES = ['chat', 'role-editor', 'memory']
+const bottomTabs = computed(() =>
+  NAV_ITEMS
+    .filter(item => BOTTOM_TAB_NAMES.includes(item.name))
+    .map(item => ({ key: item.name, label: item.label, icon: item.icon, path: item.path }))
+)
 
-const TABS = [
-  { key: 'chat',   label: '聊天', icon: 'fas fa-comment',    path: '/chat' },
-  { key: 'roles',  label: '角色', icon: 'fas fa-id-card',    path: '/roles/editor' },
-  { key: 'memory', label: '记忆', icon: 'fas fa-brain',      path: '/memory' },
-  { key: 'more',   label: '更多', icon: 'fas fa-ellipsis-h', path: null },
-]
+const TABS = computed(() => [
+  ...bottomTabs.value,
+  { key: 'more', label: '更多', icon: 'fas fa-ellipsis-h', path: null },
+])
+
+const MAIN_PATHS = computed(() => bottomTabs.value.map(t => t.path))
 
 const isActive = (tab) => {
-  if (tab.path === null) return !MAIN_PATHS.includes(route.path)
+  if (tab.path === null) return !MAIN_PATHS.value.includes(route.path)
   return route.path === tab.path
 }
 

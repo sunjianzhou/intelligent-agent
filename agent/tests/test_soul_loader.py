@@ -12,12 +12,14 @@ from soul.loader import SoulLoader, SoulData
 REQUIRED_FILES = ["SOUL", "USER", "MEMORY", "IDENTITY", "HEARTBEAT"]
 
 
-def _make_soul_dir(tmp_path: Path, skip: Optional[str] = None, with_whisper: bool = False) -> Path:
+def _make_soul_dir(tmp_path: Path, skip: Optional[str] = None, with_whisper: bool = False, with_heart: bool = False) -> Path:
     for name in REQUIRED_FILES:
         if name != skip:
             (tmp_path / f"{name}.md").write_text(f"{name} content 中文", encoding="utf-8")
     if with_whisper:
         (tmp_path / "whisper.md").write_text("私密内容", encoding="utf-8")
+    if with_heart:
+        (tmp_path / "heart.md").write_text("心证内容 中文", encoding="utf-8")
     return tmp_path
 
 
@@ -108,3 +110,17 @@ def test_default_soul_dir_raises_when_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(SoulLoader, "_DEFAULT_SOUL_DIR", tmp_path / "nonexistent")
     with pytest.raises(FileNotFoundError):
         SoulLoader()
+
+
+def test_missing_heart_is_silent(tmp_path):
+    """heart.md 缺失时 data.heart 应为空字符串，不报错。"""
+    _make_soul_dir(tmp_path)
+    loader = SoulLoader(soul_dir=str(tmp_path))
+    assert loader.data.heart == ""
+
+
+def test_heart_content_loaded(tmp_path):
+    """heart.md 存在时内容应正确读入。"""
+    _make_soul_dir(tmp_path, with_heart=True)
+    loader = SoulLoader(soul_dir=str(tmp_path))
+    assert "心证内容" in loader.data.heart
