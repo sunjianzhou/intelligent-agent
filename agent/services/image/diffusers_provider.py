@@ -6,6 +6,7 @@
   IMAGE_GEN_PROVIDER=diffusers
   IMAGE_GEN_DIFFUSERS_MODEL=runwayml/stable-diffusion-v1-5
   IMAGE_GEN_DIFFUSERS_DEVICE=auto   # auto | cuda | cpu | mps
+  IMAGE_GEN_DIFFUSERS_ENABLE_SAFETY_CHECKER=false  # 生产环境按需开启 NSFW 过滤
 
 本机（GTX 1660 SUPER 6GB）推荐：SD 1.5 系列，512×512 约 10-20 秒/张。
 """
@@ -17,6 +18,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from loguru import logger
 
+from config.settings import settings
 from services.image.base_image_provider import BaseImageProvider, ImageRequest, ImageResult
 
 # ── 模块级状态（跨请求共享，单用户场景安全）─────────────────────────────────
@@ -59,9 +61,50 @@ def _pick_dtype(device: str):
     return torch.float16 if device in ("cuda", "mps") else torch.float32
 
 
+def _load_safety_checker():
+    """懒加载 NSFW 安全检测器。
+
+    仅在 IMAGE_GEN_DIFFUSERS_ENABLE_SAFETY_CHECKER=true 时调用。
+    首次加载会从 HuggingFace 下载 ~600MB 模型文件。
+    """
+    from diffusers import StableDiffusionSafetyChecker
+    from transformers import AutoFeatureExtractor
+    import torch
+
+    safety_model_id = "CompVis/stable-diffusion-safety-checker"
+    logger.info(f"[Diffusers] 加载 NSFW 安全检测器: {safety_model_id}")
+    safety_checker = StableDiffusionSafetyChecker.from_pretrained(safety_model_id)
+    feature_extractor = AutoFeatureExtractor.from_pretrained(safety_model_id)
+    return safety_checker, feature_extractor
+
+
+def _check_nsfw(result) -> bool:
+    """检查生成结果是否包含 NSFW 内容。
+
+    当 safety_checker 未启用时，result 中没有 nsfw_content_detected 字段，
+    此时返回 False（不检测）。
+    返回 True 表示至少有一张图片被判定为 NSFW（已被 safety checker 涂黑）。
+    """
+    nsfw_list = getattr(result, "nsfw_content_detected", None)
+    if nsfw_list is None:
+        return False
+    return any(nsfw_list)
+
+
 def _build_base_pipeline(model_id: str, dtype) -> Any:
     """从 HuggingFace 加载裸 pipeline（未移至设备）。"""
     from diffusers import DPMSolverMultistepScheduler
+
+    # NSFW 安全检测器：默认关闭（本地环境），生产通过 IMAGE_GEN_DIFFUSERS_ENABLE_SAFETY_CHECKER=true 开启
+    safety_checker = None
+    safety_checker_kwargs = {}
+    if settings.image_gen_diffusers_enable_safety_checker:
+        safety_checker, feature_extractor = _load_safety_checker()
+        safety_checker_kwargs = {
+            "safety_checker": safety_checker,
+            "feature_extractor": feature_extractor,
+            "requires_safety_checker": True,
+        }
 
     if _is_sdxl(model_id):
         from diffusers import StableDiffusionXLPipeline
@@ -75,7 +118,8 @@ def _build_base_pipeline(model_id: str, dtype) -> Any:
     else:
         from diffusers import StableDiffusionPipeline
         pipe = StableDiffusionPipeline.from_pretrained(
-            model_id, torch_dtype=dtype, safety_checker=None,
+            model_id, torch_dtype=dtype, safety_checker=safety_checker,
+            **safety_checker_kwargs,
         )
 
     pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
@@ -236,6 +280,10 @@ class DiffusersProvider(BaseImageProvider):
             guidance_scale      = req.guidance_scale or 7.5,
             callback_on_step_end = _step_callback,
         )
+        # 检查 NSFW
+        nsfw_detected = _check_nsfw(result)
+        if nsfw_detected:
+            logger.warning("[Diffusers] NSFW 内容已检测并屏蔽（txt2img 路径）")
         image = result.images[0]
         buf = io.BytesIO()
         image.save(buf, format="PNG")
@@ -258,10 +306,23 @@ class DiffusersProvider(BaseImageProvider):
             from diffusers import StableDiffusionImg2ImgPipeline
             import torch
             dtype = torch.float16 if self._device in ("cuda", "mps") else torch.float32
+
+            # NSFW 安全检测器：仅在配置开启时加载
+            safety_checker = None
+            safety_kwargs = {}
+            if settings.image_gen_diffusers_enable_safety_checker:
+                safety_checker, feature_extractor = _load_safety_checker()
+                safety_kwargs = {
+                    "safety_checker": safety_checker,
+                    "feature_extractor": feature_extractor,
+                    "requires_safety_checker": True,
+                }
+
             img2img_pipe = StableDiffusionImg2ImgPipeline(
                 vae=pipe.vae, text_encoder=pipe.text_encoder, tokenizer=pipe.tokenizer,
-                unet=pipe.unet, scheduler=pipe.scheduler, safety_checker=None,
-                feature_extractor=None, requires_safety_checker=False,
+                unet=pipe.unet, scheduler=pipe.scheduler, safety_checker=safety_checker,
+                feature_extractor=safety_kwargs.get("feature_extractor"),
+                requires_safety_checker=bool(safety_kwargs),
             ).to(self._device)
         except Exception as e:
             logger.warning(f"[Diffusers] img2img pipeline 构建失败，降级 txt2img: {e}")
@@ -272,6 +333,10 @@ class DiffusersProvider(BaseImageProvider):
                 guidance_scale=req.guidance_scale or 7.5,
                 callback_on_step_end=callback,
             )
+            # 检查 NSFW
+            nsfw_detected = _check_nsfw(result)
+            if nsfw_detected:
+                logger.warning("[Diffusers] NSFW 内容已检测并屏蔽（降级 txt2img 路径）")
             buf = io.BytesIO()
             result.images[0].save(buf, format="PNG")
             with _progress_lock:
@@ -287,6 +352,10 @@ class DiffusersProvider(BaseImageProvider):
             guidance_scale  = req.guidance_scale or 7.5,
             callback_on_step_end = callback,
         )
+        # 检查 NSFW
+        nsfw_detected = _check_nsfw(result)
+        if nsfw_detected:
+            logger.warning("[Diffusers] NSFW 内容已检测并屏蔽（img2img 路径）")
         buf = io.BytesIO()
         result.images[0].save(buf, format="PNG")
         with _progress_lock:

@@ -31,17 +31,15 @@
 
 ---
 
-### TODO-IMG-1（归档）：SD WebUI Provider 增强（P1 — 功能完善）
+### ~~TODO-IMG-1（归档）：SD WebUI Provider 增强（P1 — 功能完善）~~ ✅ 全部完成（2026-07-03 核实）
 
-**目标**：让 SD WebUI 接入体验达到生产可用
-
-**待完成：**
+**结果**：
 - [x] **模型列表 API**：`GET /api/image/models` 调用 `/sdapi/v1/sd-models` 返回可用检查点列表 ✅
 - [x] **运行时换模型**：`POST /api/image/switch-model`，调用 `/sdapi/v1/options` 热切换模型 ✅
-- [ ] **生成进度查询**：调用 `/sdapi/v1/progress` 轮询并通过 SSE 推送进度百分比到前端
-- [ ] **img2img 支持**：扩展 `ImageRequest` 增加 `init_image_base64`，调用 `/sdapi/v1/img2img`
-- [x] **ControlNet 支持**：在 payload 中加入 `alwayson_scripts.controlnet`，需 WebUI 安装 ControlNet 扩展 ✅（2026-06-22，复用 img2img 底图上传，仅 SD WebUI）
-- [ ] **采样器/调度器选择**：将 `sampler_name` 暴露为 `ImageRequest.extra` 参数
+- [x] **生成进度查询**：`get_progress()` 调用 `/sdapi/v1/progress` 轮询并返回 progress/eta/state/step ✅
+- [x] **img2img 支持**：`generate()` 中 `req.init_image_base64` 存在时走 `/sdapi/v1/img2img`，含 denoising_strength ✅
+- [x] **ControlNet 支持**：在 payload 中加入 `alwayson_scripts.controlnet`，需 WebUI 安装 ControlNet 扩展 ✅
+- [x] **采样器/调度器选择**：`sampler_name` 已从 `req.sampler_name` 读取，透传至 API payload ✅
 
 **涉及文件**：`agent/services/image/sd_webui_provider.py`
 
@@ -99,13 +97,16 @@
 
 ---
 
-### TODO-IMG-6：图片生成安全与限流（P3 — 生产加固）
+### ~~TODO-IMG-6：图片生成安全与限流（P3 — 生产加固）~~ ✅ 已完成（2026-07-03）
 
-**待完成：**
-- [x] **并发限制**：`image_router.py` 复用 `_state._inference_sem` 信号量，超限返回 503 ✅
-- [x] **输出目录大小限制**：`_maybe_cleanup_old_images()` 超过 5GB 时自动清理最旧文件 ✅
-- [x] **文件名随机化**：`gen_{uuid12}.png` 已随机，图片流代理路径白名单 JWT 豁免 ✅
-- [ ] **NSFW 过滤**：diffusers `safety_checker` 当前已关闭（本地环境），生产环境按需开启
+**结果**：
+- 新增 `image_gen_diffusers_enable_safety_checker` 配置项（默认 `False`），生产通过 `IMAGE_GEN_DIFFUSERS_ENABLE_SAFETY_CHECKER=true` 开启
+- `_load_safety_checker()` 懒加载 CompVis/stable-diffusion-safety-checker（~600MB）
+- `_build_base_pipeline()` + `_generate_img2img()` 条件性注入 safety_checker / feature_extractor
+- `_check_nsfw()` 统一检查 `nsfw_content_detected`，三个路径（txt2img/img2img/降级txt2img）均覆盖
+- NSFW 被检测到时 safety checker 自动涂黑图片 + logger.warning
+
+**涉及文件**：`agent/services/image/diffusers_provider.py`, `agent/config/settings.py`
 
 ---
 
@@ -656,14 +657,11 @@ AbortController + 30s 超时早已实现；补 `options.timeout` 支持。commit
 
 ---
 
-## TODO-PWA-1: BottomTabBar / MorePanel 导航数据源统一（📌 W2 收尾）
+## ~~TODO-PWA-1: BottomTabBar / MorePanel 导航数据源统一~~ ✅ 已完成（2026-07-03）
 
-**背景**：`routes.config.js` 是项目唯一导航数据源（CLAUDE.md 明文约定），但 `BottomTabBar.vue` 和 `MorePanel.vue` 在 2026-06-29 的移动端 PWA 改造中直接硬编码了路径/图标/标签数组，未从 `NAV_ITEMS`/`ADMIN_ITEMS` 派生。  
-**风险**：后续只改 `routes.config.js` 新增页面时，BottomTabBar / MorePanel 会静默遗漏，造成移动端导航不一致。
-
-**期望做法**：
-1. `BottomTabBar.vue` 从 `routes.config.js` 的 `NAV_ITEMS` 中取聊天/角色/记忆三项，"更多"Tab 保持 emit `open-more`
-2. `MorePanel.vue` 的常用组 / AI 能力组 / 运维组从 `NAV_ITEMS`/`CONFIG_ITEMS`/`SYSTEM_ITEMS` 按分组规则筛选（常用=知识库+项目+图片；AI 能力=工具+Skill+MCP；运维=模型+任务+日志+统计+系统），不再硬编码三组数组
+**结果**：
+- `BottomTabBar.vue` 已从 `NAV_ITEMS` 派生底部 Tab（`BOTTOM_TAB_NAMES = ['chat', 'role-editor', 'memory']`），"更多" Tab emit `open-more`
+- `MorePanel.vue` 三组导航（常用/AI能力/运维）全部从 `NAV_ITEMS`/`CONFIG_ITEMS`/`SYSTEM_ITEMS` 按分组规则派生，无硬编码数组
 
 **涉及文件**：`frontend/src/components/layout/BottomTabBar.vue`, `frontend/src/components/layout/MorePanel.vue`, `frontend/src/config/routes.config.js`
 

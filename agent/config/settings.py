@@ -168,6 +168,7 @@ class Settings(BaseSettings):
     # diffusers 专属
     image_gen_diffusers_model: str = "runwayml/stable-diffusion-v1-5"
     image_gen_diffusers_device: str = "auto"   # auto | cuda | cpu | mps
+    image_gen_diffusers_enable_safety_checker: bool = False  # 默认关闭（本地），生产按需开启
 
     # ── 飞书IM 相关配置 ────────────────────────────────────────────────────────
     # 飞书 OAuth 用户授权
