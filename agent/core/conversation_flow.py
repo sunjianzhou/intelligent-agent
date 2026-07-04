@@ -23,6 +23,7 @@ from core._context_vars import (
     _request_channel_ctx,
 )
 from prompts.prompt_manager import prompt_manager
+from core import progress_recovery
 
 _SPEC_REVIEW_EVERY = 5  # inject spec reminder every N turns per project
 
@@ -207,6 +208,26 @@ class ConversationFlowMixin:
                       "（不要附加任何其他文字、标点或解释）；其余情况按正常风格作答。"
                 ),
             })
+
+        # ── 进度恢复协议（TODO-94）────────────────────────────────────
+        # 首次消息时检测未完成的 progress_state*.md，注入恢复上下文。
+        # 使用 _recovery_injected 集合防止同一 session 内重复注入。
+        if not hasattr(self, "_recovery_injected"):
+            self._recovery_injected: set = set()
+        if use_memory and user_id not in self._recovery_injected:
+            self._recovery_injected.add(user_id)
+            incomplete = progress_recovery.find_incomplete_tasks()
+            if incomplete:
+                recovery_text = progress_recovery.build_recovery_context(incomplete)
+                if recovery_text:
+                    msgs.append({
+                        "role": "system",
+                        "content": recovery_text,
+                    })
+                    logger.info(
+                        f"[progress_recovery] 注入 {len(incomplete)} 个未完成任务 "
+                        f"(user={user_id}): {incomplete[0]['task_name'][:60]}"
+                    )
 
         # 多模态：若有图片，在用户消息中加提示文字，并将 images 存入消息 dict 供后续转为 ChatMessage 时使用
         if image_base64:

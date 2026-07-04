@@ -171,6 +171,9 @@ public class FeishuMessageSender {
     }
 
     private String doSend(String chatId, String msgType, Object content) throws Exception {
+        // ── 发送前验证（TODO-93 失职自查钩子）────────────────────
+        verifyMessageContent(msgType, content);
+
         String url   = feishuBase + "/open-apis/im/v1/messages?receive_id_type=chat_id";
         String token = getTenantAccessToken();
 
@@ -189,7 +192,50 @@ public class FeishuMessageSender {
         if (!res.getStatusCode().is2xxSuccessful()) {
             throw new RuntimeException("飞书 API 返回 " + res.getStatusCode() + ": " + res.getBody());
         }
-        return extractMessageId(res.getBody());
+
+        String messageId = extractMessageId(res.getBody());
+
+        // ── 发送后验证：message_id 缺失时抛异常触发 retry（TODO-93）──
+        verifyMessageId(messageId, chatId, msgType);
+
+        return messageId;
+    }
+
+    // ── TODO-93 失职自查钩子：发送前内容验证 ──────────────────────
+    private static final int MAX_TEXT_LENGTH = 15000;
+
+    private void verifyMessageContent(String msgType, Object content) {
+        if (content == null) {
+            log.warn("[feishu pre-send] content 为 null");
+            return;
+        }
+        if ("text".equals(msgType) && content instanceof Map) {
+            Map<?, ?> c = (Map<?, ?>) content;
+            Object textObj = c.get("text");
+            if (textObj == null || String.valueOf(textObj).trim().isEmpty()) {
+                log.warn("[feishu pre-send] text 消息内容为空");
+            } else if (String.valueOf(textObj).length() > MAX_TEXT_LENGTH) {
+                log.warn("[feishu pre-send] text 消息过长 ({} > {})，飞书可能截断",
+                        String.valueOf(textObj).length(), MAX_TEXT_LENGTH);
+            }
+        }
+        // 验证 content 可序列化
+        try {
+            objectMapper.writeValueAsString(content);
+        } catch (Exception e) {
+            log.warn("[feishu pre-send] content JSON 序列化失败: {}", e.getMessage());
+        }
+    }
+
+    /** 发送后验证 message_id 非空；若为空则抛异常触发 sendWithRetry 的重试机制。*/
+    private void verifyMessageId(String messageId, String chatId, String msgType) {
+        if (messageId == null || messageId.trim().isEmpty()) {
+            String errMsg = String.format(
+                    "[feishu post-send] message_id 缺失 (chatId=%s, msgType=%s)，触发重试",
+                    chatId, msgType);
+            log.warn(errMsg);
+            throw new RuntimeException(errMsg);
+        }
     }
 
     private String extractMessageId(String responseBody) {

@@ -57,6 +57,44 @@ def _atomic_write_text(path: Path, content: str) -> None:
     tmp.replace(path)
 
 
+def _verify_write_contains(path: Path, expected_text: str) -> bool:
+    """写入后读回验证：确认文件中包含预期文本。"""
+    if not path.exists():
+        logger.error(f"heart_record 写入后验证失败：文件不存在 {path}")
+        return False
+    try:
+        actual = path.read_text(encoding="utf-8")
+        if expected_text not in actual:
+            logger.error(
+                f"heart_record 写入后验证失败：文件中未找到预期内容 "
+                f"({expected_text[:60]!r}...)"
+            )
+            return False
+        return True
+    except Exception as e:
+        logger.error(f"heart_record 写入后验证读回异常: {e}")
+        return False
+
+
+def _verify_write_excludes(path: Path, excluded_text: str) -> bool:
+    """写入后读回验证：确认文件中不包含已删除的文本。"""
+    if not path.exists():
+        logger.error(f"heart_record 写入后验证失败：文件不存在 {path}")
+        return False
+    try:
+        actual = path.read_text(encoding="utf-8")
+        if excluded_text in actual:
+            logger.error(
+                f"heart_record 删除后验证失败：文件中仍包含已删除内容 "
+                f"({excluded_text[:60]!r}...)"
+            )
+            return False
+        return True
+    except Exception as e:
+        logger.error(f"heart_record 写入后验证读回异常: {e}")
+        return False
+
+
 # ---------------------------------------------------------------------------
 # 核心逻辑
 # ---------------------------------------------------------------------------
@@ -270,6 +308,10 @@ class HeartRecordTool(BaseTool):
                 new_text = text + f"## {section}\n\n{entry_line}\n"
 
         _atomic_write_text(HEART_MD_PATH, new_text)
+
+        # 写入后读回验证（TODO-93 失职自查钩子）
+        _verify_write_contains(HEART_MD_PATH, content.strip())
+
         logger.info(f"heart_record append → {section}: {content.strip()[:60]}...")
 
         return {"ok": True, "action": "append", "section": section, "date": today,
@@ -343,6 +385,10 @@ class HeartRecordTool(BaseTool):
         # 重建文件
         new_text = _rebuild_heart_md(text, sections)
         _atomic_write_text(HEART_MD_PATH, new_text)
+
+        # 写入后读回验证：确认已删除的条目不在文件中（TODO-93 失职自查钩子）
+        _verify_write_excludes(HEART_MD_PATH, target_entry["content"])
+
         logger.info(f"heart_record delete id={target_id} from {target_section_name}")
 
         return {"ok": True, "action": "delete", "id": target_id,

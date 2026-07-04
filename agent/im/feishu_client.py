@@ -39,6 +39,47 @@ def _get_tenant_access_token() -> str:
     return _token_cache["token"]
 
 
+# 飞书消息内容最大长度（字符数），超过此值会截断风险
+_MAX_TEXT_LENGTH = 15000
+# 消息发送最大重试次数（message_id 缺失时）
+_MAX_MSG_ID_RETRIES = 1
+
+
+def _verify_message_content(msg_type: str, content: dict) -> None:
+    """发送前验证消息内容完整性（TODO-93 失职自查钩子）。
+
+    检查项：content 非空、text 类型有 text 字段且非空、长度合规。
+    发现问题时 logger.warning 但不阻断发送（宁可发出也不静默吞掉）。
+    """
+    if not content:
+        logger.warning("[feishu pre-send] content 为空 dict")
+        return
+
+    if msg_type == "text":
+        text = content.get("text", "")
+        if not text or not text.strip():
+            logger.warning("[feishu pre-send] text 消息内容为空")
+        elif len(text) > _MAX_TEXT_LENGTH:
+            logger.warning(
+                f"[feishu pre-send] text 消息过长 ({len(text)} > {_MAX_TEXT_LENGTH})，"
+                f"飞书可能截断: {text[:80]}..."
+            )
+
+    # interactive / post 类型：检查 content 可 JSON 序列化
+    try:
+        json.dumps(content, ensure_ascii=False)
+    except (TypeError, ValueError) as e:
+        logger.warning(f"[feishu pre-send] content JSON 序列化失败: {e}")
+
+
+def _extract_message_id(result: dict):
+    """从飞书 API 响应中提取 message_id。返回 str 或 None。"""
+    if not result:
+        return None
+    data = result.get("data", {})
+    return data.get("message_id") if isinstance(data, dict) else None
+
+
 class FeishuIMTool(BaseTool):
     """向飞书用户/群组发送消息。"""
 
@@ -80,8 +121,35 @@ class FeishuIMTool(BaseTool):
         content: dict,
         receive_id_type: str = "open_id",
     ) -> Any:
+        # ── 发送前验证（TODO-93 失职自查钩子）────────────────────
+        _verify_message_content(msg_type, content)
+
+        result = self._do_send(receiver_id, msg_type, content, receive_id_type)
+
+        # ── 发送后验证：message_id 缺失时重试 1 次（TODO-93）──
+        msg_id = _extract_message_id(result)
+        if not msg_id:
+            logger.warning(
+                f"[feishu post-send] message_id 缺失，重试 1 次 "
+                f"(receiver={receiver_id}, msg_type={msg_type})"
+            )
+            result = self._do_send(receiver_id, msg_type, content, receive_id_type)
+            msg_id = _extract_message_id(result)
+            if not msg_id:
+                logger.error(
+                    f"[feishu post-send] 重试后仍无 message_id，"
+                    f"消息可能未送达 (receiver={receiver_id})"
+                )
+            else:
+                logger.info(f"[feishu post-send] 重试成功，message_id={msg_id}")
+
+        return result
+
+    def _do_send(self, receiver_id: str, msg_type: str, content: dict,
+                 receive_id_type: str = "open_id") -> dict:
+        """执行单次飞书 API 调用。"""
         token = _get_tenant_access_token()
-        resp  = requests.post(
+        resp = requests.post(
             f"{FEISHU_BASE}/open-apis/im/v1/messages",
             params={"receive_id_type": receive_id_type},
             headers={"Authorization": f"Bearer {token}",

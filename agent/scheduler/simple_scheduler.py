@@ -673,6 +673,9 @@ class SimpleTaskScheduler:
                     task.status = SimpleTaskStatus.COMPLETED
                     logger.info(f"任务执行成功: {task.name} (运行次数: {task.run_count})")
 
+            # ── 任务执行后 file 写入验证（TODO-93 失职自查钩子）────
+            self._verify_task_file_write(task, result)
+
             self._save_tasks()  # sets dirty flag only; actual write batched by _flush_tasks_if_dirty
 
             return {
@@ -870,6 +873,49 @@ class SimpleTaskScheduler:
         if recovered:
             self._tasks_dirty = True
             logger.info(f"已恢复 {len(recovered)} 个卡死任务: {recovered}")
+
+    # ── TODO-93 失职自查钩子：任务执行后 file 写入验证 ──────────────
+
+    def _verify_task_file_write(self, task: SimpleTask, result: Dict[str, Any]) -> None:
+        """任务执行完毕后，若任务涉及文件写入，验证目标文件存在且非空。
+
+        当前覆盖：
+        - heartbeat_check → 验证 soul/MEMORY.md（_consolidate_memory 写入目标）
+        - 可扩展：检查 result 中的文件路径字段
+        """
+        action = getattr(task, "action", "")
+
+        # heartbeat_check 会触发 _consolidate_memory → 写 soul/MEMORY.md
+        if action == "heartbeat_check":
+            self._verify_file_nonempty(self._memory_md_path, tag="heartbeat_check/MEMORY.md")
+            return
+
+        # 通用检查：若 result 中包含文件路径相关字段，逐一验证
+        if isinstance(result, dict):
+            for key in ("file_path", "path", "output_file", "written_file"):
+                fp = result.get(key)
+                if fp and isinstance(fp, str):
+                    self._verify_file_nonempty(Path(fp), tag=f"task_result.{key}")
+
+    @staticmethod
+    def _verify_file_nonempty(path: Path, tag: str = "") -> None:
+        """验证文件存在且非空；发现问题时 logger.warning 但不抛异常。"""
+        tag_label = f" ({tag})" if tag else ""
+        if not path.exists():
+            logger.warning(
+                f"[scheduler post-execute] 文件不存在{tag_label}: {path}"
+            )
+            return
+        try:
+            size = path.stat().st_size
+            if size == 0:
+                logger.warning(
+                    f"[scheduler post-execute] 文件为空{tag_label}: {path}"
+                )
+        except OSError as e:
+            logger.warning(
+                f"[scheduler post-execute] 文件状态检查失败{tag_label}: {path} — {e}"
+            )
 
     def start(self):
         """启动调度器"""

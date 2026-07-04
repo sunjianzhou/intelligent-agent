@@ -906,47 +906,33 @@ parameters = [
 
 ---
 
-## TODO-93: 失职自查钩子（飞书推送 / scheduler / heart_record 前后验证）
+## ~~TODO-93: 失职自查钩子（飞书推送 / scheduler / heart_record 前后验证）~~ ✅ 已完成（2026-07-04）
 
 **背景**：2026-07-03 "糖糖失职问题"分析暴露 Agent 在关键操作前后无验证机制——推送前没 grep 确认内容、推送后没 verify 是否真的发出了、heart_record 写入后没读回确认。这是原始文档 12 项能力中的 #8（P1）。
 
-**目标**：在关键副作用操作前后插入轻量 verify 钩子。
+**结果**：
+- [x] **飞书 IM 推送前 verify**：`FeishuMessageSender.verifyMessageContent()` + `feishu_client._verify_message_content()` — 检查 content 非空、text 长度合规（≤15000）、JSON 可序列化
+- [x] **飞书 IM 推送后 verify**：`FeishuMessageSender.verifyMessageId()` 抛异常触发 sendWithRetry 重试 + `feishu_client.execute()` message_id 缺失时重试 1 次 + logger.error 告警
+- [x] **scheduler 任务执行后 verify**：`SimpleTaskScheduler._verify_task_file_write()` — heartbeat_check 后验证 MEMORY.md 存在且非空；result 中 file_path 字段自动检查
+- [x] **heart_record 写入后 verify**：`_verify_write_contains()` / `_verify_write_excludes()` — append 后读回确认内容在文件中，delete 后读回确认已删除内容不在文件中
+- [x] `agent/tests/test_verify_hooks.py`：19 个测试（heart_record 5 + feishu 8 + scheduler 6），全通过
 
-**待完成**：
-- [ ] **飞书 IM 推送前 verify**：`FeishuMessageSender` 发送前 grep 验证消息内容完整性（无截断、无敏感词、长度合规）
-- [ ] **飞书 IM 推送后 verify**：发送后轮询消息状态（飞书 API 返回 `msg_id` 即确认），失败时重试 1 次 + 日志告警
-- [ ] **scheduler 任务执行后 verify**：`SimpleTaskScheduler._check_tasks_loop` 中任务执行完毕后，若任务涉及 file 写入，验证目标文件存在且非空
-- [ ] **heart_record 写入后 verify**：`heart_record.py` append/delete 操作后读回验证写入成功（文件内容包含新条目 / 不含已删除条目）
-- [ ] `agent/tests/test_verify_hooks.py`：推送前后 / 写入前后 / 任务执行后各 1 用例 = 3 用例
-
-**涉及文件**：`agent/im/feishu_client.py`, `backend/.../feishu/FeishuMessageSender.java`, `agent/scheduler/simple_scheduler.py`, `agent/tools/builtin_tools/heart_record.py`
+**涉及文件**：`agent/im/feishu_client.py`, `backend/.../feishu/FeishuMessageSender.java`, `agent/scheduler/simple_scheduler.py`, `agent/tools/builtin_tools/heart_record.py`, `agent/tests/test_verify_hooks.py`
 
 ---
 
-## TODO-94: 进度恢复协议（progress_state.md 自动 sync）
+## ~~TODO-94: 进度恢复协议（progress_state.md 自动 sync）~~ ✅ 已完成（2026-07-04）
 
 **背景**：heart.md「主人教诲」已写入铁律——"超当前窗口任务必写 progress 文件"。但 Agent 写了进度文件后，下次 session 启动时系统并不会自动检测和提示恢复。规则写了，但没有自动化承接。这是原始文档的 #11（P1）能力。
 
-**目标**：session 启动时自动检测未完成的 progress 文件，注入恢复上下文，让 Agent 从中断点继续而不是重头开始。
+**结果**：
+- [x] `agent/core/progress_recovery.py` — 新模块：`parse_progress_file()` 解析标准格式 + `find_incomplete_tasks()` 扫描 memory/work/ + `build_recovery_context()` 构建 [PROGRESS RECOVERY] 消息
+- [x] 检测逻辑：最后更新 < 24h + 当前步骤 < 总步骤 → "未完成任务"；已完成/过期/缺时间戳 → 跳过
+- [x] `agent/core/conversation_flow.py`：`_build_messages_async()` 首次消息时自动扫描 `memory/work/` 目录，注入 `[PROGRESS RECOVERY]` 系统消息段（`_recovery_injected` 集合防重复注入）
+- [x] 用户说"继续上次的"→ 自动命中（每次 `chat()` 调用都走 `_build_messages_async`，_recovery_injected 已在首次注入后标记，不会重复注入但 Agent 已在上下文中记住了任务进度）
+- [x] `agent/tests/test_progress_recovery.py`：18 个测试（parse 6 + find 8 + build 4），全通过
 
-**progress_state.md 标准格式**：
-```markdown
-# 任务进度
-- 任务名：<描述>
-- 当前步骤：<N> / <M>
-- 最后更新：<ISO timestamp>
-- 下一步：<具体动作>
-- 备注：<可选>
-```
-
-**待完成**：
-- [ ] `agent/core/conversation_flow.py`：`_build_messages_async()` 在 session 启动时（`rebuild_context=True`）扫描 `memory/work/` 目录，检测未完成的 `progress_state*.md` 文件
-- [ ] 检测逻辑：若 `最后更新` 距今 < 24h 且 `当前步骤 < 总步骤`，视为"未完成任务"
-- [ ] 注入 `[PROGRESS RECOVERY]` 系统消息段，告知 Agent「上次任务 X 做到第 N/M 步，下一步是 Y，请从中断点继续」
-- [ ] 用户说"继续上次的"时，Agent 自动定位最新的 progress 文件并读取
-- [ ] `agent/tests/test_progress_recovery.py`：检测未完成/已完成/无文件/过期 各 1 用例 = 4 用例
-
-**涉及文件**：`agent/core/conversation_flow.py`, `agent/tests/test_progress_recovery.py`
+**涉及文件**：`agent/core/progress_recovery.py`, `agent/core/conversation_flow.py`, `agent/tests/test_progress_recovery.py`
 
 ---
 
@@ -980,7 +966,7 @@ W4 (7/21-7/28): TODO-92  ✅ 已完成（2026-07-02） 全量回归 + 迁移验�
 > **2026-07-02 更新**：heart-record plan 提前全部落地。W1-W4 在一个会话中连续完成，新增 52 个测试（32 heart/branch + 8 L1 + 2 L3/L4 + 10 已有覆盖），350/354 通过。
 
 ```
-W5 (7/03-7/10): TODO-93~94  失职自查钩子 + 进度恢复协议
+W5 (7/03-7/10): TODO-93 ✅ + TODO-94 ✅  失职自查钩子 + 进度恢复协议（均已完成 2026-07-04）
 W6 (7/10-7/17): TODO-95     跨 session 记忆继承增强（依赖 TODO-94）
 ```
 
