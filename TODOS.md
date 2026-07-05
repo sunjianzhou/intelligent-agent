@@ -936,21 +936,17 @@ parameters = [
 
 ---
 
-## TODO-95: 跨 session 记忆继承增强（LTM 任务进度感知）
+## ~~TODO-95: 跨 session 记忆继承增强（LTM 任务进度感知）~~ ✅ 已完成（2026-07-05）
 
 **背景**：LTM (ChromaDB) 已有，`MemoryDistiller` 会自动蒸馏对话中的 facts。但它蒸馏出来的是零散知识点（"霖君喜欢 xxx"），不包含"上次任务做到第几步了"的状态信息。跨 session 恢复任务时，LTM 检索无法提供进度上下文。这是原始文档的 #6（P1）能力。
 
-**目标**：让 LTM 能感知并检索任务进度。不是替代 progress_state.md（TODO-94），而是在蒸馏时识别 schedule/task 类消息，打上 `task_progress` 标签，使 task 恢复场景的检索命中率更高。
+**结果**：
+- [x] `agent/memory/distiller.py`：新增 `_TASK_PROGRESS_KEYWORDS` + `_detect_task_progress()` 函数 —— 消息窗口含 `[TASK_DONE]`/`[TASK_BLOCKED]`/`progress_state`/`scheduler` 关键词时，蒸馏 facts 自动标记 `type: "task_progress"`（否则默认 `"fact"`）
+- [x] `agent/memory/long_term.py`：`type` 提升为 ChromaDB 顶层字段（与 `user_id` 同级，支持 where 过滤）；`retrieve()` 新增 `type_filter` 参数，自动转为 `metadata_filter={"type": ...}`；`_save_to_vector_db()` / `store_batch()` / `_batch_update_access_records()` 三处同步更新
+- [x] `ConversationFlowMixin._build_messages_async()`：TODO-94 进度恢复信号触发后，额外调用 `long_term.retrieve(type_filter="task_progress")` 查询跨 session 进度记忆，注入 `[TASK PROGRESS MEMORY]` 系统消息段
+- [x] `agent/tests/test_memory_task_progress.py`：10 个测试（关键词检测 7 + 蒸馏标签 2 + 检索 filter 1），全通过
 
-**待完成**：
-- [ ] `agent/memory/distiller.py`：`_extract_facts()` 新增进度感知规则——若消息含 `[TASK_DONE]`/`[TASK_BLOCKED]`/`progress_state`/`scheduler` 关键词，自动打 `meta: {type: "task_progress"}` 标签
-- [ ] `agent/memory/long_term.py`：`retrieve()` 新增 `type_filter` 参数，允许只检索 `task_progress` 类记忆
-- [ ] `ConversationFlowMixin._build_messages_async()`：在注入 LTM 记忆时，新增 task 场景判断——若检测到 progress 恢复信号（TODO-94），额外查询 `type=task_progress` 的记忆
-- [ ] `agent/tests/test_memory_task_progress.py`：蒸馏识别标签 / 检索 filter 各 1 用例 = 2 用例
-
-**涉及文件**：`agent/memory/distiller.py`, `agent/memory/long_term.py`, `agent/core/conversation_flow.py`
-
-**依赖**：TODO-94 落地后再启动此项（蒸馏标签的设计需配合 progress_state.md 的标准格式）。
+**涉及文件**：`agent/memory/distiller.py`, `agent/memory/long_term.py`, `agent/core/conversation_flow.py`, `agent/tests/test_memory_task_progress.py`
 
 ---
 
@@ -967,9 +963,11 @@ W4 (7/21-7/28): TODO-92  ✅ 已完成（2026-07-02） 全量回归 + 迁移验�
 
 ```
 W5 (7/03-7/10): TODO-93 ✅ + TODO-94 ✅  失职自查钩子 + 进度恢复协议（均已完成 2026-07-04）
-W6 (7/10-7/17): TODO-95     跨 session 记忆继承增强（依赖 TODO-94）
+W6 (7/10-7/17): TODO-95 ✅  跨 session 记忆继承增强（已完成 2026-07-05）
 ```
 
 > **2026-07-03 新增**：TODO-93~95 来自"糖糖失职问题"分析，承接 HEARTBEAT 能力边界自检 + heart.md 铁律。TODO-95 依赖 TODO-94 的 progress_state 标准格式。
+>
+> **2026-07-05 更新**：TODO-93~95 全部落地，W1-W6 全部完成。目前无活跃待办（仅 TODO-12 性能优化剩余 3 项暂缓 + TODO-IMG P3 远期遗留）。
 
 ---

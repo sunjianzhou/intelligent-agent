@@ -1,7 +1,7 @@
 # 智能体项目 — AI 上下文速查文档
 
 > **本文档专为大模型阅读设计**。新对话开始时先读此文件，5 分钟内建立完整项目认知，无需再反复询问基础背景。
-> 最后更新：2026-07-02（W1-W3 heart-record plan 全部落地，52 个新测试全绿）
+> 最后更新：2026-07-05（W1-W6 heart-record plan 全部落地：TODO-84~95，含失职自查/进度恢复/跨session记忆增强）
 
 ---
 
@@ -99,7 +99,7 @@ intelligent_agent/
 | `MemoryManager` | `memory/manager.py` | 路由短/长期记忆 |
 | `ShortTermMemory` | `memory/short_term.py` | 进程内双端队列，TTL 24h，max 100 条 |
 | `LongTermMemory` | `memory/long_term.py` | ChromaDB 向量库，embedding: all-MiniLM-L6-v2 |
-| `MemoryDistiller` | `memory/distiller.py` | 每 5 轮对话提炼事实到长期记忆 |
+| `MemoryDistiller` | `memory/distiller.py` | 每 5 轮提炼事实；进度关键词自动打 `task_progress` 标签（TODO-95） |
 | `SemanticCache` | `memory/semantic_cache.py` | L2 语义响应缓存（余弦相似度 ≥ 0.92 命中） |
 | `ContextExtractor` | `memory/context_extractor.py` | 按 project_id 提取项目上下文 nugget |
 | `ToolManager` | `tools/tool_manager.py` | per-agent 独立实例（非全局单例） |
@@ -442,10 +442,13 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
   - 缓存层：L1 精确缓存（5min TTL/LRU）+ L2 语义缓存（ChromaDB 24h TTL）
   - 可观测性：L3 长期记忆检索命中率 + L4 蒸馏源覆盖率监控埋点
   - 移动端：BottomTabBar / MorePanel 导航从 `routes.config.js` 单源派生
+  - 失职自查：飞书推送前后 verify + scheduler 任务执行后 verify + heart_record 写入后读回确认（TODO-93）
+  - 进度恢复：`progress_state.md` 自动扫描 → 注入 `[PROGRESS RECOVERY]` 上下文（TODO-94）
+  - 跨 session 记忆增强：蒸馏时识别任务进度关键词自动打 `task_progress` 标签，进度恢复时额外查询 LTM（TODO-95）
 - **IM 渠道用户隔离**：`feishu:{open_id}` / `wecom:{userName}` 各有独立记忆和模型偏好
 - **飞书心跳巡检**：已暂停（dolphin 无法正确执行开放式主动联系决策，每次输出无意义占位消息；如需恢复建议搭配云端模型）
-- **移动端 PWA**：iPhone 16 适配完成（底部 Tab Bar / safe-area / dvh / 键盘遮挡修复）；待 TODO-PWA-1（BottomTabBar/MorePanel 导航数据源统一至 routes.config.js）
-- **待办**：TODO-12（性能优化 #4/#5/#8，待触发条件）/ TODO-PWA-1（导航数据源统一）/ TODO-IMG-1（SD WebUI 进度/img2img/采样器，低优先级）/ TODO-IMG-6（NSFW 过滤，生产加固 P3）
+- **移动端 PWA**：iPhone 16 适配完成（底部 Tab Bar / safe-area / dvh / 键盘遮挡修复）
+- **待办**：TODO-12（性能优化 #4/#5/#8，待触发条件）/ TODO-IMG P3 远期遗留（ComfyUI 工作流热重载/LoRA/多模型模板等）
 
 ---
 
@@ -460,7 +463,7 @@ cd backend/web && ./mvnw spring-boot:run
 cd frontend && npm run dev
 
 # 测试
-cd agent && pytest tests/ -v                      # 单元测试（318个）
+cd agent && pytest tests/ -v                      # 单元测试（~370个）
 cd tests/e2e && pytest -v                         # E2E 测试（63个，需服务运行）
 
 # Docker 全栈（按需选 profile）
