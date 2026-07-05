@@ -14,6 +14,23 @@ from typing import Callable, Awaitable, Dict, Optional
 from loguru import logger
 
 
+# ── 任务进度感知：蒸馏时识别这些关键词，自动打 task_progress 标签 ──
+_TASK_PROGRESS_KEYWORDS = [
+    "[TASK_DONE]", "[TASK_BLOCKED]", "progress_state", "scheduler",
+]
+
+
+def _detect_task_progress(messages: list) -> bool:
+    """检查消息窗口中是否包含任务进度相关关键词。"""
+    for m in messages:
+        content = getattr(m, "content", "") or ""
+        if isinstance(content, str):
+            for kw in _TASK_PROGRESS_KEYWORDS:
+                if kw in content:
+                    return True
+    return False
+
+
 class MemoryDistiller:
     """Tracks per-user turn counts and runs incremental fact extraction."""
 
@@ -112,6 +129,9 @@ class MemoryDistiller:
             m.metadata.get("message_id") for m in window
             if m.metadata.get("message_id")
         ]
+        # 任务进度感知：窗口含进度关键词时打 task_progress 标签（TODO-95）
+        is_task_progress = _detect_task_progress(window)
+        fact_type = "task_progress" if is_task_progress else "fact"
         stored = 0
         for fact in facts:
             if self._is_duplicate(fact, long_term_memory, user_id):
@@ -120,7 +140,7 @@ class MemoryDistiller:
             long_term_memory.store(
                 content=fact,
                 metadata={
-                    "type": "fact",
+                    "type": fact_type,
                     "source": "distillation",
                     "user_id": user_id,
                     "source_message_ids": source_message_ids,
@@ -128,6 +148,11 @@ class MemoryDistiller:
                 importance=0.75,
             )
             stored += 1
+
+        if is_task_progress and stored > 0:
+            logger.info(
+                f"任务进度感知蒸馏: user={user_id} 标记 {stored} 条为 task_progress"
+            )
 
         if stored > 0:
             logger.info(f"记忆提炼: user={user_id} 新增 {stored} 条事实")

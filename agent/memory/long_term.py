@@ -316,7 +316,7 @@ class LongTermMemory(BaseMemory):
                 self.collection["embeddings"].append(embedding)
             return
 
-        # ChromaDB存储（user_id 提升为顶层字段以支持 where 过滤）
+        # ChromaDB存储（user_id + type 提升为顶层字段以支持 where 过滤）
         metadata = {
             "created_at": memory.created_at.isoformat(),
             "updated_at": memory.updated_at.isoformat(),
@@ -325,6 +325,7 @@ class LongTermMemory(BaseMemory):
             "last_accessed": memory.last_accessed.isoformat(),
             "custom_metadata": json.dumps(memory.metadata, ensure_ascii=False),
             "user_id": str(memory.metadata.get("user_id", "default")),
+            "type": str(memory.metadata.get("type", "fact")),
         }
 
         if embedding:
@@ -439,6 +440,7 @@ class LongTermMemory(BaseMemory):
                 "last_accessed": mem.last_accessed.isoformat(),
                 "custom_metadata": json.dumps(mem.metadata, ensure_ascii=False),
                 "user_id": str(mem.metadata.get("user_id", "default")),
+                "type": str(mem.metadata.get("type", "fact")),
             })
             doc_list.append(mem.content)
 
@@ -457,8 +459,14 @@ class LongTermMemory(BaseMemory):
 
         return memories
 
-    def retrieve(self, query: Union[str, MemoryQuery], limit: int = 5) -> List[MemorySearchResult]:
-        """检索记忆（基于向量相似度）"""
+    def retrieve(self, query: Union[str, MemoryQuery], limit: int = 5,
+                 type_filter: Optional[str] = None) -> List[MemorySearchResult]:
+        """检索记忆（基于向量相似度）。
+
+        Args:
+            type_filter: 若提供，仅返回 metadata.type 匹配的记忆
+                         （如 "task_progress"、"fact"）。
+        """
         import time as _time
         _t0 = _time.perf_counter()
 
@@ -466,6 +474,12 @@ class LongTermMemory(BaseMemory):
             query_obj = MemoryQuery(text=query, limit=limit)
         else:
             query_obj = query
+
+        # type_filter → metadata_filter 自动合并（TODO-95）
+        if type_filter:
+            if query_obj.metadata_filter is None:
+                query_obj.metadata_filter = {}
+            query_obj.metadata_filter["type"] = type_filter
 
         # 生成查询向量
         query_embedding = self.embedding_model.encode(query_obj.text)[0]
@@ -543,6 +557,7 @@ class LongTermMemory(BaseMemory):
                 "access_count": str(mem.access_count),
                 "last_accessed": mem.last_accessed.isoformat(),
                 "custom_metadata": json.dumps(mem.metadata, ensure_ascii=False),
+                "type": str(mem.metadata.get("type", "fact")),
             })
             doc_list.append(mem.content)
         try:

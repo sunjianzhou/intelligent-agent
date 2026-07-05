@@ -229,6 +229,37 @@ class ConversationFlowMixin:
                         f"(user={user_id}): {incomplete[0]['task_name'][:60]}"
                     )
 
+                # ── 跨 session 任务进度记忆增强（TODO-95）────────────────
+                # 检测到进度恢复信号时，额外查询 LTM 中 type=task_progress 的记忆，
+                # 让 Agent 在跨 session 恢复场景中获得更多任务进度上下文。
+                try:
+                    task_memories = self.memory.long_term.retrieve(
+                        query=message,
+                        limit=5,
+                        type_filter="task_progress",
+                    )
+                    if task_memories:
+                        task_mem_text = "\n".join(
+                            f"- {r.memory.content}"
+                            for r in task_memories
+                        )
+                        msgs.append({
+                            "role": "system",
+                            "content": (
+                                "[TASK PROGRESS MEMORY] 以下是之前会话中"
+                                "记录的任务进度相关记忆，请参考：\n"
+                                f"{task_mem_text}"
+                            ),
+                        })
+                        logger.info(
+                            f"[task_progress_memory] 注入 {len(task_memories)} 条"
+                            f" task_progress 记忆 (user={user_id})"
+                        )
+                except Exception as exc:
+                    logger.debug(
+                        f"[task_progress_memory] 查询失败（非致命）: {exc}"
+                    )
+
         # 多模态：若有图片，在用户消息中加提示文字，并将 images 存入消息 dict 供后续转为 ChatMessage 时使用
         if image_base64:
             msgs.append({
