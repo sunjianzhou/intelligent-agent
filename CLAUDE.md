@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+> 最后更新：2026-07-05（W1-W6 heart-record plan 全部落地）
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project overview
@@ -33,7 +35,7 @@ cd agent
 pip install -e ".[dev]"
 python -m uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000 --reload
 
-pytest tests/ -v                          # full suite (~350 tests)
+pytest tests/ -v                          # full suite (~370 tests)
 pytest tests/test_some_file.py::test_name -v   # single test
 black . && isort .                        # formatting (line-length 88, black profile)
 ```

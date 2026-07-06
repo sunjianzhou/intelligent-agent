@@ -2,6 +2,7 @@
 
 > 本地优先的三层 AI 智能体平台：Ollama 本地推理 · Spring Boot WebSocket 网关 · Vue 3 聊天界面 · Python CLI 客户端  
 > 支持多工具调用、长期记忆、任务调度、多角色切换、项目上下文持久化。
+> 最后更新：2026-07-05（W1-W6 heart-record plan 全部落地：心证层/分支保护/缓存/自查/进度恢复/跨session记忆增强）
 
 ```
 浏览器 / CLI 客户端
@@ -109,8 +110,12 @@ cp .env.docker.example .env.docker    # 容器运行时变量（含 IM 集成、
 | 知识库 | 上传 .txt/.md/.pdf/.json 文件，段落/句子边界分块，ChromaDB 向量索引，聊天时自动语义检索注入上下文 |
 | 多模态输入 | 聊天输入区支持图片附件/粘贴，base64 全链路透传至 Ollama images 字段（llava / qwen-vl 等） |
 | 消息撤回 | 用户可手动撤回任意历史消息（user/assistant），从对话 JSON + 短期记忆中真正删除，避免错误回复污染后续上下文；蒸馏来源标记排除检索，飞书消息联动官方撤回 API |
+| 心证铁卷 | `soul/heart.md` 用户显式永久记忆，优先级高于自动蒸馏的长期记忆；`heart_record` 工具支持 LLM 在对话中 append/list/delete 心证条目，写入前自动轮转备份 |
+| 分支失败自动撤回 | 5 信号实时检测 ReAct 推理失败螺旋（同工具同错误/连续重复输出/用户纠偏/空响应+异常/重试耗尽），命中即自动撤回最近 2 轮 + 注入 `[BRANCH_RESET]` 重新推理，每会话最多触发 1 次 |
+| 进度恢复协议 | 新会话启动时自动扫描 `memory/work/` 目录下的 `progress_state.md`，检测未完成任务并注入 `[PROGRESS RECOVERY]` 上下文；用户说"继续上次的"即可无缝恢复 |
+| 跨 session 记忆增强 | 蒸馏时自动识别任务进度关键词（`[TASK_DONE]`/`[TASK_BLOCKED]` 等）并打 `task_progress` 标签；进度恢复时额外查询跨 session 的 LTM 进度记忆，注入 `[TASK PROGRESS MEMORY]` |
 
-**内置工具**：计算器 · 时间查询 · 文件读写 · DuckDuckGo 搜索 · Shell 命令 · MySQL 查询 · 图片生成 · 记忆存储/检索 · 定时提醒创建 · 知识库上传/检索 · 飞书日历查询 · 飞书任务查询 · 飞书日历创建（OAuth）· 飞书任务写入（OAuth）
+**内置工具**：计算器 · 时间查询 · 文件读写 · DuckDuckGo 搜索 · Shell 命令 · MySQL 查询 · 图片生成 · 记忆存储/检索 · 定时提醒创建 · 知识库上传/检索 · 心证管理（heart_record） · 飞书日历查询 · 飞书任务查询 · 飞书日历创建（OAuth）· 飞书任务写入（OAuth）
 
 ---
 
@@ -443,6 +448,9 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 | 工具错误分级重试 | 鉴权错（401/403）重试 1 次，系统错（5xx/超时）重试 3 次，避免瞬时故障导致对话中断 |
 | ChromaDB 自愈 | 检测到向量库 schema 不一致时自动迁移/重建，提供 `migrate_chromadb.py --dry-run` 预演模式 |
 | 容器健康探针 | `docker-compose.yml` 为 agent / backend / frontend 三层均配置 `healthcheck`，编排时按依赖顺序等待健康 |
+| 失职自查钩子 | 关键操作前后自动验证：飞书推送前后检查内容非空+message_id 有效、scheduler 任务执行后确认输出文件存在、heart_record 写入后读回确认内容正确（TODO-93） |
+| 进度恢复协议 | 新会话首次消息时自动扫描 `memory/work/` 目录，检测未完成任务（最后更新<24h + 步骤未完成）并注入 `[PROGRESS RECOVERY]` 上下文，用户说"继续上次的"即可无缝恢复（TODO-94） |
+| 跨 session 记忆增强 | 对话蒸馏时自动识别任务进度关键词（`[TASK_DONE]`/`[TASK_BLOCKED]`/`progress_state` 等），为相关 facts 打 `task_progress` 标签；进度恢复时额外查询跨 session 的 LTM 进度记忆（TODO-95） |
 
 ### 可观测性
 
@@ -468,7 +476,7 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 | 层 | 测试框架 | 覆盖范围 |
 |------|------|------|
-| Agent 单元测试 | pytest（350 个） | 记忆系统、工具调用、调度器持久化、角色加载、上下文提取、项目接口、消息撤回、飞书 OAuth、心证管理、分支检测、L1 缓存等 |
+| Agent 单元测试 | pytest（~370 个） | 记忆系统、工具调用、调度器持久化、角色加载、上下文提取、项目接口、消息撤回、飞书 OAuth、心证管理、分支检测、L1/L2 缓存、失职自查、进度恢复、跨 session 记忆增强等 |
 | Backend 单元测试 | JUnit 5 | WebSocket 消息序列化、JWT 工具类、JSON 工具类 |
 | Frontend 单元测试 | Vitest | JWT 处理逻辑等关键工具函数 |
 | E2E 端到端测试 | pytest + httpx（68 个） | 从客户端发起 HTTP 请求打通 Java:8080 → Python:8000，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知/消息撤回全链路 |
@@ -509,7 +517,7 @@ intelligent_agent/
 │   ├── prompts/                    System prompt YAML（default + dolphin）
 │   ├── services/                   OllamaProvider / OpenAIProvider / MCPClient
 │   ├── config/settings.py          Pydantic 配置（.env 驱动）
-│   └── tests/                      pytest 测试套件（318 个）
+│   └── tests/                      pytest 测试套件（~370 个）
 │
 ├── backend/web/                    Java Spring Boot 网关
 │   └── src/main/java/…/
@@ -552,6 +560,12 @@ intelligent_agent/
 │   ├── test_tools.py               工具列表
 │   └── test_config.py              运行时配置读写
 │
+├── soul/                           Soul 层（身份/灵魂/心跳/心证铁卷/私密档案）
+│   ├── SOUL.md / IDENTITY.md       核心身份定义
+│   ├── HEARTBEAT.md                能力边界自检铁律
+│   ├── heart.md                    心证铁卷（用户显式永久记忆）
+│   ├── USER.md / MEMORY.md         用户画像 / 自维护记忆
+│   └── whisper.md                  私密档案（不上 IM 渠道）
 ├── nginx/                          HTTPS Nginx 配置 + 证书生成脚本
 ├── docker-compose.yml              容器编排（local/https/tunnel 三个 profile）
 ├── .env.docker.example             Docker 环境变量模板

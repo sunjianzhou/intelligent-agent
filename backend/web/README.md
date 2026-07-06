@@ -57,7 +57,7 @@ backend/web/src/main/java/.../
 │   ├── FeishuConfig.java             飞书 app_id/secret/verification token 配置
 │   ├── FeishuWebSocketClient.java    飞书长连接客户端（SmartLifecycle + 重连状态机）
 │   ├── FeishuEventController.java    接收飞书消息事件，调用 AgentService.chatFull() 生成回复
-│   ├── FeishuMessageSender.java      发送文本/卡片消息，返回飞书 message_id；recall() 撤回 API
+│   ├── FeishuMessageSender.java      发送文本/卡片消息，返回飞书 message_id；recall() 撤回 API；verifyMessageContent()/verifyMessageId() 推送前后自查
 │   ├── FeishuCardBuilder.java        飞书交互卡片 JSON 构建
 │   ├── FeishuCrypto.java             飞书事件签名验证
 │   ├── FeishuRecallBridge.java       内部 assistant_message_id ↔ 飞书 message_id 映射（内存态，封顶500条），撤回时联动调用 recall()

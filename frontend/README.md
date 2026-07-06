@@ -81,6 +81,33 @@
 
 ---
 
+### 知识库管理（KnowledgeView）
+
+路由：`/knowledge`
+
+| 功能 | 说明 |
+|------|------|
+| **拖拽上传** | 支持拖拽 + 点击上传 .txt/.md/.pdf/.json 文件（≤10MB），可填描述 |
+| **文件列表** | 展示文件名、分块数、大小、描述、上传时间 |
+| **单条删除** | 使用 ConfirmDialog 二次确认后删除文件及其所有向量块 |
+| **自动分块** | 后端按段落/句子边界智能分块，写入 ChromaDB 独立集合 |
+
+---
+
+### 图片生成（ImageView）
+
+路由：`/image`
+
+| 功能 | 说明 |
+|------|------|
+| **参数面板** | 左侧：prompt / negative_prompt、风格预设按钮、尺寸选择、步数/CFG 滑块 |
+| **Provider 状态** | 顶部徽章显示当前图片生成 Provider（ComfyUI/SD WebUI/diffusers/SiliconFlow）及连接状态 |
+| **生成结果** | 右侧卡片展示当前生成结果，支持下载 |
+| **历史 Gallery** | 网格展示历史生成图片，hover 显示下载/删除按钮，点击大图预览 |
+| **进度轮询** | 三种 Provider 均支持实时进度查询 |
+
+---
+
 ### 调度任务（TasksView）
 
 | 功能 | 说明 |
@@ -125,12 +152,51 @@
 
 ---
 
+### 模型管理（ModelView）
+
+路由：`/admin/models`
+
+| 功能 | 说明 |
+|------|------|
+| **当前模型卡片** | 渐变卡片展示当前激活模型名、Provider 类型（本地/云端）、显存标识 |
+| **云端服务商 CRUD** | 卡片网格展示已配置的云端服务商（OpenAI/DeepSeek/百炼等 7 家预设），支持添加/编辑/删除/激活 |
+| **API Key 配置** | 每个服务商可填写 API Key + Base URL + 模型名，支持显示/隐藏密钥 |
+| **本地模型列表** | 展示 Ollama 可用模型，含显存标识，点击激活切换 |
+| **切换回本地** | "切换回本地"按钮一键停用云端，切回 Ollama |
+
+---
+
 ### 工具列表（ToolsView）
 
 | 功能 | 说明 |
 |------|------|
 | **工具总览** | 按分类过滤，显示每个工具的名称、描述、状态（可用/禁用）|
 | **API Key 配置** | 内嵌配置面板，支持天气/搜索/地图等工具的 API Key 配置，支持显示/隐藏密码 |
+
+---
+
+### MCP 配置（MCPView）
+
+路由：`/admin/mcp`
+
+| 功能 | 说明 |
+|------|------|
+| **工具 API Key** | 配置第三方工具（天气/搜索/地图等）的 API Key，支持显示/隐藏 |
+| **推理参数** | 滑块调节 Temperature、Max Tokens、Top-P 等 LLM 推理参数 |
+| **系统资源配置** | 调节并发上限、缓存条目数、记忆大小等运行时参数，写入 `runtime_config.json` |
+
+---
+
+### 操作日志（LogView）
+
+路由：`/admin/logs`
+
+| 功能 | 说明 |
+|------|------|
+| **事件时间线** | 按时间倒序展示用户消息/AI 回复/工具调用/任务执行/错误事件 |
+| **颜色分类** | 用户消息（蓝）/ AI 回复（绿）/ 工具调用（紫）/ 任务执行（橙）/ 错误（红）|
+| **类型过滤** | 支持按事件类型筛选 |
+| **时间范围筛选** | 支持按日期范围过滤日志 |
 
 ---
 
@@ -169,9 +235,10 @@
 | **深色模式** | Header 右上角切换，持久化至 localStorage |
 | **Config-bar** | 聊天输入框上方常驻条：左侧角色选择器 + 右侧模型切换下拉（原来在 Header，TODO-24 移入）|
 | **侧边栏会话历史** | 左侧列出最近会话，点击恢复历史记录；无预览时显"新对话"；删除当前会话自动切到下一条 |
-| **移动端响应** | 768px 以下折叠为汉堡菜单抽屉；含完整主导航 + 管理后台 + 聊天页历史会话快捷入口 |
+| **移动端响应** | 768px 以下：底部 Tab 栏（聊天/角色/记忆/更多）+ "更多"面板（三组导航全部从 `routes.config.js` 单源派生）；汉堡菜单保留作为辅助入口 |
+| **PWA 底部导航** | `BottomTabBar.vue` 从 `NAV_ITEMS` 派生 Tab 项；`MorePanel.vue` 三组（常用/AI能力/运维）从 `NAV_ITEMS`/`CONFIG_ITEMS`/`SYSTEM_ITEMS` 按分组规则派生，无硬编码 |
 | **ConfirmDialog** | 危险操作（删除/清空）使用自研纯 Vue 弹窗，不使用 `window.confirm`（在 PWA/WebView 下会被静默拦截）|
-| **PWA 安装** | 支持浏览器"添加到主屏幕"，离线可访问静态资源 |
+| **PWA 安装** | 支持浏览器"添加到主屏幕"，iOS Safari 分享菜单 → 添加到主屏幕；离线可访问静态资源 |
 | **全局错误通知** | API 异常统一通过 Element Plus toast 提示，401 自动退出 |
 
 ---
@@ -200,20 +267,27 @@
 ```
 frontend/src/
 ├── views/
-│   ├── ChatView.vue            主聊天界面（思考计时、工具卡片、会话历史、config-bar）
+│   ├── ChatView.vue            主聊天界面（思考计时、工具卡片、会话历史、config-bar、多模态图片附件）
 │   ├── LoginView.vue           登录页
 │   ├── RoleEditorView.vue      角色编辑器（六标签表单 + 提示词实时预览，路由 /roles/editor）
 │   ├── ProjectView.vue         项目管理（三栏：列表 / 规格 / 任务树）
 │   ├── MemoryView.vue          记忆管理（搜索、长期、短期、摘要、导入导出）
+│   ├── KnowledgeView.vue       知识库管理（拖拽上传、分块统计、文件列表、删除）
+│   ├── ImageView.vue           图片生成（参数面板、Provider 状态、生成结果、历史 Gallery）
 │   ├── SkillView.vue           Skill 管理
+│   ├── ModelView.vue           模型管理（当前模型卡、云端服务商 CRUD、本地模型列表）
 │   ├── TasksView.vue           调度任务管理
-│   ├── SystemView.vue          系统监控 + 运行时配置（可折叠卡片、滑块调参）
+│   ├── MCPView.vue             MCP 配置（API Key + 推理参数 + 系统资源）
 │   ├── ToolsView.vue           工具列表 + API Key 配置
+│   ├── LogView.vue             操作日志（事件时间线、颜色分类、类型/时间过滤）
+│   ├── SystemView.vue          系统监控 + 运行时配置（可折叠卡片、滑块调参）
 │   └── StatsView.vue           统计分析
 ├── components/
 │   ├── layout/
-│   │   ├── Header.vue          顶部（连接状态、深色模式、清空按钮、管理后台入口）
-│   │   ├── Sidebar.vue         左侧导航（聊天/角色/记忆/项目 + 历史会话列表）
+│   │   ├── Header.vue          顶部（连接状态、深色模式、模型入口、管理后台入口）
+│   │   ├── Sidebar.vue         左侧导航（三分区：常用/配置/系统 + 历史会话列表）
+│   │   ├── BottomTabBar.vue    移动端底部 Tab 栏（聊天/角色/记忆 + 更多，从 routes.config.js 派生）
+│   │   ├── MorePanel.vue       移动端「更多」面板（三组导航：常用/AI能力/运维，从 routes.config.js 派生）
 │   │   └── StatusBar.vue       状态栏
 │   ├── ConfirmDialog.vue       自研危险操作确认弹窗（不用 window.confirm）
 │   ├── InstallPrompt.vue       PWA 安装提示
@@ -319,10 +393,16 @@ loadSessions()    → sessions = listSessions(IndexedDB)
 | `/chat` | ChatView | 需登录 |
 | `/roles/editor` | RoleEditorView | 需登录（角色编辑器）|
 | `/memory` | MemoryView | 需登录 |
+| `/knowledge` | KnowledgeView | 需登录（知识库管理）|
+| `/image` | ImageView | 需登录（图片生成）|
 | `/project` | ProjectView | 需登录 |
 | `/skills` | SkillView | 需登录 |
 | `/admin/tools` | ToolsView | 需登录 |
+| `/admin/skills` | SkillView | 需登录（同 /skills）|
+| `/admin/mcp` | MCPView | 需登录（MCP 配置）|
+| `/admin/models` | ModelView | 需登录（模型管理）|
 | `/admin/tasks` | TasksView | 需登录 |
+| `/admin/logs` | LogView | 需登录（操作日志）|
 | `/admin/system` | SystemView | 需登录 |
 | `/admin/stats` | StatsView | 需登录 |
 

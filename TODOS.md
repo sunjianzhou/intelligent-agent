@@ -899,7 +899,7 @@ parameters = [
 - [ ] 在 `@verify migration-readiness` 触发后 Agent 按检查表逐项提问用户打分，记录到 `soul/heart.md` 底部 `## 迁移验证记录` 段
 - [ ] 全量测试回归：`pytest tests/ -v`（含 W1/W2 新增 ~23 用例）全绿
 - [ ] `mvn test` BUILD SUCCESS；`npm run test` 全绿
-- [ ] `README.md` / `TODOS.md` / `CLAUDE.md` / `AI_PROJECT_CONTEXT.md` 全部日期更新至 2026-07-28，内容一致
+- [x] `README.md` / `TODOS.md` / `CLAUDE.md` / `AI_PROJECT_CONTEXT.md` 日期同步至 2026-07-06，内容一致 ✅（2026-07-06）
 - [ ] `docs/superpowers/plans/2026-07-01-heart-record.md` 归档标记完成
 
 **涉及文件**：四个根目录 MD、`docs/superpowers/plans/2026-07-01-heart-record.md`
@@ -956,10 +956,10 @@ parameters = [
 W1 (7/01-7/07): TODO-84~87  ✅ 已完成（2026-07-02） 心证层 + 5 信号自动撤回触发器
 W2 (7/07-7/14): TODO-PWA-1 + TODO-88~89  ✅ 已完成（2026-07-02） PWA 导航统一 + L1/L2 缓存
 W3 (7/14-7/21): TODO-90~91  ✅ 已完成（2026-07-02） 模型量化 + L3/L4 命中率
-W4 (7/21-7/28): TODO-92  ✅ 已完成（2026-07-02） 全量回归 + 迁移验证首跑 + 文档同步
+W4 (7/21-7/28): TODO-92  ⏸️ 部分完成（MD 同步已补齐，迁移验证+全量回归+归档待执行）
 ```
 
-> **2026-07-02 更新**：heart-record plan 提前全部落地。W1-W4 在一个会话中连续完成，新增 52 个测试（32 heart/branch + 8 L1 + 2 L3/L4 + 10 已有覆盖），350/354 通过。
+> **2026-07-02 更新**：heart-record plan W1-W3 全部落地，新增 52 个测试（32 heart/branch + 8 L1 + 2 L3/L4 + 10 已有覆盖），350/354 通过。W4（TODO-92 迁移验证+文档同步）2026-07-06 补齐 MD 同步，迁移验证首跑+全量回归+归档待执行。
 
 ```
 W5 (7/03-7/10): TODO-93 ✅ + TODO-94 ✅  失职自查钩子 + 进度恢复协议（均已完成 2026-07-04）

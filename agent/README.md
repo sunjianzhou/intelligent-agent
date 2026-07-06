@@ -36,10 +36,14 @@ agent/
 │
 ├── core/                       ReAct 推理核心（God Class 已拆分，commit 528b787）
 │   ├── agent.py                IntelligentAgent 门面（__init__ / provider / token / cache，~320 行）
-│   ├── conversation_flow.py    ConversationFlowMixin（消息构建 / chat / stream，~460 行）
-│   ├── tool_dispatcher.py      ToolDispatcherMixin（工具注册 / 意图识别 / LLM 调用，~1130 行）
-│   ├── memory_writer.py        MemoryWriterMixin（记忆预热 / MCP / 蒸馏 / 清理，~310 行）
-│   └── _context_vars.py        共享 ContextVar（per-request 隔离，避免循环导入）
+│   ├── conversation_flow.py    ConversationFlowMixin（消息构建 / chat / stream / 分支失败检测 / 进度恢复注入）
+│   ├── tool_dispatcher.py      ToolDispatcherMixin（工具注册 / 意图识别 / LLM 调用 / 错误分级重试）
+│   ├── memory_writer.py        MemoryWriterMixin（记忆预热 / MCP / 蒸馏 / 清理）
+│   ├── _context_vars.py        共享 ContextVar（per-request 隔离，避免循环导入）
+│   ├── l1_cache.py             L1 精确缓存（SHA256 匹配，5min TTL，LRU 100 条上限）
+│   ├── l2_cache.py             L2 语义缓存（ChromaDB 余弦相似度，24h TTL）
+│   ├── progress_recovery.py    进度恢复协议（扫描 progress_state.md → 注入 [PROGRESS RECOVERY]）
+│   └── system_prompt_builder.py SystemPromptBuilder（灵魂层 / 心证段 / 心跳段 / 角色 / 工具指令组装）
 │
 ├── memory/
 │   ├── manager.py              MemoryManager（路由 → 短/长期）
@@ -69,11 +73,15 @@ agent/
 │       ├── web_search.py       DuckDuckGo 搜索
 │       ├── shell_tool.py       Shell 命令（受目录白名单限制）
 │       ├── image_tool.py       图片生成（SiliconFlow API / 本地 SD WebUI）
+│       ├── heart_record.py     心证管理（append/list/delete，操作 soul/heart.md）
 │       ├── database/           MySQL 查询工具
 │       ├── feishu_calendar.py  查询飞书日历（支持 user_access_token / tenant fallback）
 │       ├── feishu_task.py      查询飞书任务（支持 user_access_token / tenant fallback）
 │       ├── feishu_calendar_create.py  创建日历事件（需 OAuth user_access_token）
 │       └── feishu_task_write.py       创建/完成任务（需 OAuth user_access_token）
+│
+├── im/                          即时通讯集成
+│   └── feishu_client.py        飞书 IM 客户端（WS 长连接 / 消息收发 / 推送前后 verify）
 │
 ├── personas/                   角色系统 Python 模块
 │   ├── role_manager.py         RoleManager（角色 CRUD + 激活状态持久化）
@@ -101,12 +109,12 @@ agent/
 │
 ├── soul/
 │   └── loader.py               SoulLoader（读取 {project_root}/soul/*.md，构建灵魂层 system prompt）
-│                               数据文件：SOUL.md / USER.md / MEMORY.md / IDENTITY.md / HEARTBEAT.md / whisper.md
+│                               数据文件：SOUL.md / USER.md / MEMORY.md / IDENTITY.md / HEARTBEAT.md / heart.md / whisper.md
 ├── analytics/                  使用统计接口（满意度/响应时间/工具排名）
 ├── config/
 │   └── settings.py             Pydantic-settings 全量配置（含 .env 读取）
 ├── data/                       运行时数据目录（runtime_config.json、user 偏好等）
-└── tests/                      pytest 单元测试套件（318 个，含角色、记忆、调度、消息撤回、飞书 OAuth 等）
+└── tests/                      pytest 单元测试套件（~370 个，含角色、记忆、调度、消息撤回、飞书 OAuth、心证管理、分支检测、L1/L2 缓存、失职自查、进度恢复、跨 session 记忆增强等）
 ```
 
 ---
@@ -154,6 +162,11 @@ _call_model_with_tools()     ← 第一次 LLM 调用
 - `_TEXT_TOOL_CALLING_PATTERNS = ["dolphin", "phi2", "orca-mini", "orca2"]`：这些模型不支持 Ollama 原生 Function Calling（Ollama 内部模板覆盖 system prompt），自动切换文本解析模式
 - 上下文压缩：超 `max_context_tokens` 时异步压缩最旧 60% 对话为摘要
 - L1 精确缓存（OrderedDict LRU）+ L2 语义缓存（ChromaDB 余弦相似度 ≥ 0.92）
+- **心证层**：SystemPromptBuilder 在 ③MEMORY 之后插入 ③.5 HEART 段（`soul/heart.md`），优先级高于自动蒸馏记忆；IM 渠道（飞书/企微）自动排除心证内容
+- **分支失败检测**（5 信号）：`_detect_branch_failure()` 每轮工具执行后检查——同工具同错误×3 / 连续重复输出 >80% / 用户纠偏 / 空响应+RTE / 重试耗尽，命中即自动撤回 2 轮 + 注入 `[BRANCH_RESET]`
+- **工具错误分级重试**：鉴权错（401/403）重试 1 次，系统错（5xx/超时）重试 3 次
+- **进度恢复**：`progress_recovery.py` 在首次消息时扫描 `memory/work/`，检测未完成任务并注入 `[PROGRESS RECOVERY]` + `[TASK PROGRESS MEMORY]` 上下文
+- **失职自查**：飞书推送前后 verify（content 非空 + message_id 有效）、scheduler 任务执行后 verify（输出文件存在）、heart_record 写入后读回确认
 
 ---
 
@@ -283,7 +296,7 @@ pip install -e ".[dev]"               # 含 black/isort/pylint/mypy
 conda activate python310
 python -m uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000 --reload
 
-# 运行单元测试（318 个，< 30s）
+# 运行单元测试（~370 个，< 30s）
 pytest tests/ -v
 
 # 代码质量
