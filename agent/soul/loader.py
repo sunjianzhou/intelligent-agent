@@ -17,6 +17,7 @@ class SoulData:
     heartbeat: str  # HEARTBEAT.md 内容——推送前自检铁规延伸，注入 system prompt 自检段
     whisper: str    # whisper.md 内容（可为空字符串）
     heart: str      # heart.md 心证铁卷——用户显式标记的永久记忆（可为空字符串）
+    rules: str = "" # rules.md 主人铁律——21 条不可违反的永久规则（可为空字符串）
 
 
 class SoulLoader:
@@ -29,7 +30,7 @@ class SoulLoader:
     _DEFAULT_SOUL_DIR = Path(__file__).parent.parent.parent / "soul"
 
     REQUIRED = ["SOUL", "USER", "MEMORY", "IDENTITY", "HEARTBEAT"]
-    OPTIONAL = ["whisper", "heart"]
+    OPTIONAL = ["whisper", "heart", "rules"]
 
     def __init__(self, soul_dir: Optional[str] = None) -> None:
         self._soul_dir = Path(soul_dir) if soul_dir else self._DEFAULT_SOUL_DIR
@@ -59,6 +60,7 @@ class SoulLoader:
             heartbeat=parts["heartbeat"],
             whisper=parts["whisper"],
             heart=parts.get("heart", ""),
+            rules=parts.get("rules", ""),
         )
         self._data = new_data  # 原子赋值，最小化并发窗口
         logger.info("灵魂加载成功")

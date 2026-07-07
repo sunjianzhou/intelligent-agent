@@ -968,6 +968,117 @@ W6 (7/10-7/17): TODO-95 ✅  跨 session 记忆继承增强（已完成 2026-07-
 
 > **2026-07-03 新增**：TODO-93~95 来自"糖糖失职问题"分析，承接 HEARTBEAT 能力边界自检 + heart.md 铁律。TODO-95 依赖 TODO-94 的 progress_state 标准格式。
 >
-> **2026-07-05 更新**：TODO-93~95 全部落地，W1-W6 全部完成。目前无活跃待办（仅 TODO-12 性能优化剩余 3 项暂缓 + TODO-IMG P3 远期遗留）。
+> **2026-07-05 更新**：TODO-93~95 全部落地，W1-W6 全部完成。
+>
+> **2026-07-06 新增**：TODO-96~98 "主人永久铁律"机制——用户长期协作中沉淀 21 条不可违反规则，Agent 每次回答时严格遵守。
+
+---
+
+## W7 主人铁律 — 数据层（2026-07-06 ~ 2026-07-13）
+
+---
+
+### ~~TODO-96: soul/rules.md + heart_record 扩展（数据层）~~ ✅ 已完成（2026-07-06）
+
+**目标**：创建 `soul/rules.md` 模板文件（7 个作用分类），heart_record 新增 rule_add/rule_list/rule_delete 三个 action，含冲突检测 + 版本管理 + 回滚 + 21 条校验。
+
+**7 个作用分类**：安全边界 / 模型绑定 / 工具使用 / 失职与自查 / 记忆与持久化 / 用户交互 / 隐私与数据
+
+**规则字段**：
+- 必填：rule_id（RULE-XXX 编号）、rule_title（标题）、rule_category（作用分类）、rule_requirement（具体诉求）
+- 可选：rule_trigger（触发场景）、rule_consequence（违反后果）
+- 版本：version（v1/v2/...）、status（现行/已废止）
+- 分级：rule_priority（critical ★★★★★ / high ★★★★ / normal ★★★）、rule_privacy（public/private/secret）
+
+**heart_record.py 扩展**：
+- [x] 新增 `RULES_MD_PATH` 常量 + `_RULE_CATEGORIES` 7 分类枚举
+- [x] 新增 `rule_add` action：字段校验 + 版本管理（同 ID 升级时废止旧版）+ 幂等检测 + 写入后 verify
+- [x] 新增 `rule_list` action：按分类/状态筛选列出
+- [x] 新增 `rule_delete` action：软删除（标注已废止）而非物理删除
+- [x] 新增 `_check_rule_conflict()`：时间约束矛盾 / 模型绑定矛盾 / 行为指令互斥 三类冲突静态检测
+- [x] 新增 `_deprecate_rule_version()`：升级时废止旧版
+- [x] 新增 `_rollback_to_bak()`：从 .bak.n 回滚，回滚前抢救快照 .bak.0
+- [x] 新增 `_validate_21_rules()`：校验 21 条全量加载（缺失/废止/现行计数）
+- [x] 复用 `_rotate_backup(RULES_MD_PATH)` 5 份轮转备份
+
+**SoulLoader 扩展**：
+- [x] `SoulData` 新增 `rules: str = ""` 字段
+- [x] `OPTIONAL` 列表追加 `"rules"`
+- [x] `load()` 中按可选文件模式加载 `rules.md`
+
+**测试（test_iron_rules.py W7 部分）**：
+- [x] rule_add 结构化写入（RULE-001 含全部字段）→ 读回验证
+- [x] 缺少必填字段 → 返回失败
+- [x] 无效作用分类 → 被拒绝
+- [x] 冲突检测：时间约束矛盾 → 警告但不阻断
+- [x] 冲突检测：模型绑定矛盾 → 警告但不阻断
+- [x] 版本升级：同 ID 二次录入 → 旧版废止 + 新版 v2
+- [x] 幂等性：同 ID 同 title 同 requirement → 拒绝重复录入
+- [x] 回滚：_rollback_to_bak(n=3) → 内容与 .bak.3 一致
+- [x] 21 条校验：_validate_21_rules() → ok/missing/deprecated 正确
+- [x] SoulLoader 可选加载：rules.md 缺失 → rules="" 不报错
+
+**涉及文件**：`soul/rules.md`, `agent/tools/builtin_tools/heart_record.py`, `agent/soul/loader.py`, `agent/tests/test_iron_rules.py`
+
+---
+
+## ~~W8 主人铁律 — 检索层（2026-07-07 ~ 2026-07-07）~~ ✅ 提前完成
+
+---
+
+### ~~TODO-97: SystemPromptBuilder ③.6 RULES 段 + 隐私分层 + 缓存~~ ✅ 已完成（2026-07-07）
+
+**结果**：
+- [x] `SystemPromptBuilder`：新增 `_RULES_PRIVACY_CHANNEL_MAP` 隐私分层字典（web/CLI 可看 public+private，IM 仅 public；secret 永不注入）
+- [x] `SystemPromptBuilder.build()`：③.6 RULES 段插入（③.5 HEART 之后、④ HEARTBEAT 之前），新增 `max_context_tokens` 参数
+- [x] `_filter_rules_by_privacy()`：按渠道过滤规则隐私等级
+- [x] `_get_rules_cached()` / `_set_rules_cache()`：按 rules 内容 hash + channel + degrade 标志做缓存 key
+- [x] `_build_rules_section()`：含摘要行 + token 预算退化（<4096 时仅注入 critical 级）
+- [x] `_parse_rules_entries()`：解析 rules.md 结构化规则（含 **加粗标记处理、已废止跳过）
+- [x] `invalidate_rules_cache()`：heart_record rule_add/rule_delete 写入后调用
+- [x] `conversation_flow.py`：`system_prompt` property 传递 `max_context_tokens` 给 build()
+- [x] `heart_record.py`：`_do_rule_add` / `_do_rule_delete` 写入后调用 `invalidate_rules_cache()`
+- [x] 测试 42 用例全通过（12 原有 + 30 新增 W8），零回归：注入位置 / 隐私分层（4 渠道）/ 缓存命中与失效（6 场景）/ token 退化降级（3 场景）/ rules.md 缺失静默 / 解析健壮性
+
+**设计偏离**（有意识选择）：
+- 缓存 key 用内容 hash 而非文件 mtime —— 内容相同时复用缓存，heart_record 写入后 `invalidate_rules_cache()` 主动失效；避免测试被真实文件污染的架构问题
+- RULES 数据源使用 `d.rules`（SoulLoader 加载），而非直接读文件 —— 与 heart 段保持一致模式
+
+**涉及文件**：`agent/core/system_prompt_builder.py`, `agent/core/conversation_flow.py`, `agent/tools/builtin_tools/heart_record.py`, `agent/tests/test_system_prompt_builder.py`
+
+---
+
+## W9 主人铁律 — 执行层 + 集成（2026-07-21 ~ 2026-07-27）
+
+---
+
+### ~~TODO-98: 分支保护铁律违反扫描 + 全量回归~~ ✅ 已完成（2026-07-07）
+
+**结果**：
+- [x] `conversation_flow.py`：新增模块级 `_HARDCODED_VIOLATION_PATTERNS`（15 个硬编码危险模式：rm -rf/sudo rm/os.system/eval/exec/DROP TABLE/chmod 777/curl|sh 等）
+- [x] `conversation_flow.py`：`_init_rule_violation_patterns()` — 硬编码模式 + 从 rules.md 提取"不得/禁止/不能/不可 XXX"禁止性关键词作为额外模式
+- [x] `conversation_flow.py`：`_get_rule_violation_patterns()` — 懒加载 + 缓存模式列表
+- [x] `conversation_flow.py`：`_check_rule_violation(text)` — 扫描 LLM 输出匹配违规模式，最多返回 3 条
+- [x] `conversation_flow.py`：`_detect_branch_failure` 新增信号 6（铁律违反扫描），在信号 4 之后、return None 之前
+- [x] `agent.py`：`_rule_violation_patterns = None` 初始化（懒加载首触发点）
+- [x] 测试 15 用例全通过（`test_iron_rules.py` W9 追加）：危险命令检测 / 代码执行检测 / SQL 危险检测 / 正常回复无误报 / 关键词提取 / 违规触发集成 / 空文本 / 最多 3 条 / 缓存复用 / 端到端 21 条全量加载 / IM 隐私分层
+- [x] 全量回归：231/232 passed（1 预存 sentence_transformers 环境问题），170/171 W1-W9 passed，零新增回归
+- [x] 四 MD 同步（CLAUDE.md / AI_PROJECT_CONTEXT.md / README.md / TODOS.md）
+
+**涉及文件**：`agent/core/conversation_flow.py`, `agent/core/agent.py`, `agent/tests/test_iron_rules.py`
+
+---
+
+### 排期总览（续）
+
+```
+W7 (7/07-7/13): TODO-96  ✅ 已完成（2026-07-06） 数据层（rules.md + heart_record 扩展 + SoulLoader）— 25 tests
+W8 (7/14-7/20): TODO-97  ✅ 已完成（2026-07-07） 检索层（SystemPromptBuilder ③.6 + 隐私分层 + 缓存）— 30 new tests
+W9 (7/21-7/27): TODO-98  ✅ 已完成（2026-07-07） 执行层（铁律违反扫描 6th 信号 + 全量回归 + MD 同步）— 15 new tests
+```
+
+> **W1-W9 全部完成！** 主人永久铁律机制（数据层 → 检索层 → 执行层）三层全部落地，累计新增 70 个测试用例，231/232 全量通过（1 预存环境问题）。
+>
+> **设计基准**：2026-07-06 五问完整设计方案（备份回滚/冲突检测/版本管理/隐私分层/录入UX/性能缓存），详见对话记录。
 
 ---

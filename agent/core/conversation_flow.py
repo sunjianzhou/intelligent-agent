@@ -34,6 +34,67 @@ _SIGNAL_1_SAME_ERROR_COUNT = 3   # 同工具同错误次数阈值
 _SIGNAL_2_CONSECUTIVE_DUP = 2    # 连续重复轮数阈值
 _RETRACT_ROUNDS_ON_FAILURE = 2   # 分支失败时撤回最近 N 轮
 
+# ── 铁律违反扫描（W9 TODO-98） ──────────────────────────────────
+# 硬编码的"明显可检测"违规模式：宁可漏报也不误报，只拦截确定性高的危险信号
+_HARDCODED_VIOLATION_PATTERNS = [
+    # (regex, category, description)
+    (r'\brm\s+-rf\b', '安全边界', '检测到危险命令 rm -rf'),
+    (r'\bsudo\s+rm\b', '安全边界', '检测到 sudo rm 危险命令'),
+    (r'\bos\.system\s*\(', '安全边界', '检测到 os.system() 代码执行'),
+    (r'\bsubprocess\.(call|run|Popen)\s*\(', '安全边界', '检测到 subprocess 代码执行'),
+    (r'\beval\s*\(\s*(?!\s*\))', '安全边界', '检测到 eval() 代码执行'),
+    (r'\bexec\s*\(\s*(?!\s*\))', '安全边界', '检测到 exec() 代码执行'),
+    (r'\b__import__\s*\(', '安全边界', '检测到 __import__() 动态导入'),
+    (r'\bDROP\s+TABLE\b', '安全边界', '检测到 DROP TABLE 危险 SQL'),
+    (r'\bDROP\s+DATABASE\b', '安全边界', '检测到 DROP DATABASE 危险 SQL'),
+    (r'\bchmod\s+777\b', '安全边界', '检测到 chmod 777 权限全开'),
+    (r'\bcurl\s+.*\|\s*(ba)?sh\b', '安全边界', '检测到 curl | sh 远程执行'),
+    (r'\bwget\s+.*\|\s*(ba)?sh\b', '安全边界', '检测到 wget | sh 远程执行'),
+    (r'\bdd\s+if=.*of=/dev/', '安全边界', '检测到 dd 直接写设备'),
+    (r'\bmkfs\.\w+\s+/dev/', '安全边界', '检测到 mkfs 格式化设备'),
+]
+
+
+def _init_rule_violation_patterns(
+    rules_text: str = "",
+) -> "List[Tuple[re.Pattern, str, str]]":
+    """构建违规检测模式列表：硬编码模式 + rules.md 中提取的禁止性关键词。
+
+    Args:
+        rules_text: rules.md 内容（空字符串 = 仅使用硬编码模式）
+
+    Returns:
+        [(compiled_regex, rule_category, description), ...]
+    """
+    patterns: list = []
+
+    # 硬编码模式优先
+    for regex_str, category, desc in _HARDCODED_VIOLATION_PATTERNS:
+        patterns.append((re.compile(regex_str, re.IGNORECASE), category, desc))
+
+    # 从 rules.md 提取"不得/禁止/不能/不可 XXX"模式
+    if rules_text.strip():
+        try:
+            from core.system_prompt_builder import _parse_rules_entries
+            entries = _parse_rules_entries(rules_text)
+            for entry in entries:
+                req = entry.get("requirement", "")
+                forbidden = re.findall(
+                    r"(?:不得|禁止|不能|不可|严禁)\s*(.+?)(?:[，。；\n]|$)", req
+                )
+                for phrase in forbidden[:2]:  # 每条规则最多提取 2 个
+                    phrase = phrase.strip()
+                    if len(phrase) >= 3:
+                        patterns.append((
+                            re.compile(re.escape(phrase), re.IGNORECASE),
+                            "主人铁律",
+                            f"违反 {entry['id']}「{entry['title']}」: {phrase}",
+                        ))
+        except Exception:
+            pass  # 解析失败不影响硬编码模式
+
+    return patterns
+
 
 def _text_jaccard_similarity(a: str, b: str) -> float:
     """计算两段文本的词级 Jaccard 相似度（0~1），无外部库依赖。"""
@@ -67,6 +128,7 @@ class ConversationFlowMixin:
             role_ctx=role_ctx,
             tool_overlay=tool_overlay,
             channel=self._get_eff_channel(),
+            max_context_tokens=getattr(settings, "max_context_tokens", 0),
         )
 
     def _get_role_ctx_for_prompt(
@@ -405,7 +467,56 @@ class ConversationFlowMixin:
         if has_runtime_err and has_empty:
             return "runtime_error_and_empty: 窗口内同时存在 RuntimeError 和空响应"
 
+        # ── 信号 6（W9）：铁律违反扫描 ──
+        # 扫描最新一轮 LLM 输出，检测危险命令/代码执行等明显违规
+        latest_text = window[-1].get("assistant_text", "") if window else ""
+        if latest_text:
+            violations = self._check_rule_violation(latest_text)
+            if violations:
+                return f"rule_violation: {'; '.join(violations)}"
+
         return None
+
+    # ── 铁律违反扫描（W9 TODO-98） ──────────────────────────────
+
+    def _get_rule_violation_patterns(
+        self,
+    ) -> "List[Tuple[re.Pattern, str, str]]":
+        """懒加载违规检测模式列表。首次调用时从 rules.md 构建并缓存。"""
+        if getattr(self, "_rule_violation_patterns", None) is not None:
+            return self._rule_violation_patterns
+
+        rules_text = ""
+        try:
+            if self.soul and self.soul.data:
+                rules_text = getattr(self.soul.data, "rules", "") or ""
+        except Exception:
+            pass
+
+        patterns = _init_rule_violation_patterns(rules_text)
+        self._rule_violation_patterns = patterns
+        return patterns
+
+    def _check_rule_violation(self, text: str) -> "List[str]":
+        """扫描 LLM 输出，检查是否违反主人铁律。
+
+        只拦截"明显可检测"的违规信号（危险命令、代码执行等），
+        宁可漏报也不误报。主防线在 system prompt 的【主人铁律】段，此方法仅作为兜底。
+
+        Returns:
+            违规描述列表，空列表 = 未检测到违规（最多返回 3 条）。
+        """
+        if not text or not text.strip():
+            return []
+
+        violations: list = []
+        for pattern, category, desc in self._get_rule_violation_patterns():
+            if pattern.search(text):
+                violations.append(f"[{category}] {desc}")
+                if len(violations) >= 3:  # 最多报告 3 个
+                    break
+
+        return violations
 
     def _auto_retract_last_n_rounds(
         self, messages: List[Dict[str, str]], n: int, user_id: str

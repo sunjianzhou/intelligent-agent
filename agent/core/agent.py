@@ -91,6 +91,7 @@ class IntelligentAgent(ConversationFlowMixin, ToolDispatcherMixin, MemoryWriterM
                 data = SoulData(soul="", user="", memory="", identity="", heartbeat="", whisper="", heart="")
             self.soul = _EmptySoul()
         self.prompt_builder = SystemPromptBuilder()
+        self._rule_violation_patterns = None  # W9: 懒加载，首次 _check_rule_violation 调用时构建
 
         # 调度器：初始化失败不影响主流程
         self.task_manager = None

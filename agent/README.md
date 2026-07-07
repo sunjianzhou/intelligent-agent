@@ -43,7 +43,7 @@ agent/
 │   ├── l1_cache.py             L1 精确缓存（SHA256 匹配，5min TTL，LRU 100 条上限）
 │   ├── l2_cache.py             L2 语义缓存（ChromaDB 余弦相似度，24h TTL）
 │   ├── progress_recovery.py    进度恢复协议（扫描 progress_state.md → 注入 [PROGRESS RECOVERY]）
-│   └── system_prompt_builder.py SystemPromptBuilder（灵魂层 / 心证段 / 心跳段 / 角色 / 工具指令组装）
+│   └── system_prompt_builder.py SystemPromptBuilder（灵魂层 / 心证段 / 铁律段 / 心跳段 / 角色 / 工具指令组装，含隐私分层+缓存+token退化）
 │
 ├── memory/
 │   ├── manager.py              MemoryManager（路由 → 短/长期）
@@ -73,7 +73,7 @@ agent/
 │       ├── web_search.py       DuckDuckGo 搜索
 │       ├── shell_tool.py       Shell 命令（受目录白名单限制）
 │       ├── image_tool.py       图片生成（SiliconFlow API / 本地 SD WebUI）
-│       ├── heart_record.py     心证管理（append/list/delete，操作 soul/heart.md）
+│       ├── heart_record.py     心证 + 铁律管理（append/list/delete + rule_add/rule_list/rule_delete，操作 soul/heart.md + soul/rules.md）
 │       ├── database/           MySQL 查询工具
 │       ├── feishu_calendar.py  查询飞书日历（支持 user_access_token / tenant fallback）
 │       ├── feishu_task.py      查询飞书任务（支持 user_access_token / tenant fallback）
@@ -109,7 +109,7 @@ agent/
 │
 ├── soul/
 │   └── loader.py               SoulLoader（读取 {project_root}/soul/*.md，构建灵魂层 system prompt）
-│                               数据文件：SOUL.md / USER.md / MEMORY.md / IDENTITY.md / HEARTBEAT.md / heart.md / whisper.md
+│                               数据文件：SOUL.md / USER.md / MEMORY.md / IDENTITY.md / HEARTBEAT.md / heart.md / whisper.md / rules.md
 ├── analytics/                  使用统计接口（满意度/响应时间/工具排名）
 ├── config/
 │   └── settings.py             Pydantic-settings 全量配置（含 .env 读取）
@@ -148,11 +148,14 @@ IntelligentAgent (agent.py)
 ```
 _build_messages_async()
     注入：短期记忆 + 长期语义检索 + 项目上下文 + 任务列表 + Spec（每5轮）
+          + 【心证铁卷】+ 【主人铁律】（隐私分层 + token退化）
     │
     ▼
 _call_model_with_tools()     ← 第一次 LLM 调用
     │
     ├── 有工具调用 ──► _execute_tool_round() ──► 追加结果 ──► 重复（≤5次）
+    │                       │
+    │                       └── _detect_branch_failure() 6信号检测
     │
     └── 无工具调用 ──► _stream_tokens_async()   SSE 逐 token 流式输出
 ```
@@ -163,7 +166,8 @@ _call_model_with_tools()     ← 第一次 LLM 调用
 - 上下文压缩：超 `max_context_tokens` 时异步压缩最旧 60% 对话为摘要
 - L1 精确缓存（OrderedDict LRU）+ L2 语义缓存（ChromaDB 余弦相似度 ≥ 0.92）
 - **心证层**：SystemPromptBuilder 在 ③MEMORY 之后插入 ③.5 HEART 段（`soul/heart.md`），优先级高于自动蒸馏记忆；IM 渠道（飞书/企微）自动排除心证内容
-- **分支失败检测**（5 信号）：`_detect_branch_failure()` 每轮工具执行后检查——同工具同错误×3 / 连续重复输出 >80% / 用户纠偏 / 空响应+RTE / 重试耗尽，命中即自动撤回 2 轮 + 注入 `[BRANCH_RESET]`
+- **铁律层**：SystemPromptBuilder 在 ③.5 HEART 之后插入 ③.6 RULES 段（`soul/rules.md`），含隐私分层（public 全渠道 / private 仅 web+CLI / secret 永不注入）+ token 预算退化（<4096 仅注入 critical）+ 内容 hash 缓存；heart_record 工具扩展 rule_add/rule_list/rule_delete 三个 action
+- **分支失败检测**（6 信号）：`_detect_branch_failure()` 每轮工具执行后检查——同工具同错误×3 / 连续重复输出 >80% / 用户纠偏 / 空响应+RTE / 重试耗尽 / **铁律违反扫描**（危险命令 rm -rf/os.system/eval/DROP TABLE 等 15 个硬编码模式 + rules.md 禁止性关键词），命中即自动撤回 2 轮 + 注入 `[BRANCH_RESET]`
 - **工具错误分级重试**：鉴权错（401/403）重试 1 次，系统错（5xx/超时）重试 3 次
 - **进度恢复**：`progress_recovery.py` 在首次消息时扫描 `memory/work/`，检测未完成任务并注入 `[PROGRESS RECOVERY]` + `[TASK PROGRESS MEMORY]` 上下文
 - **失职自查**：飞书推送前后 verify（content 非空 + message_id 有效）、scheduler 任务执行后 verify（输出文件存在）、heart_record 写入后读回确认

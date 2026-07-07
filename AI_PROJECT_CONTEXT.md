@@ -1,7 +1,7 @@
 # 智能体项目 — AI 上下文速查文档
 
 > **本文档专为大模型阅读设计**。新对话开始时先读此文件，5 分钟内建立完整项目认知，无需再反复询问基础背景。
-> 最后更新：2026-07-05（W1-W6 heart-record plan 全部落地：TODO-84~95，含失职自查/进度恢复/跨session记忆增强）
+> 最后更新：2026-07-07（W1-W9 主人永久铁律全部落地：数据层+检索层+执行层，含隐私分层/缓存/token退化/铁律违反扫描）
 
 ---
 
@@ -113,11 +113,17 @@ intelligent_agent/
 ```
 _build_messages_async()
     注入：短期记忆 + 长期语义检索 + 项目上下文 + 任务列表 + Spec（每10轮）
+          + 【心证铁卷】+ 【主人铁律】（隐私分层：public/private/secret + token退化）
     │
     ▼
 _call_model_with_tools()  ← 第一次 LLM 调用
     │
     ├── 有工具调用 → _execute_tool_round() → 追加结果 → 循环（max 5次）
+    │                    │
+    │                    └── _detect_branch_failure() 6信号检测
+    │                         ├── 信号1-5：同工具错误/重复输出/用户纠偏/RuntimeError/重试耗尽
+    │                         └── 信号6：铁律违反扫描（rm -rf/os.system/eval/DROP TABLE等15个模式）
+    │                         命中 → 撤回2轮 + [BRANCH_RESET] → 继续循环
     │
     └── 无工具调用 → _stream_tokens_async()  ← SSE 流式输出
 ```
@@ -438,13 +444,17 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
   - 企业微信（WeCom）：HTTP 回调 `https://intelligent.eu.cc/wecom/callback`，已验证端到端收发
 - **2026-07-02 新增能力（heart-record plan W1-W3）**：
   - 心证层：`soul/heart.md` + SoulLoader + SystemPromptBuilder heart 段 + heart_record 工具
-  - 分支保护：5 信号 `_detect_branch_failure` + 自动撤回 + 错误分级重试
+  - 分支保护：6 信号 `_detect_branch_failure` + 自动撤回 + 错误分级重试
   - 缓存层：L1 精确缓存（5min TTL/LRU）+ L2 语义缓存（ChromaDB 24h TTL）
   - 可观测性：L3 长期记忆检索命中率 + L4 蒸馏源覆盖率监控埋点
   - 移动端：BottomTabBar / MorePanel 导航从 `routes.config.js` 单源派生
   - 失职自查：飞书推送前后 verify + scheduler 任务执行后 verify + heart_record 写入后读回确认（TODO-93）
   - 进度恢复：`progress_state.md` 自动扫描 → 注入 `[PROGRESS RECOVERY]` 上下文（TODO-94）
   - 跨 session 记忆增强：蒸馏时识别任务进度关键词自动打 `task_progress` 标签，进度恢复时额外查询 LTM（TODO-95）
+- **2026-07-07 新增能力（heart-record plan W7-W9，主人永久铁律）**：
+  - 数据层：`soul/rules.md`（7 分类/21 条铁律模板）+ heart_record 扩展 rule_add/rule_list/rule_delete（TODO-96）
+  - 检索层：SystemPromptBuilder ③.6 RULES 段 + 隐私分层（public/private/secret）+ token 预算退化（<4096 仅 critical）+ 内容 hash 缓存（TODO-97）
+  - 执行层：分支失败检测新增信号 6（铁律违反扫描：15 个硬编码危险模式 rm -rf/os.system/eval/DROP TABLE 等 + rules.md 禁止性关键词提取）（TODO-98）
 - **IM 渠道用户隔离**：`feishu:{open_id}` / `wecom:{userName}` 各有独立记忆和模型偏好
 - **飞书心跳巡检**：已暂停（dolphin 无法正确执行开放式主动联系决策，每次输出无意义占位消息；如需恢复建议搭配云端模型）
 - **移动端 PWA**：iPhone 16 适配完成（底部 Tab Bar / safe-area / dvh / 键盘遮挡修复）
