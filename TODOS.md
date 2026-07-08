@@ -1142,13 +1142,14 @@ W9 (7/21-7/27): TODO-98  ✅ 已完成（2026-07-07） 执行层（铁律违反�
 **目标**：ChannelRouter.broadcast_text() 生产可用，整合通知系统，暴露 `/health` channel 状态。
 
 **待完成**：
-- [ ] 接入 ChannelRouter 到通知系统（任务完成/告警 → broadcast_to_all）
-- [ ] 失败降级策略（send_text 失败 fallback 到 Web）
-- [ ] `/health` 端点返回各 channel 状态（enabled/success_rate/avg_latency/total_sent/total_failed/rate_limited）
-- [ ] 集成测试：4 通道并行广播 + 部分失败隔离 + 去重验证
+- [x] `agent/im/channel_notifier.py`：整合 ChannelRouter 到通知系统（notify_user / notify_user_sync）
+- [x] `agent/im/channel_router.py`：`send_with_fallback()` 失败降级到 Web + 全局单例 `_get_global_router()`
+- [x] `agent/api/health_router.py`：新增 `GET /health/channels` 端点返回各 channel 状态
+- [x] `agent/tests/test_channel_phase3.py`：7 用例（fallback / broadcast_to_all / global router）
+- [x] 全量回归：133 passed, 0 failed
 - [ ] 文档同步：`CLAUDE.md` / `AI_PROJECT_CONTEXT.md` 更新架构图
 
-**涉及文件**：`agent/api/health_router.py`, `agent/scheduler/simple_scheduler.py`, `docs/`
+**涉及文件**：`agent/im/channel_notifier.py`, `agent/im/channel_router.py`, `agent/api/health_router.py`, `agent/tests/test_channel_phase3.py`
 
 ---
 

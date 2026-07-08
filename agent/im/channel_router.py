@@ -24,6 +24,21 @@ from im.channel_adapter import (
     SendResult,
 )
 
+# ── 全局单例 ────────────────────────────────────────────
+_global_router: "ChannelRouter | None" = None
+
+
+def _get_global_router() -> "ChannelRouter | None":
+    """获取全局 ChannelRouter 单例（供 health endpoint / 通知系统等使用）。"""
+    return _global_router
+
+
+def init_global_router(router: "ChannelRouter") -> None:
+    """初始化全局 ChannelRouter 单例（在 agent 启动时调用）。"""
+    global _global_router
+    _global_router = router
+
+
 # 去重缓存：LRU 1000 条，TTL 5 分钟
 _DEDUP_MAX_SIZE = 1000
 _DEDUP_TTL_SEC = 300
@@ -224,6 +239,37 @@ class ChannelRouter:
         return user_id
 
     # ── 广播到所有或指定 channel ──────────────────────────
+
+    async def send_with_fallback(
+        self, channel: ChannelType, receiver_id: str, text: str,
+        fallback_channel: ChannelType = None, **kwargs
+    ) -> SendResult:
+        """单通道发送，失败时自动 fallback 到备用 channel。
+
+        Args:
+            channel: 首选 channel
+            receiver_id: 首选接收方 ID
+            text: 消息文本
+            fallback_channel: 备用 channel（默认 Web）
+        """
+        result = await self.send_to(channel, receiver_id, text, **kwargs)
+        if result.success:
+            return result
+
+        # 失败降级：尝试备用 channel
+        fb_channel = fallback_channel or ChannelType.WEB
+        if fb_channel == channel:
+            return result  # 避免循环
+
+        logger.warning(
+            f"[ChannelRouter] {channel.value} 发送失败 ({result.error})，"
+            f"降级到 {fb_channel.value}"
+        )
+        fb_result = await self.send_to(fb_channel, receiver_id, text, **kwargs)
+        fb_result.error = (fb_result.error or "") + (
+            f" (fallback from {channel.value}: {result.error})"
+        )
+        return fb_result
 
     async def broadcast_to_all(
         self, text: str, user_id: str,

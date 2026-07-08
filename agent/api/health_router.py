@@ -1,4 +1,4 @@
-"""基础健康检查 + 工具列表 + 通知轮询端点。"""
+"""基础健康检查 + 工具列表 + 通知轮询 + Channel 状态端点。"""
 from datetime import datetime
 
 from fastapi import APIRouter
@@ -79,3 +79,22 @@ async def poll_notifications():
     except Exception as e:
         logger.debug(f"notifications poll: {e}")
         return {"notifications": [], "count": 0}
+
+
+@router.get("/health/channels")
+async def health_channels():
+    """返回各 channel 的运行状态和发送指标（可观测性，TODO-106）。"""
+    try:
+        from im.channel_router import _get_global_router
+        router = _get_global_router()
+        if router is None:
+            return {"channels": {}, "status": "no_channel_router"}
+        return {
+            "channels": router.get_all_metrics(),
+            "enabled_count": len(router.list_enabled()),
+            "status": "ok",
+        }
+    except Exception as e:
+        logger.warning(f"health/channels: {e}")
+        return {"channels": {}, "status": f"error: {e}"}
+
