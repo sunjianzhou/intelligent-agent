@@ -1,4 +1,8 @@
-"""飞书 IM 消息发送工具（只发不收，7 种消息类型）。"""
+"""飞书 IM 消息发送工具（只发不收，7 种消息类型）。
+
+v2.0：FeishuIMTool 内部委托给 FeishuAdapter（Channel Adapter 抽象层），
+保持类名、参数签名、注册路径不变，向后兼容。
+"""
 import json
 import os
 import time
@@ -81,10 +85,15 @@ def _extract_message_id(result: dict):
 
 
 class FeishuIMTool(BaseTool):
-    """向飞书用户/群组发送消息。"""
+    """向飞书用户/群组发送消息。（v2.0：委托给 FeishuAdapter）"""
 
-    def __init__(self):
+    def __init__(self, adapter=None):
         super().__init__(name="im_message", category="im")
+        # 延迟导入避免循环依赖
+        if adapter is None:
+            from im.adapters.feishu_adapter import FeishuAdapter
+            adapter = FeishuAdapter()
+        self._adapter = adapter
         # 覆盖自动推导的参数，提供精确的描述和类型信息
         self.parameters = [
             ToolParameter(
@@ -121,19 +130,55 @@ class FeishuIMTool(BaseTool):
         content: dict,
         receive_id_type: str = "open_id",
     ) -> Any:
-        # ── 发送前验证（TODO-93 失职自查钩子）────────────────────
+        """委托给 FeishuAdapter（v2.0 Channel Adapter 抽象层）。
+
+        保持与原接口完全兼容：参数签名不变，返回 dict 不变。
+        adapter 不可用时（未配置凭证/测试环境）走原有逻辑。
+        """
+        # adapter 不可用时走原有逻辑（向后兼容，尤其是测试环境）
+        if not self._adapter.enabled:
+            return self._legacy_execute(receiver_id, msg_type, content, receive_id_type)
+
+        import asyncio
+
+        chat_type = "group" if receive_id_type == "chat_id" else "p2p"
+
+        if msg_type == "text":
+            text = content.get("text", "")
+            result = asyncio.run(
+                self._adapter.send_text(receiver_id, text, chat_type=chat_type,
+                                        receive_id_type=receive_id_type)
+            )
+        elif msg_type == "interactive":
+            result = asyncio.run(
+                self._adapter.send_card(receiver_id, content, chat_type=chat_type,
+                                        receive_id_type=receive_id_type)
+            )
+        elif msg_type in ("image", "file", "sticker", "emoji", "post"):
+            return self._legacy_execute(receiver_id, msg_type, content, receive_id_type)
+        else:
+            return {"code": -1, "msg": f"不支持的消息类型: {msg_type}"}
+
+        return {
+            "code": 0 if result.success else -1,
+            "msg": "ok" if result.success else result.error,
+            "data": {"message_id": result.message_id} if result.message_id else {},
+        }
+
+    def _legacy_execute(self, receiver_id: str, msg_type: str, content: dict,
+                        receive_id_type: str = "open_id") -> dict:
+        """原始执行逻辑（adapter 不可用时的向后兼容路径）。"""
         _verify_message_content(msg_type, content)
 
-        result = self._do_send(receiver_id, msg_type, content, receive_id_type)
+        result = self._do_send_original(receiver_id, msg_type, content, receive_id_type)
 
-        # ── 发送后验证：message_id 缺失时重试 1 次（TODO-93）──
         msg_id = _extract_message_id(result)
         if not msg_id:
             logger.warning(
                 f"[feishu post-send] message_id 缺失，重试 1 次 "
                 f"(receiver={receiver_id}, msg_type={msg_type})"
             )
-            result = self._do_send(receiver_id, msg_type, content, receive_id_type)
+            result = self._do_send_original(receiver_id, msg_type, content, receive_id_type)
             msg_id = _extract_message_id(result)
             if not msg_id:
                 logger.error(
@@ -145,9 +190,9 @@ class FeishuIMTool(BaseTool):
 
         return result
 
-    def _do_send(self, receiver_id: str, msg_type: str, content: dict,
-                 receive_id_type: str = "open_id") -> dict:
-        """执行单次飞书 API 调用。"""
+    def _do_send_original(self, receiver_id: str, msg_type: str, content: dict,
+                          receive_id_type: str = "open_id") -> dict:
+        """原始飞书 API 调用（使用 requests.post，向后兼容 mock）。"""
         token = _get_tenant_access_token()
         resp = requests.post(
             f"{FEISHU_BASE}/open-apis/im/v1/messages",

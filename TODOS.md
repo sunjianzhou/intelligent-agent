@@ -1082,3 +1082,82 @@ W9 (7/21-7/27): TODO-98  ✅ 已完成（2026-07-07） 执行层（铁律违反�
 > **设计基准**：2026-07-06 五问完整设计方案（备份回滚/冲突检测/版本管理/隐私分层/录入UX/性能缓存），详见对话记录。
 
 ---
+
+## W10 Channel Adapter 抽象层（2026-07-08 ~ 2026-07-21）✅ Phase 1+2 已完成
+
+> **设计依据**：2026-07-08 Channel Adapter 完整设计方案 v1.2（`docs/channel-adapter-design.md`），含 4 风险 + 6 补充建议 + 3 微优化。
+>
+> **目标**：建立统一 Channel Adapter 抽象层，4 channel（飞书/企微/Web/Telegram）走统一接口，支持多通道并行广播。
+>
+> **已完成（2026-07-08）**：Phase 1（Python 抽象层+飞书+Web+Router+Factory）+ Phase 2（企微+Telegram+ChannelMessageTool）+ Java 侧（ChannelAdapter interface+Manager+FeishuChannelAdapter）。Phase 3（双通道并行广播+可观测性）待执行。
+
+---
+
+### ~~TODO-99: Channel Adapter 抽象层接口（Python + Java 两侧）~~ ✅ 已完成（2026-07-08）
+
+**结果**：
+- [x] Python 侧：`agent/im/channel_adapter.py`（~280 行，ABC + 全部数据模型 + TokenBucket + RetryConfig + ChannelMetric）
+- [x] Java 侧：`backend/web/im/` 包全部 8 个文件（ChannelAdapter.java + 5 POJO + Manager）
+- [x] `agent/im/tests/test_channel_adapter.py`：28 用例全通过（TokenBucket/RetryConfig/ChannelMetric/extract_message_id 归一化/接口契约）
+- [x] `agent/im/__init__.py`：导出所有公共 API
+- [x] `backend/web/im/FeishuChannelAdapter.java`：实现 ChannelAdapter，委托 FeishuMessageSender
+- [x] Java `mvn compile` 编译通过
+
+**涉及文件**：`agent/im/channel_adapter.py`, `backend/web/im/*.java` (8 files), `agent/im/__init__.py`, `agent/im/tests/test_channel_adapter.py`
+
+---
+
+### ~~TODO-100: FeishuAdapter 实现（Python + Java，Phase 1）~~ ✅ 已完成（2026-07-08）
+
+**结果**：
+- [x] `agent/im/adapters/feishu_adapter.py`（~200 行）：按操作独立限流（text 50/s, card 1.67/s, image 10/s），card 30KB 截断，TODO-93 钩子，Session 连接池
+- [x] `agent/im/feishu_client.py` 改造：`FeishuIMTool.execute()` 委托给 `FeishuAdapter`，adapter 不可用时走 legacy 路径（100% 向后兼容）
+- [x] `backend/web/im/FeishuChannelAdapter.java`：实现 ChannelAdapter，委托 FeishuMessageSender
+- [x] 回归：5 个原有 test_feishu_client 测试 + 28 个 channel_adapter 测试全绿
+
+---
+
+### ~~TODO-101: WebAdapter 实现（Python 侧，Phase 1）~~ ✅ 已完成（2026-07-08）
+- [x] `agent/im/adapters/web_adapter.py`（~60 行）：WS 推送，无限流无重试，始终可用
+
+### ~~TODO-102: ChannelRouter + ChannelAdapterFactory（Python + Java，Phase 1）~~ ✅ 已完成（2026-07-08）
+- [x] `agent/im/channel_router.py`（~220 行）：单通道/广播/去重/resolve_channels/指标聚合
+- [x] `agent/im/adapter_factory.py`（~70 行）：自动发现 4 adapter
+- [x] `agent/im/tests/test_channel_router.py`：14 用例全通过
+- [x] `backend/web/im/ChannelAdapterManager.java`：Spring 注入 + broadcast + 生命周期
+
+### ~~TODO-103: WeComAdapter 实现（Python 侧，Phase 2）~~ ✅ 已完成（2026-07-08）
+- [x] `agent/im/adapters/wecom_adapter.py`（~160 行）：限流 1.67/s, max_card_size 4KB, Session 复用
+
+### ~~TODO-104: TelegramAdapter 实现（Python 侧，Phase 2）~~ ✅ 已完成（2026-07-08）
+- [x] `agent/im/adapters/telegram_adapter.py`（~170 行）：限流 30/s, Inline Keyboard card, Session 复用
+
+### ~~TODO-105: ChannelMessageTool — LLM 工具 channel-aware 改造（Phase 2）~~ ✅ 已完成（2026-07-08）
+- [x] `agent/im/channel_message_tool.py`（~100 行）：统一 LLM IM 工具，通过 ChannelRouter 路由到任意 channel
+
+---
+
+### TODO-106: 双通道并行广播 + 可观测性（Phase 3）
+
+**目标**：ChannelRouter.broadcast_text() 生产可用，整合通知系统，暴露 `/health` channel 状态。
+
+**待完成**：
+- [ ] 接入 ChannelRouter 到通知系统（任务完成/告警 → broadcast_to_all）
+- [ ] 失败降级策略（send_text 失败 fallback 到 Web）
+- [ ] `/health` 端点返回各 channel 状态（enabled/success_rate/avg_latency/total_sent/total_failed/rate_limited）
+- [ ] 集成测试：4 通道并行广播 + 部分失败隔离 + 去重验证
+- [ ] 文档同步：`CLAUDE.md` / `AI_PROJECT_CONTEXT.md` 更新架构图
+
+**涉及文件**：`agent/api/health_router.py`, `agent/scheduler/simple_scheduler.py`, `docs/`
+
+---
+
+### 排期总览（续）
+
+```
+W10 (7/08-7/14): TODO-99~102  Phase 1: 抽象层 + 飞书 + Web + Router + Factory
+W11 (7/14-7/21): TODO-103~105  Phase 2: 企微 + Telegram + ChannelMessageTool
+W12 (7/21-7/28): TODO-106      Phase 3: 双通道并行广播 + 可观测性 + 文档同步
+```
+
+> **设计基准**：2026-07-08 Channel Adapter 完整设计 v1.2（`docs/channel-adapter-design.md`，含 4 风险 + 6 补充建议 + 3 微优化）。
