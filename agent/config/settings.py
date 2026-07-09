@@ -98,7 +98,8 @@ class Settings(BaseSettings):
     chat_timeout: int = 300
     # 上下文 token 预算上限（与 ollama_num_ctx 配合）
     # 留 1000+ token 余量给模型生成输出；可通过 MAX_CONTEXT_TOKENS 环境变量覆盖
-    max_context_tokens: int = 7000
+    # 2026-07-09：从 7000 上调至 8000，配合 OLLAMA_NUM_CTX=8192 承载 30K+ 灵魂层内容
+    max_context_tokens: int = 8000
 
     # 意图过滤
     intent_use_embedding: bool = True       # 关键词未命中时是否回退到嵌入相似度
