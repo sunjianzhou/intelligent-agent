@@ -931,10 +931,10 @@ parameters = [
 W1 (7/01-7/07): TODO-84~87  ✅ 已完成（2026-07-02） 心证层 + 5 信号自动撤回触发器
 W2 (7/07-7/14): TODO-PWA-1 + TODO-88~89  ✅ 已完成（2026-07-02） PWA 导航统一 + L1/L2 缓存
 W3 (7/14-7/21): TODO-90~91  ✅ 已完成（2026-07-02） 模型量化 + L3/L4 命中率
-W4 (7/21-7/28): TODO-92  ⏸️ 部分完成（MD 同步已补齐，迁移验证+全量回归+归档待执行）
+W4 (7/21-7/28): TODO-92  ✅ 已完成（2026-07-09） 迁移验证检查表归档 + 全量回归 525/530 + 四 MD 同步
 ```
 
-> **2026-07-02 更新**：heart-record plan W1-W3 全部落地，新增 52 个测试（32 heart/branch + 8 L1 + 2 L3/L4 + 10 已有覆盖），350/354 通过。W4（TODO-92 迁移验证+文档同步）2026-07-06 补齐 MD 同步，迁移验证首跑+全量回归+归档待执行。
+> **2026-07-09 更新**：W1-W4 全部收尾——TODO-90 keep_alive 调优 + TODO-91 L3/L4 确认已落地 + TODO-92 全量回归（525/530 pass，修复 verify_hooks 测试）+ 四 MD 同步 + heart-record 归档 W1-W12 完整时间线。新增 SoulLayer v1.1（大文件承载能力：SoulLoader 告警不阻断 + SoulData 可观测性 + token 预算上调）。
 
 ```
 W5 (7/03-7/10): TODO-93 ✅ + TODO-94 ✅  失职自查钩子 + 进度恢复协议（均已完成 2026-07-04）
@@ -1131,9 +1131,46 @@ W9 (7/21-7/27): TODO-98  ✅ 已完成（2026-07-07） 执行层（铁律违反�
 ### 排期总览（续）
 
 ```
-W10 (7/08-7/14): TODO-99~102  Phase 1: 抽象层 + 飞书 + Web + Router + Factory
-W11 (7/14-7/21): TODO-103~105  Phase 2: 企微 + Telegram + ChannelMessageTool
-W12 (7/21-7/28): TODO-106      Phase 3: 双通道并行广播 + 可观测性 + 文档同步
+W10 (7/08-7/14): TODO-99~102  ✅ 已完成（2026-07-08） Phase 1: 抽象层 + 飞书 + Web + Router + Factory
+W11 (7/14-7/21): TODO-103~105 ✅ 已完成（2026-07-08） Phase 2: 企微 + Telegram + ChannelMessageTool
+W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道并行广播 + 可观测性 + 文档同步
 ```
 
 > **设计基准**：2026-07-08 Channel Adapter 完整设计 v1.2（`docs/channel-adapter-design.md`，含 4 风险 + 6 补充建议 + 3 微优化）。
+>
+> **2026-07-09 更新**：TODO-106 Phase 3 代码 + 文档全部完成（commit `0115d8c`），CLAUDE.md + AI_PROJECT_CONTEXT.md 架构图已更新。W10-W12 Channel Adapter 全量落地。
+
+---
+
+## SoulLayer v1.1 — 大文件承载能力（2026-07-09）
+
+> **触发**：用户问"灵魂层 30K+ 字节能否承载"，5 问分析 → Phase 1 落地。
+
+### ~~SoulLayer-1: SoulLoader 大小监控 + 告警~~ ✅ 已完成（2026-07-09）
+
+**结果**：
+- [x] `agent/soul/loader.py` v1.1：新增 `max_file_size`（50KB）/ `max_total_chars`（14K）告警，超限 WARNING 不阻断
+- [x] `SoulData` 新增 `total_chars` / `file_sizes` 可观测性字段
+- [x] `agent/tests/test_soul_loader.py`：14→23 用例（大文件不阻断/不截断/size 追踪/rules 加载/空文件等）
+- [x] Token 预算上调：`max_context_tokens` 7000→8000，`OLLAMA_NUM_CTX` 4096→8192
+- [x] 全量回归：532/538 passed（23 SoulLoader + 42 SystemPromptBuilder 全通过）
+
+**设计决策**：
+- 不拆成多 system message——单 message + `_SEP` 分段是最兼容的设计
+- 不静默截断——内容保护 > 自动化裁剪，风险由日志告警提示用户
+- Phase 2（token-aware 截断）等实际触发告警后再做
+
+**涉及文件**：`agent/soul/loader.py`, `agent/tests/test_soul_loader.py`, `agent/config/settings.py`, `.env.docker`
+
+---
+
+## 文档同步（2026-07-09）
+
+### ~~DOC-1: 三份 README 同步至 2026-07-09~~ ✅ 已完成（2026-07-09）
+
+**结果**：
+- [x] `README.md`：日期 + 架构图 + Channel Adapter + SoulLayer v1.1 + 工具列表 + Java 能力表 + 可观测性 + token 预算 + soul 目录 + 测试数
+- [x] `agent/README.md`：日期 + `im/` 目录从 1 行展开为 10 行 + SoulLoader v1.1 标注 + 能力描述加两段
+- [x] `backend/web/README.md`：日期 + 目录结构新增 `im/` 段（10 文件）+ 关键实现细节新增 Channel Adapter 小节
+
+**涉及文件**：`README.md`, `agent/README.md`, `backend/web/README.md`
