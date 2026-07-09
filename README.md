@@ -2,7 +2,7 @@
 
 > 本地优先的三层 AI 智能体平台：Ollama 本地推理 · Spring Boot WebSocket 网关 · Vue 3 聊天界面 · Python CLI 客户端  
 > 支持多工具调用、长期记忆、任务调度、多角色切换、项目上下文持久化。
-> 最后更新：2026-07-07（W1-W9 主人永久铁律全部落地：数据层+检索层+执行层，含隐私分层/缓存/token退化/铁律违反扫描）
+> 最后更新：2026-07-09（W1-W12 全部落地：主人永久铁律 + Channel Adapter 抽象层 + 双通道并行广播 + SoulLayer v1.1 大文件承载）
 
 ```
 浏览器 / CLI 客户端
@@ -13,14 +13,14 @@
 └────────────────┬────────────────┘
                  │  HTTP + SSE
                  ▼
-┌─────────────────────────────────┐
-│  Python Agent  (FastAPI  :8000) │  ← 全部 AI 逻辑在此
-│  ┌──────────┐  ┌─────────────┐  │
-│  │ 记忆系统 │  │  工具管理   │  │
-│  │ 任务调度 │  │  角色系统   │  │
-│  │ 项目系统 │  │  技能路由   │  │
-│  └──────────┘  └─────────────┘  │
-└──────────┬──────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  Python Agent  (FastAPI  :8000)                    │  ← 全部 AI 逻辑在此
+│  ┌──────────┐  ┌─────────────┐  ┌──────────────┐  │
+│  │ 记忆系统 │  │  工具管理   │  │ Channel      │  │
+│  │ 任务调度 │  │  角色系统   │  │ Adapter 层   │  │
+│  │ 项目系统 │  │  技能路由   │  │ 4channel统一 │  │
+│  └──────────┘  └─────────────┘  └──────────────┘  │
+└──────────┬──────────────────────────────────────────┘
            │
      ┌─────┴──────┐
      ▼            ▼
@@ -114,8 +114,10 @@ cp .env.docker.example .env.docker    # 容器运行时变量（含 IM 集成、
 | 分支失败自动撤回 | 5 信号实时检测 ReAct 推理失败螺旋（同工具同错误/连续重复输出/用户纠偏/空响应+异常/重试耗尽），命中即自动撤回最近 2 轮 + 注入 `[BRANCH_RESET]` 重新推理，每会话最多触发 1 次 |
 | 进度恢复协议 | 新会话启动时自动扫描 `memory/work/` 目录下的 `progress_state.md`，检测未完成任务并注入 `[PROGRESS RECOVERY]` 上下文；用户说"继续上次的"即可无缝恢复 |
 | 跨 session 记忆增强 | 蒸馏时自动识别任务进度关键词（`[TASK_DONE]`/`[TASK_BLOCKED]` 等）并打 `task_progress` 标签；进度恢复时额外查询跨 session 的 LTM 进度记忆，注入 `[TASK PROGRESS MEMORY]` |
+| Channel Adapter | 4 channel（飞书/企微/Web/Telegram）统一接口，含 TokenBucket 限流 + 指数退避重试 + ChannelMetric 指标；ChannelRouter 支持多通道并行广播 + fallback 降级；ChannelMessageTool 替代旧 FeishuIMTool |
+| 大文件灵魂层 | SoulLoader v1.1 新增 max_file_size/max_total_chars 告警（不阻断）；SoulData 新增 total_chars/file_sizes 可观测性字段；token 预算上调至 max_context_tokens=8000 + OLLAMA_NUM_CTX=8192 承载 30K+ soul 内容 |
 
-**内置工具**：计算器 · 时间查询 · 文件读写 · DuckDuckGo 搜索 · Shell 命令 · MySQL 查询 · 图片生成 · 记忆存储/检索 · 定时提醒创建 · 知识库上传/检索 · 心证管理（heart_record） · 飞书日历查询 · 飞书任务查询 · 飞书日历创建（OAuth）· 飞书任务写入（OAuth）
+**内置工具**：计算器 · 时间查询 · 文件读写 · DuckDuckGo 搜索 · Shell 命令 · MySQL 查询 · 图片生成 · 记忆存储/检索 · 定时提醒创建 · 知识库上传/检索 · 心证管理（heart_record） · 飞书日历查询 · 飞书任务查询 · 飞书日历创建（OAuth）· 飞书任务写入（OAuth）· 多通道消息发送（channel_message）
 
 ---
 
@@ -134,6 +136,7 @@ cp .env.docker.example .env.docker    # 容器运行时变量（含 IM 集成、
 | JWT 鉴权 | 前端 token 24h 有效，滑动续期；WS 握手阶段验证，无效 token 直接 401 |
 | 全量代理路由 | `/api/*` 请求（记忆/任务/工具/角色/项目/统计）透传 Python，附加真实用户 ID |
 | 通知推送 | 每 5s 轮询 Python 通知队列，有内容时广播 `notification` WS 事件到前端 |
+| Channel Adapter 管理 | `ChannelAdapterManager` Spring Bean 管理 IM Channel 适配器注册 + `broadcast()` 并行广播；`FeishuChannelAdapter` 委托 `FeishuMessageSender` |
 | 过载保护 | 线程池满时返回 503，不阻塞 Tomcat 线程 |
 
 **WebSocket 消息协议**：
@@ -434,7 +437,7 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 | 双信号量并发控制 | `_inference_sem`（实际推理并发上限，`INFERENCE_CONCURRENCY`）+ `_queue_sem`（排队上限），防止 CPU 推理时多请求互相争抢导致全部超时 |
 | 流式输出 | SSE 逐 token 推送，前端 `requestAnimationFrame` 节流渲染，完成后整体重渲染 Markdown，避免逐 token 重排版的性能损耗 |
 | 前端代码分割 | 路由级懒加载（`() => import('@/views/XxxView.vue')`），首屏仅加载聊天页所需代码 |
-| 上下文 token 预算 | `MAX_CONTEXT_TOKENS` 控制发送给 LLM 的上下文长度，避免长对话拖垮推理速度 |
+| 上下文 token 预算 | `MAX_CONTEXT_TOKENS=8000` 控制发送给 LLM 的上下文长度（配合 `OLLAMA_NUM_CTX=8192`）；`SoulLoader.max_total_chars=14000` 告警阈值，超过时提示 token 预算风险 |
 
 ### 可靠性与容错
 
@@ -458,6 +461,7 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 |------|----------|
 | 健康检查 | `GET /health`（Agent）/ `GET /api/health`（Backend 代理），供容器探针和负载均衡器探测 |
 | Prometheus 指标 | `GET /metrics` 暴露 HTTP 请求量/延迟分布、LLM 推理计数与耗时（按 model + outcome 维度）、工具调用统计、L3 长期记忆检索命中率+相似度+延迟（p50/p99）、L4 蒸馏源覆盖率+快照数，可直接接入 Grafana |
+| Channel 健康端点 | `GET /health/channels` 返回各 IM channel 的 ChannelMetric（成功率/平均延迟/限流拒绝次数），用于生产监控 |
 | 实时系统监控面板 | `/admin/system` 页面展示 CPU / 内存 / GPU / 磁盘占用与进程排行 |
 | 运营统计面板 | `/admin/stats` 页面展示满意度、响应时间分布、工具调用排名 |
 | 分级日志 | `LOG_LEVEL` 环境变量控制（`DEBUG`/`INFO`/`WARNING`），Agent / Backend 各自独立配置 |
@@ -476,7 +480,7 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 | 层 | 测试框架 | 覆盖范围 |
 |------|------|------|
-| Agent 单元测试 | pytest（~370 个） | 记忆系统、工具调用、调度器持久化、角色加载、上下文提取、项目接口、消息撤回、飞书 OAuth、心证管理、分支检测、L1/L2 缓存、失职自查、进度恢复、跨 session 记忆增强等 |
+| Agent 单元测试 | pytest（~540 个） | 记忆系统、工具调用、调度器持久化、角色加载、上下文提取、项目接口、消息撤回、飞书 OAuth、心证管理、分支检测、L1/L2/L3/L4 缓存与监控、失职自查、进度恢复、跨 session 记忆增强、铁律违反扫描、Channel Adapter、SoulLoader 大文件 等 |
 | Backend 单元测试 | JUnit 5 | WebSocket 消息序列化、JWT 工具类、JSON 工具类 |
 | Frontend 单元测试 | Vitest | JWT 处理逻辑等关键工具函数 |
 | E2E 端到端测试 | pytest + httpx（68 个） | 从客户端发起 HTTP 请求打通 Java:8080 → Python:8000，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知/消息撤回全链路 |
@@ -560,10 +564,11 @@ intelligent_agent/
 │   ├── test_tools.py               工具列表
 │   └── test_config.py              运行时配置读写
 │
-├── soul/                           Soul 层（身份/灵魂/心跳/心证铁卷/私密档案）
+├── soul/                           Soul 层（身份/灵魂/心跳/心证铁卷/主人铁律/私密档案）
 │   ├── SOUL.md / IDENTITY.md       核心身份定义
 │   ├── HEARTBEAT.md                能力边界自检铁律
 │   ├── heart.md                    心证铁卷（用户显式永久记忆）
+│   ├── rules.md                    主人铁律（21 条不可违反规则，7 作用分类）
 │   ├── USER.md / MEMORY.md         用户画像 / 自维护记忆
 │   └── whisper.md                  私密档案（不上 IM 渠道）
 ├── nginx/                          HTTPS Nginx 配置 + 证书生成脚本

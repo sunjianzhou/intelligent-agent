@@ -1,5 +1,7 @@
 # Python Agent 模块
 
+> 最后更新：2026-07-09（Channel Adapter 抽象层 + SoulLoader v1.1 大文件承载）
+
 ## 技术栈与运行环境
 
 | 项目 | 版本 |
@@ -36,7 +38,7 @@ agent/
 │
 ├── core/                       ReAct 推理核心（God Class 已拆分，commit 528b787）
 │   ├── agent.py                IntelligentAgent 门面（__init__ / provider / token / cache，~320 行）
-│   ├── conversation_flow.py    ConversationFlowMixin（消息构建 / chat / stream / 分支失败检测 / 进度恢复注入）
+│   ├── conversation_flow.py    ConversationFlowMixin（消息构建 / chat / stream / 分支失败检测 / 进度恢复注入 / channel 感知 system prompt）
 │   ├── tool_dispatcher.py      ToolDispatcherMixin（工具注册 / 意图识别 / LLM 调用 / 错误分级重试）
 │   ├── memory_writer.py        MemoryWriterMixin（记忆预热 / MCP / 蒸馏 / 清理）
 │   ├── _context_vars.py        共享 ContextVar（per-request 隔离，避免循环导入）
@@ -81,7 +83,17 @@ agent/
 │       └── feishu_task_write.py       创建/完成任务（需 OAuth user_access_token）
 │
 ├── im/                          即时通讯集成
-│   └── feishu_client.py        飞书 IM 客户端（WS 长连接 / 消息收发 / 推送前后 verify）
+│   ├── channel_adapter.py      ChannelAdapter 抽象基类 + 数据模型（TokenBucket / RetryConfig / ChannelMetric）
+│   ├── channel_router.py       ChannelRouter 多通道路由器（单通道/广播/去重/fallback/指标聚合，全局单例）
+│   ├── adapter_factory.py      ChannelAdapterFactory 自动发现 4 adapter
+│   ├── channel_message_tool.py  LLM 统一 IM 工具（替代 FeishuIMTool，通过 ChannelRouter 路由）
+│   ├── channel_notifier.py     整合 ChannelRouter 到通知系统（notify_user / notify_user_sync）
+│   ├── feishu_client.py        飞书 IM 客户端（WS 长连接 / 消息收发 / 推送前后 verify；委托 FeishuAdapter）
+│   └── adapters/               各 channel 适配器实现
+│       ├── feishu_adapter.py   飞书适配器（text 50/s, card 1.67/s, image 10/s 独立限流，30KB card 截断）
+│       ├── wecom_adapter.py    企业微信适配器（限流 1.67/s，4KB card 截断）
+│       ├── web_adapter.py      Web 适配器（WS 推送，无限流，始终可用，fallback 目标）
+│       └── telegram_adapter.py Telegram 适配器（限流 30/s，Inline Keyboard card）
 │
 ├── personas/                   角色系统 Python 模块
 │   ├── role_manager.py         RoleManager（角色 CRUD + 激活状态持久化）
@@ -108,7 +120,7 @@ agent/
 │   └── system_dolphin.yaml     dolphin 专用模板（含双语无限制声明）
 │
 ├── soul/
-│   └── loader.py               SoulLoader（读取 {project_root}/soul/*.md，构建灵魂层 system prompt）
+│   └── loader.py               SoulLoader v1.1（读取 {project_root}/soul/*.md；max_file_size/max_total_chars 告警不阻断；SoulData 含 total_chars/file_sizes 可观测性字段）
 │                               数据文件：SOUL.md / USER.md / MEMORY.md / IDENTITY.md / HEARTBEAT.md / heart.md / whisper.md / rules.md
 ├── analytics/                  使用统计接口（满意度/响应时间/工具排名）
 ├── config/
@@ -168,6 +180,8 @@ _call_model_with_tools()     ← 第一次 LLM 调用
 - **心证层**：SystemPromptBuilder 在 ③MEMORY 之后插入 ③.5 HEART 段（`soul/heart.md`），优先级高于自动蒸馏记忆；IM 渠道（飞书/企微）自动排除心证内容
 - **铁律层**：SystemPromptBuilder 在 ③.5 HEART 之后插入 ③.6 RULES 段（`soul/rules.md`），含隐私分层（public 全渠道 / private 仅 web+CLI / secret 永不注入）+ token 预算退化（<4096 仅注入 critical）+ 内容 hash 缓存；heart_record 工具扩展 rule_add/rule_list/rule_delete 三个 action
 - **分支失败检测**（6 信号）：`_detect_branch_failure()` 每轮工具执行后检查——同工具同错误×3 / 连续重复输出 >80% / 用户纠偏 / 空响应+RTE / 重试耗尽 / **铁律违反扫描**（危险命令 rm -rf/os.system/eval/DROP TABLE 等 15 个硬编码模式 + rules.md 禁止性关键词），命中即自动撤回 2 轮 + 注入 `[BRANCH_RESET]`
+- **Channel Adapter 抽象层**：4 channel（飞书/企微/Web/Telegram）统一 `ChannelAdapter` ABC 接口（send_text/card/file/image）；TokenBucket 按操作类型独立限流（飞书 text 50/s card 1.67/s，企微 1.67/s，Telegram 30/s，Web 不限流）；RetryConfig 指数退避重试；ChannelMetric 每 channel 独立指标；HTTP Session 连接池复用（性能提升 30-50%）；ChannelRouter 多通道并行广播（asyncio.gather + 失败隔离）+ fallback 降级到 Web + dedup_key 去重 + 全局单例；ChannelMessageTool 统一 LLM IM 工具；ChannelNotifier 整合通知系统
+- **SoulLayer v1.1 大文件承载**：SoulLoader 新增 `max_file_size`（默认 50KB）和 `max_total_chars`（默认 14K）告警阈值——超限 WARNING 不阻断，内容从不静默截断；SoulData 新增 `total_chars`/`file_sizes` 可观测性字段；token 预算上调至 `max_context_tokens=8000` + `OLLAMA_NUM_CTX=8192`
 - **工具错误分级重试**：鉴权错（401/403）重试 1 次，系统错（5xx/超时）重试 3 次
 - **进度恢复**：`progress_recovery.py` 在首次消息时扫描 `memory/work/`，检测未完成任务并注入 `[PROGRESS RECOVERY]` + `[TASK PROGRESS MEMORY]` 上下文
 - **失职自查**：飞书推送前后 verify（content 非空 + message_id 有效）、scheduler 任务执行后 verify（输出文件存在）、heart_record 写入后读回确认

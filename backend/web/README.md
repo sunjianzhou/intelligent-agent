@@ -1,5 +1,7 @@
 # Java Backend 模块
 
+> 最后更新：2026-07-09（Channel Adapter 抽象层 Java 侧：ChannelAdapter + FeishuChannelAdapter + ChannelAdapterManager）
+
 ## 技术栈与运行环境
 
 | 项目 | 版本 |
@@ -62,6 +64,13 @@ backend/web/src/main/java/.../
 │   ├── FeishuCrypto.java             飞书事件签名验证
 │   ├── FeishuRecallBridge.java       内部 assistant_message_id ↔ 飞书 message_id 映射（内存态，封顶500条），撤回时联动调用 recall()
 │   └── FeishuOAuthController.java    /feishu/oauth/* 代理（callback 无 JWT / authorize+status 有 JWT，proxyGetRaw() 透传 HTML）
+├── im/                              Channel Adapter 抽象层（Java 侧，与 Python im/ 对应）
+│   ├── ChannelAdapter.java          Java 侧 ChannelAdapter 接口（sendText/sendCard/sendMessage）
+│   ├── FeishuChannelAdapter.java    飞书适配器实现（委托 FeishuMessageSender）
+│   ├── ChannelAdapterManager.java   Spring Bean（管理 adapter 注册 + broadcast() 并行广播 + 生命周期）
+│   ├── ChannelType.java / ChannelMessage.java / SendResult.java  跨 channel 统一数据模型
+│   ├── UserInfo.java / RetryConfig.java / TokenBucket.java       用户信息 + 重试配置 + 令牌桶限流
+│   └── ChannelMetric.java           单 channel 发送指标（成功率/延迟/限流拒绝）
 ├── service/
 │   ├── AgentService.java            Python SSE 流读取 + WS 推送（线程池），done 事件转发 user_message_id/assistant_message_id
 │   └── PythonProxyService.java      通用 HTTP 代理（GET/POST/PUT/PATCH/DELETE）
@@ -150,6 +159,24 @@ token 统一由 `PythonProxyService.getServiceToken()` 管理（单一来源）�
 ### JWT 滑动续期
 
 `JwtAuthFilter` 在每次有效请求后在响应头写入 `X-New-Token`，前端自动更新本地 token，实现无感续期（24h token，活跃用户永不过期）。
+
+### Channel Adapter（IM Channel 抽象层）
+
+```
+ChannelAdapterManager（Spring Bean）
+    │  管理 adapter 注册 + broadcast() 并行广播
+    ▼
+FeishuChannelAdapter implements ChannelAdapter
+    │  委托 FeishuMessageSender，统一 sendText/sendCard/sendMessage
+    │
+    └── ChannelMetric 指标（成功率/延迟/限流拒绝次数）
+```
+
+Java 侧提供与 Python `agent/im/` 对应的 Channel Adapter 层：
+- `ChannelAdapter` 接口：定义 `sendText()` / `sendCard()` / `sendMessage()` 三个方法
+- `FeishuChannelAdapter`：实现类，内部委托 `FeishuMessageSender`，保持向后兼容
+- `ChannelAdapterManager`：Spring `@Component`，管理所有 adapter 的注册/注销 + `broadcast()` 并行广播（多通道同时发送，失败隔离不影响其他通道）
+- 数据模型（`ChannelType` / `ChannelMessage` / `SendResult` / `UserInfo` / `RetryConfig` / `TokenBucket` / `ChannelMetric`）与 Python 侧一一对应
 
 ---
 
