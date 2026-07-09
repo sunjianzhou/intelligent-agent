@@ -1,7 +1,7 @@
 # 智能体项目 — AI 上下文速查文档
 
 > **本文档专为大模型阅读设计**。新对话开始时先读此文件，5 分钟内建立完整项目认知，无需再反复询问基础背景。
-> 最后更新：2026-07-07（W1-W9 主人永久铁律全部落地：数据层+检索层+执行层，含隐私分层/缓存/token退化/铁律违反扫描）
+> 最后更新：2026-07-09（W1-W12 全部落地：主人永久铁律 + Channel Adapter 抽象层 + 双通道并行广播 + 可观测性）
 
 ---
 
@@ -10,7 +10,7 @@
 ```
 浏览器（PWA）/ CLI
     │
-企业微信 / 飞书（IM 渠道）
+企业微信 / 飞书 / Telegram（IM 渠道）
     │  HTTPS 回调 / WS 长连接
     │
     ▼
@@ -24,10 +24,22 @@
     │  /feishu/* → proxy → backend:8080（飞书回调）
     ▼
 Java 后端 (Spring Boot, port 8080)   ← 纯网关，无 AI 逻辑
+    │                                   含 ChannelAdapterManager（FeishuChannelAdapter + broadcast）
     │                                   含 WeComCallbackController、FeishuWebSocketClient
     │  HTTP + SSE
     ▼
 Python Agent (FastAPI, port 8000)    ← 所有 AI 逻辑在此
+    │
+    ├── Channel Adapter 层             ← 4 channel 统一接口（飞书/企微/Web/Telegram）
+    │   ├── ChannelAdapter（ABC）      ← send_text/card/file/image + TokenBucket + RetryConfig + ChannelMetric
+    │   ├── FeishuAdapter             ← 按操作独立限流（text 50/s, card 1.67/s），Session 连接池
+    │   ├── WeComAdapter              ← 限流 1.67/s，4KB card 截断
+    │   ├── WebAdapter                ← WS 推送，无限流
+    │   ├── TelegramAdapter           ← 限流 30/s，Inline Keyboard card
+    │   ├── ChannelRouter             ← 单通道/广播/去重/fallback/指标聚合，全局单例
+    │   ├── ChannelAdapterFactory     ← 自动发现 4 adapter
+    │   ├── ChannelMessageTool        ← LLM 统一 IM 工具（替代 FeishuIMTool）
+    │   └── ChannelNotifier           ← 整合通知系统 + GET /health/channels 可观测性
     │
     ├── Ollama (port 11434)           ← 本地 LLM 推理（--profile local，默认模型 dolphin:latest）
     ├── 云端 LLM（按需在 /admin/models 激活，不作全局默认）
@@ -157,7 +169,8 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 | feishu_task_list | `feishu_task.py` | 待办查询（tenant 身份，支持 user_access_token 优先） |
 | feishu_calendar_create | `feishu_calendar_create.py` | 创建日历事件（user_access_token，OAuth 授权必需） |
 | feishu_task_write | `feishu_task_write.py` | 创建/完成任务（user_access_token，OAuth 授权必需） |
-| im_message | `im/feishu_client.py`（`FeishuIMTool`） | 发送飞书 IM 消息（tenant access token，bot 身份） |
+| im_message | `im/feishu_client.py`（`FeishuIMTool`） | 发送飞书 IM 消息（tenant access token，bot 身份；旧版，已委托 FeishuAdapter） |
+| channel_message | `im/channel_message_tool.py` | LLM 统一 IM 工具，通过 ChannelRouter 路由到飞书/企微/Web/Telegram（替代 FeishuIMTool） |
 
 另有通过 `FunctionTool` 动态注册的工具：`store_memory`、`search_memories`、`create_reminder`、`create_periodic_reminder` 等。
 
@@ -211,6 +224,42 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 
 所有参数可通过 Web UI（`/admin/mcp` → 系统资源配置）动态修改，写入 `data/runtime_config.json`，重启后自动恢复。
 
+### 3.10 Channel Adapter 抽象层（`agent/im/`）
+
+统一的 IM Channel 抽象层，4 channel（飞书/企微/Web/Telegram）走统一接口，支持多通道并行广播和可观测性。
+
+**核心组件**：
+
+| 组件 | 文件 | 说明 |
+|------|------|------|
+| `ChannelAdapter`（ABC） | `im/channel_adapter.py` | 统一接口：`send_text`/`send_card`/`send_file`/`send_image`，内置 `TokenBucket` 限流 + `RetryConfig` 指数退避重试 + `ChannelMetric` 指标 + HTTP Session 连接池复用 |
+| `FeishuAdapter` | `im/adapters/feishu_adapter.py` | 飞书适配器：按操作独立限流（text 50/s, card 1.67/s, image 10/s），card 30KB 截断，TODO-93 失职自查钩子 |
+| `WeComAdapter` | `im/adapters/wecom_adapter.py` | 企业微信适配器：限流 1.67/s，card 4KB 截断 |
+| `WebAdapter` | `im/adapters/web_adapter.py` | Web 适配器：WS 推送，无限流无重试，始终可用（fallback 目标） |
+| `TelegramAdapter` | `im/adapters/telegram_adapter.py` | Telegram 适配器：限流 30/s，Inline Keyboard card |
+| `ChannelRouter` | `im/channel_router.py` | 多通道路由器：单通道发送（`send_to`）、多通道并行广播（`broadcast_text`，asyncio.gather + 失败隔离）、去重（dedup_key）、fallback 降级到 Web（`send_with_fallback`）、全局单例（`_get_global_router`） |
+| `ChannelAdapterFactory` | `im/adapter_factory.py` | 按 `ChannelType` 自动发现并创建 adapter |
+| `ChannelMessageTool` | `im/channel_message_tool.py` | LLM 统一 IM 工具（替代旧 `FeishuIMTool`），通过 ChannelRouter 路由到任意 channel |
+| `ChannelNotifier` | `im/channel_notifier.py` | 整合 ChannelRouter 到通知系统（`notify_user`/`notify_user_sync`） |
+
+**数据模型**（`channel_adapter.py`）：
+- `ChannelType`：枚举（FEISHU / WECOM / WEB / TELEGRAM / CLI）
+- `MessageType`：枚举（TEXT / CARD / IMAGE / FILE）
+- `MessageStatus`：生命周期枚举（PENDING → SENT → DELIVERED → READ / FAILED）
+- `ChannelMessage`：跨 channel 统一消息模型（含 dedup_key、归一化 message_id）
+- `SendResult`：发送操作统一结果（success / message_id / error / latency_ms）
+- `UserInfo`：channel-agnostic 用户信息
+- `RetryConfig`：指数退避重试配置（max_retries / base_delay / backoff_multiplier）
+- `TokenBucket`：令牌桶限流器（线程安全，rate + burst）
+- `ChannelMetric`：单 channel 发送指标（attempts / successes / failures / retries / rate_limit_hits / latency）
+
+**Java 侧对应**（`backend/web/im/`，10 个文件）：
+- `ChannelAdapter`（interface）+ `FeishuChannelAdapter`（委托 `FeishuMessageSender`）
+- `ChannelAdapterManager` — Spring Bean，管理 adapter 注册 + `broadcast()` 并行广播
+- 数据模型与 Python 侧一一对应
+
+**可观测性**：`GET /health/channels` 返回各 channel 的 `ChannelMetric`（成功率/平均延迟/限流拒绝次数），用于生产监控。
+
 ---
 
 ## 四、Java 后端详解（`backend/web/`）
@@ -240,6 +289,7 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 | `ImageProxyController` | `/api/images/*` | 图片文件代理 |
 | `FeishuOAuthController` | `/feishu/oauth/*` | 飞书 OAuth 三端点透传（authorize / callback / status） |
 | `WeComCallbackController` | `/wecom/callback` | 企业微信 URL 验证（GET）+ 消息接收（POST）；异步处理，立即返回 200 |
+| `ChannelAdapterManager` | —（Spring Bean） | IM Channel 适配器管理：注册 FeishuChannelAdapter + `broadcast()` 并行广播 |
 | `SpaController` | `/**` | Vue Router history mode 兜底 |
 
 所有代理 Controller 均继承 `AbstractProxyController`，统一 `proxy.get/post/put/delete/patch(path, userId)` 调用。`proxyGetRaw()` 方法返回原始 String（供 HTML 响应端点，如 OAuth callback 使用）。
@@ -430,7 +480,7 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 
 ---
 
-## 九、当前运行状态（2026-07-02）
+## 九、当前运行状态（2026-07-09）
 
 - **已提交到 GitHub**：所有修改均已推送 master 分支
 - **测试覆盖**：350 个 Agent 单元测试 + 63 个 E2E 测试，348 通过（4 预存失败，sentence_transformers 未安装）
@@ -442,6 +492,12 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 - **已接通的 IM 渠道**：
   - 飞书（Feishu）：WS 长连接，启动自动建立，P2P + 群聊均支持
   - 企业微信（WeCom）：HTTP 回调 `https://intelligent.eu.cc/wecom/callback`，已验证端到端收发
+  - Telegram：adapter 已实现（限流 30/s + Inline Keyboard），待配置 Bot Token 后接通
+- **Channel Adapter 抽象层**（2026-07-08，TODO-99~106）：
+  - Python 侧：`ChannelAdapter` ABC + 4 adapter（飞书/企微/Web/Telegram）+ `ChannelRouter`（多通道并行广播 + fallback）+ `ChannelMessageTool`（LLM 统一 IM 工具）+ `ChannelNotifier`（整合通知系统）
+  - Java 侧：`ChannelAdapter` interface + `FeishuChannelAdapter` + `ChannelAdapterManager`（Spring Bean，broadcast 并行）
+  - 可观测性：`GET /health/channels` 各 channel 指标端点（成功率/延迟/限流拒绝）
+  - 测试：`test_channel_adapter.py`（28 用例）+ `test_channel_router.py`（14 用例）+ `test_channel_phase3.py`（7 用例）全通过
 - **2026-07-02 新增能力（heart-record plan W1-W3）**：
   - 心证层：`soul/heart.md` + SoulLoader + SystemPromptBuilder heart 段 + heart_record 工具
   - 分支保护：6 信号 `_detect_branch_failure` + 自动撤回 + 错误分级重试
@@ -458,7 +514,7 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 - **IM 渠道用户隔离**：`feishu:{open_id}` / `wecom:{userName}` 各有独立记忆和模型偏好
 - **飞书心跳巡检**：已暂停（dolphin 无法正确执行开放式主动联系决策，每次输出无意义占位消息；如需恢复建议搭配云端模型）
 - **移动端 PWA**：iPhone 16 适配完成（底部 Tab Bar / safe-area / dvh / 键盘遮挡修复）
-- **待办**：TODO-12（性能优化 #4/#5/#8，待触发条件）/ TODO-IMG P3 远期遗留（ComfyUI 工作流热重载/LoRA/多模型模板等）
+- **待办**：TODO-12（性能优化 #4/#5/#8，待触发条件）/ TODO-90（Ollama 量化模型 + keep_alive 调优）/ TODO-91（L3/L4 命中率监控）/ TODO-92（迁移验证首跑 + 全量回归 + 归档）/ TODO-IMG P3 远期遗留（ComfyUI 工作流热重载/LoRA/多模型模板等）
 
 ---
 

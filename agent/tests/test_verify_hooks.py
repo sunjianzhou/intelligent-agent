@@ -169,7 +169,12 @@ class TestFeishuSendVerify:
         assert _extract_message_id(response) is None
 
     def test_do_send_retry_on_missing_message_id(self, monkeypatch):
-        """message_id 缺失时应触发重试（_do_send 被调用两次）。"""
+        """message_id 缺失时应触发重试（_do_send_original 被调用两次）。
+
+        Channel Adapter 重构（TODO-100）将 _do_send 重命名为 _do_send_original，
+        外部 adapter 通过 FeishuAdapter 走，FeishuIMTool.execute() 内部 fallback
+        仍使用 _do_send_original。
+        """
         from im.feishu_client import FeishuIMTool
 
         call_count = 0
@@ -186,7 +191,7 @@ class TestFeishuSendVerify:
                 return first_call_no_msgid
             return second_call_with_msgid
 
-        monkeypatch.setattr(FeishuIMTool, "_do_send", mock_do_send)
+        monkeypatch.setattr(FeishuIMTool, "_do_send_original", mock_do_send)
 
         tool = FeishuIMTool()
         result = tool.execute(

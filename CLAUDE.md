@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> 最后更新：2026-07-07（W1-W9 主人永久铁律全部落地：数据层+检索层+执行层）
+> 最后更新：2026-07-09（W1-W12 全部落地：主人永久铁律 + Channel Adapter 抽象层 + 双通道并行广播）
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -9,13 +9,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A local-first, three-tier intelligent agent platform: Ollama local inference → Python FastAPI agent (all AI logic) → Java Spring Boot gateway (WebSocket + HTTP proxy, zero AI logic) → Vue 3 SPA. A Python CLI client can talk to the agent directly, bypassing Java.
 
 ```
-Browser / CLI
-    │  WebSocket (streaming) + REST
+Browser / CLI / 飞书 / 企微 / Telegram
+    │  WebSocket (streaming) + REST + IM WebSocket 长连接
     ▼
 Java backend (Spring Boot :8080)   ← pure gateway: JWT auth, WS management, proxying
+    │                                  ChannelAdapterManager: FeishuChannelAdapter + broadcast
     │  HTTP + SSE
     ▼
 Python Agent (FastAPI :8000)       ← all AI logic lives here
+    │
+    ├── Channel Adapter 层          ← 4 channel 统一接口（飞书/企微/Web/Telegram）
+    │   ├── ChannelRouter          ← 单通道/广播/去重/fallback/指标聚合
+    │   ├── ChannelAdapterFactory  ← 自动发现 4 adapter
+    │   ├── ChannelMessageTool     ← LLM 统一 IM 工具（替代 FeishuIMTool）
+    │   └── ChannelNotifier        ← 整合通知系统（notify_user / notify_user_sync）
     │
     ├── Ollama (:11434)            ← local LLM inference
     └── ChromaDB (embedded)        ← vector long-term memory
@@ -75,6 +82,24 @@ Ollama → Agent → Backend → Frontend (Backend waits on Agent's health check
 ### Why three tiers
 
 The Java backend is intentionally a thin, swappable gateway: WebSocket session management, JWT auth (validated at WS handshake via `JwtHandshakeInterceptor`), and HTTP proxying to Python. It contains **no AI logic** — every proxy controller (`RoleController`, `MemoryProxyController`, `TaskProxyController`, etc.) extends `AbstractProxyController` and forwards to Python with the real user ID attached via `X-User-Id`. All intelligence lives in the Python agent.
+
+### Channel Adapter 抽象层（`agent/im/` + `backend/web/im/`）
+
+统一的 IM Channel 抽象层，4 channel（飞书/企微/Web/Telegram）走统一接口，支持多通道并行广播：
+
+**Python 侧**：
+- `ChannelAdapter`（ABC） — 统一接口：`send_text()` / `send_card()` / `send_file()` / `send_image()`，内置限流（`TokenBucket`） + 指数退避重试（`RetryConfig`） + 指标（`ChannelMetric`） + HTTP Session 连接池复用
+- `FeishuAdapter` / `WeComAdapter` / `WebAdapter` / `TelegramAdapter` — 4 个 adapter 实现，各自独立限流（飞书 text 50/s card 1.67/s，企微 1.67/s，Telegram 30/s，Web 不限流）
+- `ChannelRouter` — 单通道发送（`send_to`）、多通道并行广播（`broadcast_text`，asyncio.gather + 失败隔离）、去重（dedup_key）、fallback 降级到 Web、全局单例
+- `ChannelAdapterFactory` — 按 `ChannelType` 自动发现并创建 adapter
+- `ChannelMessageTool` — LLM 统一 IM 工具，替代旧 `FeishuIMTool`，通过 ChannelRouter 路由
+- `ChannelNotifier` — 整合 ChannelRouter 到通知系统（`notify_user` / `notify_user_sync`）
+- `GET /health/channels` — 各 channel 状态端点（健康/指标/限流拒绝次数）
+
+**Java 侧**：
+- `ChannelAdapter`（interface） + `FeishuChannelAdapter`（委托 `FeishuMessageSender`）
+- `ChannelAdapterManager` — Spring Bean，管理 adapter 注册 + `broadcast()` 并行广播
+- 数据模型：`ChannelType` / `ChannelMessage` / `SendResult` / `UserInfo` / `RetryConfig` / `TokenBucket` / `ChannelMetric`（与 Python 侧一一对应）
 
 ### Python agent core (`agent/core/`)
 

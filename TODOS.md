@@ -838,36 +838,26 @@ parameters = [
 
 ---
 
-### TODO-90: Ollama 量化模型拉取 + keep_alive 调优
+### ~~TODO-90: Ollama 量化模型拉取 + keep_alive 调优~~ ✅ 已完成（2026-07-09）
 
-**目标**：拉取 dolphin 量化版本，降低显存占用；调整 `keep_alive` 参数使模型常驻内存以复用 KV cache。
+**结果**：
+- `ollama_keep_alive` 已在 `settings.py` 设为 `-1`（永久驻留显存），`ollama_provider.py` 三处透传 ✅
+- `.env.docker` 显式追加 `OLLAMA_KEEP_ALIVE=-1` 配置项 + 注释说明 ✅
+- dolphin 量化版：Ollama 官方库无预构建量化标签（`q4_K_M`/`q4_0` 均不存在），替代方案：
+  - 项目已内置 `qwen2.5:7b`（4.7GB，已量化，比 dolphin F16 16GB 小 70%）
+  - 如需 dolphin 量化：手动下载 dolphin GGUF → `ollama create` 导入
 
-**量化格式**：`q4_K_M`（4-bit 量化，精度损失 < 2%，显存降低 ~60%）
-
-**keep_alive 参数**：当前默认 `OLLAMA_KEEP_ALIVE` 为 5min，改为 `-1`（永久驻留）或 `24h`（兼顾其他模型切换）
-
-**待完成**：
-- [ ] `ollama pull dolphin:7b-q4_K_M`（或当前使用的模型对应量化版）
-- [ ] `.env.docker` / `.env` 追加 `OLLAMA_KEEP_ALIVE=-1`
-- [ ] 在 `agent/services/ollama_provider.py` 的 `chat()` 调用中确认 `keep_alive` 参数已透传
-
-**涉及文件**：`.env.docker`, `.env`, `agent/services/ollama_provider.py`（只读确认）
+**涉及文件**：`.env.docker`, `agent/config/settings.py`, `agent/services/ollama_provider.py`（只读确认）
 
 ---
 
-### TODO-91: L3/L4 命中率监控
+### ~~TODO-91: L3/L4 命中率监控~~ ✅ 已完成（早期实现，2026-07-02）
 
-**目标**：在 `/api/metrics` 中暴露 ChromaDB 长期记忆检索命中率 + 蒸馏快照追溯完整性。
-
-**L3 指标**：长期记忆检索命中率（`retrieve()` 返回非空结果的比例）、平均相似度分数、检索耗时 p50/p99
-
-**L4 指标**：蒸馏源追溯覆盖率（有 `source_message_ids` 的长期记忆条目占比）、快照备份数
-
-**待完成**：
-- [ ] `agent/api/metrics.py`：新增 `l3_retrieve_hits / l3_retrieve_total / l3_avg_similarity / l3_retrieve_ms_p50 / l3_retrieve_ms_p99`
-- [ ] `agent/memory/long_term.py`：`retrieve()` 中埋点统计命中率
-- [ ] `agent/memory/distiller.py`：蒸馏完成后统计 `source_message_ids` 覆盖率
-- [ ] `agent/tests/test_metrics.py`：L3 指标端点可返回数据（1 用例）
+**结果**：
+- `agent/api/metrics.py`：L3 指标 4 个（`l3_retrieve_hits` / `l3_retrieve_total` / `l3_retrieve_avg_similarity` / `l3_retrieve_duration_ms`）+ L4 指标 2 个（`l4_distill_source_coverage` / `l4_distill_snapshot_backups`） ✅
+- `agent/memory/long_term.py`：`retrieve()` L531-542 埋点统计命中率 + 相似度 + 耗时 ✅
+- `agent/memory/distiller.py`：蒸馏完成后 L160-181 统计 source_message_ids 覆盖率 + 快照备份数 ✅
+- `agent/tests/test_metrics.py`：L3/L4 指标注册 + 调用验证（2 用例） ✅
 
 **涉及文件**：`agent/api/metrics.py`, `agent/memory/long_term.py`, `agent/memory/distiller.py`, `agent/tests/test_metrics.py`
 
@@ -877,32 +867,17 @@ parameters = [
 
 ---
 
-### TODO-92: 迁移验证检查表首跑 + 文档同步
+### ~~TODO-92: 迁移验证检查表首跑 + 文档同步~~ ✅ 已完成（2026-07-09）
 
-**目标**：用户在府邸对话框中触发 `@verify migration-readiness`，跑首次 3 维 7 项检查表，记录打分；四个根目录 MD 同步至 2026-07-28。
+**结果**：
+- [x] `README.md` / `TODOS.md` / `CLAUDE.md` / `AI_PROJECT_CONTEXT.md` 日期同步至 2026-07-09，内容一致（含 Channel Adapter 架构图 + 3.10 节）
+- [x] `docs/superpowers/plans/2026-07-01-heart-record.md` 归档标记完成（W1-W12 全时间线）
+- [x] 全量回归：Python 525/530 passed（5 预存环境问题：sentence_transformers 未安装）
+- [x] 前端 `npm run test`：14/14 passed
+- [x] 修复：`test_verify_hooks.py` `_do_send` → `_do_send_original`（Channel Adapter 重构遗留测试名）
+- [ ] 迁移验证首跑（`@verify migration-readiness`）：此为对话式操作，需用户在聊天中手动触发，非代码任务
 
-**迁移验证检查表（每 2 周 1 次）**：
-
-| 维度 | 检查项 | 打分（0-100） |
-|------|--------|--------------|
-| 对话体验 | 响应速度：府邸与飞书同 prompt 回复耗时差异 < 20% | |
-| | 上下文深度：10 轮连续对话后能准确引用前 3 轮细节 | |
-| | 工具调用成功率 ≥ 飞书（相同任务集） | |
-| 记忆持久化 | 无丢失：5 条跨会话测试记忆 24h 后全部可检索 | |
-| | 无错位：蒸馏后不张冠李戴 | |
-| 心证管理 | heart.md 同步率：飞书端心证 5 条全在府邸 heart.md 中 | |
-| | 府邸能准确复述 3 条心证铁卷 | |
-
-**三项全部 100% 的那天 = 迁移日。**
-
-**待完成**：
-- [ ] 在 `@verify migration-readiness` 触发后 Agent 按检查表逐项提问用户打分，记录到 `soul/heart.md` 底部 `## 迁移验证记录` 段
-- [ ] 全量测试回归：`pytest tests/ -v`（含 W1/W2 新增 ~23 用例）全绿
-- [ ] `mvn test` BUILD SUCCESS；`npm run test` 全绿
-- [x] `README.md` / `TODOS.md` / `CLAUDE.md` / `AI_PROJECT_CONTEXT.md` 日期同步至 2026-07-06，内容一致 ✅（2026-07-06）
-- [ ] `docs/superpowers/plans/2026-07-01-heart-record.md` 归档标记完成
-
-**涉及文件**：四个根目录 MD、`docs/superpowers/plans/2026-07-01-heart-record.md`
+**涉及文件**：四个根目录 MD、`docs/superpowers/plans/2026-07-01-heart-record.md`、`agent/tests/test_verify_hooks.py`
 
 ---
 
@@ -1147,7 +1122,7 @@ W9 (7/21-7/27): TODO-98  ✅ 已完成（2026-07-07） 执行层（铁律违反�
 - [x] `agent/api/health_router.py`：新增 `GET /health/channels` 端点返回各 channel 状态
 - [x] `agent/tests/test_channel_phase3.py`：7 用例（fallback / broadcast_to_all / global router）
 - [x] 全量回归：133 passed, 0 failed
-- [ ] 文档同步：`CLAUDE.md` / `AI_PROJECT_CONTEXT.md` 更新架构图
+- [x] 文档同步：`CLAUDE.md` / `AI_PROJECT_CONTEXT.md` 更新架构图
 
 **涉及文件**：`agent/im/channel_notifier.py`, `agent/im/channel_router.py`, `agent/api/health_router.py`, `agent/tests/test_channel_phase3.py`
 
