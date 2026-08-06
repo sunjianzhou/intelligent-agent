@@ -673,7 +673,7 @@ AbortController + 30s 超时早已实现；补 `options.timeout` 支持。commit
 
 ---
 
-### TODO-84: soul/heart.md 心证永久档 + SoulLoader 加载
+### ~~TODO-84: soul/heart.md 心证永久档 + SoulLoader 加载~~ ✅ 已完成（2026-07-02）
 
 **目标**：在 `soul/` 下新增 `heart.md`（心证铁卷），SoulLoader 作为可选文件加载（缺失时不报错）。
 
@@ -694,16 +694,16 @@ AbortController + 30s 超时早已实现；补 `options.timeout` 支持。commit
 <!-- 用户对 Agent 的承诺 -->
 ```
 
-**待完成**：
-- [ ] 创建 `soul/heart.md`（git-tracked，含上述四段结构 + 占位说明）
-- [ ] `agent/soul/loader.py`：`SoulData` 新增 `heart: str` 字段；`OPTIONAL` 列表追加 `"heart"`；`load()` 按 `whisper` 同模式读取（不存在时 `heart=""`）
-- [ ] `agent/tests/test_soul_loader.py`：追加 `test_missing_heart_is_silent`（heart.md 缺失时 `data.heart == ""`）和 `test_heart_content_loaded`（文件存在时内容正确读入）
+**结果**：
+- [x] 创建 `soul/heart.md`（git-tracked，含上述四段结构 + 占位说明）
+- [x] `agent/soul/loader.py`：`SoulData` 新增 `heart: str` 字段；`OPTIONAL` 列表追加 `"heart"`；`load()` 按 `whisper` 同模式读取（不存在时 `heart=""`）
+- [x] `agent/tests/test_soul_loader.py`：追加 `test_missing_heart_is_silent`（heart.md 缺失时 `data.heart == ""`）和 `test_heart_content_loaded`（文件存在时内容正确读入）
 
 **涉及文件**：`soul/heart.md`, `agent/soul/loader.py`, `agent/tests/test_soul_loader.py`
 
 ---
 
-### TODO-85: SystemPromptBuilder 插入 heart 段
+### ~~TODO-85: SystemPromptBuilder 插入 heart 段~~ ✅ 已完成（2026-07-02）
 
 **目标**：在 system prompt 组装顺序中插入 heart 段，位置在 ③MEMORY 之后、④HEARTBEAT 之前。
 
@@ -711,16 +711,16 @@ AbortController + 30s 超时早已实现；补 `options.timeout` 支持。commit
 
 **理由**：心证优先级高于自动蒸馏的 MEMORY（用户显式标记 > LLM 自动归并），低于 HEARTBEAT（先知道记住什么，再按铁规思考）。
 
-**待完成**：
-- [ ] `agent/core/system_prompt_builder.py`：在 ③MEMORY 段之后插入心证段 `self._wrap("【心证铁卷】", d.heart)`，非空时追加
-- [ ] `agent/core/system_prompt_builder.py`：新增 `_HEART_EXCLUDED_CHANNELS = {"feishu_im", "wecom"}`，心证内容不发送到外部 IM 渠道（与 whisper 同策略）
-- [ ] `agent/tests/test_system_prompt_builder.py`：追加 `test_heart_nonempty_appears` + `test_heart_empty_absent` + `test_heart_before_heartbeat_order` 三个测试
+**结果**：
+- [x] `agent/core/system_prompt_builder.py`：在 ③MEMORY 段之后插入心证段 `self._wrap("【心证铁卷】", d.heart)`，非空时追加
+- [x] `agent/core/system_prompt_builder.py`：新增 `_HEART_EXCLUDED_CHANNELS = {"feishu_im", "wecom"}`，心证内容不发送到外部 IM 渠道（与 whisper 同策略）
+- [x] `agent/tests/test_system_prompt_builder.py`：追加 `test_heart_nonempty_appears` + `test_heart_empty_absent` + `test_heart_before_heartbeat_order` 三个测试
 
 **涉及文件**：`agent/core/system_prompt_builder.py`, `agent/tests/test_system_prompt_builder.py`
 
 ---
 
-### TODO-86: heart_record 工具（append/list/delete）
+### ~~TODO-86: heart_record 工具（append/list/delete）~~ ✅ 已完成（2026-07-02）
 
 **目标**：注册 `heart_record` 为 builtin tool，供 LLM 在用户说"记住这个"时自动调用。三个 action：
 - `append(content, tags=None, weight="normal")` — 追加心证到合适分区
@@ -752,16 +752,16 @@ parameters = [
 - 写入前做轮转备份（`.bak.1`~`.bak.5`，与 MEMORY.md 同策略）
 - 只允许操作 `soul/heart.md`，不操作其他 soul 文件
 
-**待完成**：
-- [ ] 创建 `agent/tools/builtin_tools/heart_record.py`
-- [ ] `agent/core/tool_dispatcher.py` `_init_tools` 注册 `heart_record`（无环境变量依赖，始终注册）
-- [ ] `agent/tests/test_heart_record.py`：append/list/delete 各 1 用例 + 分区归类 1 用例 + 备份 1 用例 = 5 用例
+**结果**：
+- [x] 创建 `agent/tools/builtin_tools/heart_record.py`
+- [x] `agent/core/tool_dispatcher.py` `_init_tools` 注册 `heart_record`（无环境变量依赖，始终注册）
+- [x] `agent/tests/test_heart_record.py`：append/list/delete 各 1 用例 + 分区归类 1 用例 + 备份 1 用例 = 5 用例
 
 **涉及文件**：`agent/tools/builtin_tools/heart_record.py`, `agent/core/tool_dispatcher.py`, `agent/tests/test_heart_record.py`
 
 ---
 
-### TODO-87: _detect_branch_failure() 5 信号整合
+### ~~TODO-87: _detect_branch_failure() 5 信号整合~~ ✅ 已完成（2026-07-02）
 
 **目标**：在 `conversation_flow.py` 的 `chat()` 和 `chat_stream()` 两个 ReAct 循环中，每轮 `_execute_tool_round()` 之后调用 `_detect_branch_failure()`，检测到分支失败时自动撤回最近 2 轮 + 注入 `[BRANCH_RESET]` 系统消息 + 重新进入循环。
 
@@ -774,16 +774,16 @@ parameters = [
 
 **检测窗口**：最近 5 轮（`_BRANCH_FAILURE_WINDOW = 5`）
 
-**待完成**：
-- [ ] `agent/core/conversation_flow.py`：新增 `_detect_branch_failure(round_history, iteration, max_iterations) -> Optional[str]` 私有方法
-- [ ] `agent/core/conversation_flow.py`：新增 `_text_similarity(a, b) -> float` 静态方法（Jaccard）
-- [ ] `agent/core/conversation_flow.py`：新增 `_auto_retract_last_n_rounds(messages, n, user_id) -> None` 方法
-- [ ] `agent/core/conversation_flow.py`：`chat()` L394 后插入 `_detect_branch_failure` 检测 + 撤回逻辑
-- [ ] `agent/core/conversation_flow.py`：`chat_stream()` L638 后插入同逻辑
-- [ ] `agent/core/conversation_flow.py`：`chat()`/`chat_stream()` 签名追加 `retract_on_failure: bool = True` 参数（默认开启，测试时可关闭）
-- [ ] `agent/core/tool_dispatcher.py`：`_execute_tool_round` 内对每个工具调用加入错误分级重试（`_is_auth_error` 判定 → 业务错 1 次 / 系统错 3 次），轮次结果标记 `_retry_exhausted`
-- [ ] `agent/core/tool_dispatcher.py`：新增 `_is_auth_error(exec_result) -> bool` 静态方法
-- [ ] `agent/tests/test_branch_detector.py`：5 信号各 1 用例 + 集成场景 2 用例 + 边界（关闭开关）1 用例 = 8 用例
+**结果**：
+- [x] `agent/core/conversation_flow.py`：新增 `_detect_branch_failure(round_history, iteration, max_iterations) -> Optional[str]` 私有方法
+- [x] `agent/core/conversation_flow.py`：新增 `_text_similarity(a, b) -> float` 静态方法（Jaccard）
+- [x] `agent/core/conversation_flow.py`：新增 `_auto_retract_last_n_rounds(messages, n, user_id) -> None` 方法
+- [x] `agent/core/conversation_flow.py`：`chat()` L394 后插入 `_detect_branch_failure` 检测 + 撤回逻辑
+- [x] `agent/core/conversation_flow.py`：`chat_stream()` L638 后插入同逻辑
+- [x] `agent/core/conversation_flow.py`：`chat()`/`chat_stream()` 签名追加 `retract_on_failure: bool = True` 参数（默认开启，测试时可关闭）
+- [x] `agent/core/tool_dispatcher.py`：`_execute_tool_round` 内对每个工具调用加入错误分级重试（`_is_auth_error` 判定 → 业务错 1 次 / 系统错 3 次），轮次结果标记 `_retry_exhausted`
+- [x] `agent/core/tool_dispatcher.py`：新增 `_is_auth_error(exec_result) -> bool` 静态方法
+- [x] `agent/tests/test_branch_detector.py`：5 信号各 1 用例 + 集成场景 2 用例 + 边界（关闭开关）1 用例 = 8 用例
 
 **涉及文件**：`agent/core/conversation_flow.py`, `agent/core/tool_dispatcher.py`, `agent/tests/test_branch_detector.py`
 
@@ -793,7 +793,7 @@ parameters = [
 
 ---
 
-### TODO-88: L1 响应缓存（prometheus 风格，5min TTL）
+### ~~TODO-88: L1 响应缓存（prometheus 风格，5min TTL）~~ ✅ 已完成（2026-07-02）
 
 **目标**：在 `agent/core/` 新增 `l1_cache.py`，对高频 prompt 模板做 hash 化缓存，命中即返回不调 LLM。插入到 `agent.chat()` 的最早入口。
 
@@ -803,34 +803,34 @@ parameters = [
 
 **边界保护**：TTL 过期后自动淘汰；缓存条目上限 100 条（LRU）；命中时写 `cache_hits_total` metrics；memory 发生写入时清空当前 user 的 L1（防止脏读）
 
-**待完成**：
-- [ ] 创建 `agent/core/l1_cache.py`：`L1Cache` 类（`get(key) / set(key, response) / invalidate_user(user_id)`，线程安全 `threading.Lock`）
-- [ ] `agent/config/settings.py`：追加 `l1_cache_ttl_seconds: int = 300` + `l1_cache_max_entries: int = 100`
-- [ ] `agent/core/agent.py`：在 `chat()` 的 `_build_messages_async` 之前插入 L1 查询；在 `chat()` 返回前写 L1
-- [ ] `agent/tests/test_l1_cache.py`：命中/未命中/TTL 过期（mock time）/LRU 淘汰/用户隔离 各 1 用例 = 5 用例
-- [ ] **边界测试**：`test_l1_boundary_ttl_expired_not_hit`（5min 后同一 prompt 不命中）+ `test_l1_boundary_prompt_diff_no_false_hit`（不同 prompt 不互串）
+**结果**：
+- [x] 创建 `agent/core/l1_cache.py`：`L1Cache` 类（`get(key) / set(key, response) / invalidate_user(user_id)`，线程安全 `threading.Lock`）
+- [x] `agent/config/settings.py`：追加 `l1_cache_ttl_seconds: int = 300` + `l1_cache_max_entries: int = 100`
+- [x] `agent/core/agent.py`：在 `chat()` 的 `_build_messages_async` 之前插入 L1 查询；在 `chat()` 返回前写 L1
+- [x] `agent/tests/test_l1_cache.py`：命中/未命中/TTL 过期（mock time）/LRU 淘汰/用户隔离 各 1 用例 = 5 用例
+- [x] **边界测试**：`test_l1_boundary_ttl_expired_not_hit`（5min 后同一 prompt 不命中）+ `test_l1_boundary_prompt_diff_no_false_hit`（不同 prompt 不互串）
 
 **涉及文件**：`agent/core/l1_cache.py`, `agent/config/settings.py`, `agent/core/agent.py`, `agent/tests/test_l1_cache.py`
 
 ---
 
-### TODO-89: L2 语义缓存（ChromaDB 风格，24h TTL）
+### ~~TODO-89: L2 语义缓存（ChromaDB 风格，24h TTL）~~ ✅ 已完成（早期实现，2026-07-02 确认）
 
-**目标**：对短期对话上下文做语义缓存——用户问题与 24h 内已编码的历史问题向量相似度 ≥ 0.85 时，返回缓存响应。
+**目标**：对短期对话上下文做语义响应缓存；相似问题命中时直接返回 24 小时内的历史回答。
 
-**缓存 key**：`user_id + embedding(prompt)`，存入 ChromaDB 独立 collection `l2_semantic_cache`
+**缓存数据**：问题 embedding 与回答存入 ChromaDB `response_cache` collection；可按模型过滤，避免跨模型复用。
 
-**TTL**：24h（`settings.l2_cache_ttl_hours = 24`）
+**TTL**：24h（`settings.semantic_cache_ttl_secs = 86400`）
 
-**相似度阈值**：0.85（`settings.l2_similarity_threshold = 0.85`）
+**相似度阈值**：0.92（`settings.semantic_cache_threshold = 0.92`）
 
-**待完成**：
-- [ ] 创建 `agent/core/l2_cache.py`：`L2SemanticCache` 类（`search(user_id, prompt_vec) / store(user_id, prompt_vec, response)`，复用 `embedding_model`）
-- [ ] `agent/config/settings.py`：追加 `l2_cache_ttl_hours` + `l2_similarity_threshold`
-- [ ] `agent/core/agent.py`：在 L1 未命中后、LLM 调用前插入 L2 查询；返回后写 L2
-- [ ] `agent/tests/test_l2_cache.py`：语义命中/未命中/用户隔离/过期淘汰 各 1 用例 = 4 用例
+**结果**：
+- [x] `agent/memory/semantic_cache.py`：以 `SemanticCache` 实现 L2 语义缓存，复用 embedding 模型与 ChromaDB `response_cache` collection
+- [x] `agent/config/settings.py`：已配置 `semantic_cache_threshold=0.92`、24 小时 TTL 与容量上限
+- [x] `agent/core/agent.py` / `agent/core/conversation_flow.py`：L1 未命中后查询 L2，成功响应写回 L2
+- [x] `agent/tests/test_agent_core.py`：覆盖 L2 集成及不可用时的降级；实现还会清理过期项并限制容量
 
-**涉及文件**：`agent/core/l2_cache.py`, `agent/config/settings.py`, `agent/core/agent.py`, `agent/tests/test_l2_cache.py`
+**涉及文件**：`agent/memory/semantic_cache.py`, `agent/config/settings.py`, `agent/core/agent.py`, `agent/core/conversation_flow.py`, `agent/tests/test_agent_core.py`
 
 ---
 
@@ -1112,11 +1112,11 @@ W9 (7/21-7/27): TODO-98  ✅ 已完成（2026-07-07） 执行层（铁律违反�
 
 ---
 
-### TODO-106: 双通道并行广播 + 可观测性（Phase 3）
+### ~~TODO-106: 双通道并行广播 + 可观测性（Phase 3）~~ ✅ 已完成（2026-07-09）
 
 **目标**：ChannelRouter.broadcast_text() 生产可用，整合通知系统，暴露 `/health` channel 状态。
 
-**待完成**：
+**结果**：
 - [x] `agent/im/channel_notifier.py`：整合 ChannelRouter 到通知系统（notify_user / notify_user_sync）
 - [x] `agent/im/channel_router.py`：`send_with_fallback()` 失败降级到 Web + 全局单例 `_get_global_router()`
 - [x] `agent/api/health_router.py`：新增 `GET /health/channels` 端点返回各 channel 状态
@@ -1174,3 +1174,44 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 - [x] `backend/web/README.md`：日期 + 目录结构新增 `im/` 段（10 文件）+ 关键实现细节新增 Channel Adapter 小节
 
 **涉及文件**：`README.md`, `agent/README.md`, `backend/web/README.md`
+
+
+---
+
+## W13 Java 统一迁移 — 执行队列（2026-08-05 创建，未开始）
+
+> **来源**：`docs/superpowers/plans/README.md`（权威执行队列）+ 三份 2026-08-05 计划文件；设计见 `docs/superpowers/specs/2026-08-05-java-unification-design.md`。
+> **执行规则**：严格按 Plan 1 → 2 → 3 顺序执行；每项任务需跑对应测试命令并单独提交；Plan 3 的 Python 退役需先完成六项确认并经授权，不删除任何 Python 数据/卷/源码。
+> **注意**：plans/README.md 明确说明 TODOS.md 曾有无关未提交修改，因此计划文件是每任务细粒度步骤的权威来源；此处为队列级同步，勾选状态以这里为准、完成时同步回计划文件。
+
+### TODO-107: Plan 1 — Java 后端基础 + AI 运行时（backend-ai-runtime）
+
+- [ ] Task 1: 升级 Java 基线（Java 21 + Spring Boot 3.x + `ai.runtime.mode` 配置 + Docker JDK 21）
+- [ ] Task 2: Provider 无关 LLM 契约（`ChatTurn` / `ModelEvent` / `LlmProvider`，事件限 token/tool_call/done/error）
+- [ ] Task 3: Ollama + 云 LLM 适配器与路由（`OllamaLlmProvider` / `OpenAiCompatibleLlmProvider` / `LlmProviderRouter`，凭据脱敏）
+- [ ] Task 4: 工具内核（`ToolExecutor`：5 轮上限 + JSON/标签/代码块/纯文本 4 种解析 + shadow 模式拒绝写工具）
+- [ ] Task 5: 本地 ReAct 编排（`AgentOrchestrator` + `LocalChatService`，`python`/`shadow`/`java` 模式切换）
+- [ ] Task 6: 锁定公开 chat 契约（`ChatContractTest` + `contracts/chat-stream-events.jsonl` 回归）
+
+**涉及文件**：`backend/web/pom.xml`, `backend/web/Dockerfile`, `backend/web/src/main/resources/application.yml`, `backend/web/src/main/java/com/intelligent/agent/web/`（新增 `ai/` + `api/chat/` 包）
+
+### TODO-108: Plan 2 — 记忆 / 领域 API / 调度 / 集成（domain-and-integrations）
+
+- [ ] Task 1: 记忆与向量库端口（`MemoryRepository` + `VectorMemoryRepository`，按 user/role/project 过滤）
+- [ ] Task 2: 会话记忆 / RAG / 语义缓存迁移（`ConversationMemoryService` + 蒸馏 + 摘要 + persona/model 感知缓存键）
+- [ ] Task 3: 逐个替换 role / conversation / project / task 代理为本地服务（每片单独提交）
+- [ ] Task 4: 迁移 knowledge / skills / analytics / teaching（含 413 超限用例 + 句子级分块）
+- [ ] Task 5: 调度器 + 具名集成（ComfyUI / MCP / 飞书 / 企微 / Telegram，幂等广播 + 限流 + 重试 + 回调校验）
+
+**涉及文件**：`backend/web/src/main/java/com/intelligent/agent/web/`（新增 `ai/memory/`, `infrastructure/`, `domain/`, `integration/` 包）+ 对应 Proxy Controller
+
+### TODO-109: Plan 3 — Java CLI / 切换 / 数据迁移 / Python 退役（client-cutover-retirement）
+
+- [ ] Task 1: Java CLI + 安全登录（Picocli + `TokenStore`，token 文件权限收紧，不存 `JWT_SECRET`）
+- [ ] Task 2: 聊天流式 + 本地会话（`BackendClient` + SSE 解析 + JSON 会话文件）
+- [ ] Task 3: CLI 功能对齐（`!models` / `!personas` / `!history` / `!retract` / `!sessions` 等）
+- [ ] Task 4: 校验式逻辑数据迁移（manifest + SHA-256 + 重新向量化，先 dry-run 副本卷）
+- [ ] Task 5: Shadow 验证 + 分阶段切换（`ShadowComparisonRecorder` 脱敏对比，allowlist 可回滚）
+- [ ] Task 6: 六项确认（数据对账/恢复演练/E2E/IM 送达/回滚窗口/删除授权）后经授权再退役 Python
+
+**涉及文件**：`client/`（新增 Maven 工程）、`backend/web/.../infrastructure/migration/`、`backend/web/src/main/resources/application.yml`, `docker-compose.yml`, `start_all.bat`, `start_all.sh`, 四份根目录 README / AI_PROJECT_CONTEXT
