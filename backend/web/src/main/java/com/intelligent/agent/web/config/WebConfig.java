@@ -10,7 +10,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -57,17 +60,18 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Bean
     public RestTemplate restTemplate() {
-        // HttpComponentsClientHttpRequestFactory 完整支持 PATCH 方法（Java 8 下 SimpleClientHttpRequestFactory 不支持）
-        int timeoutMs = (int) pythonServiceTimeout.toMillis();
+        // HttpClient 5 工厂完整支持 PATCH 方法（SimpleClientHttpRequestFactory 不支持）
+        PoolingHttpClientConnectionManager connectionManager =
+                PoolingHttpClientConnectionManagerBuilder.create()
+                        .setMaxConnTotal(200)
+                        .setMaxConnPerRoute(50)
+                        .build();
+        CloseableHttpClient httpClient =
+                HttpClientBuilder.create().setConnectionManager(connectionManager).build();
         HttpComponentsClientHttpRequestFactory factory =
-                new HttpComponentsClientHttpRequestFactory(
-                        HttpClientBuilder.create()
-                                .setMaxConnTotal(200)
-                                .setMaxConnPerRoute(50)
-                                .build()
-                );
-        factory.setConnectTimeout(timeoutMs);
-        factory.setReadTimeout(timeoutMs);
+                new HttpComponentsClientHttpRequestFactory(httpClient);
+        factory.setConnectTimeout(pythonServiceTimeout);
+        factory.setReadTimeout(pythonServiceTimeout);
         return new RestTemplate(factory);
     }
 

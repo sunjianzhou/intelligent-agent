@@ -1,3 +1,7 @@
+ai:
+  runtime:
+    mode: python
+
 server:
   port: 8080
   servlet:

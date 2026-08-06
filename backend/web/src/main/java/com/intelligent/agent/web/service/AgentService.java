@@ -28,7 +28,7 @@ import org.springframework.web.socket.WebSocketSession;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import javax.annotation.PreDestroy;
+import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
