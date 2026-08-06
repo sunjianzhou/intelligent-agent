@@ -129,7 +129,21 @@ class LongTermMemory(BaseMemory):
             logger.error("请安装 chromadb: pip install chromadb")
             raise
         except Exception as e:
-            logger.error(f"初始化ChromaDB失败: {e}，降级到内存模式")
+            # 区分致命错误（磁盘满、权限拒绝）与可恢复错误
+            import os as _os
+            if isinstance(e, (PermissionError, OSError)):
+                _disk = _os.path.exists(self.persist_dir)
+                _free = _os.statvfs(self.persist_dir).f_frsize * _os.statvfs(self.persist_dir).f_bavail if _disk else 0
+                logger.critical(
+                    f"ChromaDB 持久化目录不可用 (path={self.persist_dir}, "
+                    f"disk_free={_free / 1024**3:.1f}GB, error={e}) — "
+                    "降级到内存模式，重启后所有长期记忆将丢失！"
+                )
+            else:
+                logger.error(
+                    f"初始化ChromaDB失败: {e}，降级到内存模式 "
+                    "(长期记忆不持久化，重启丢失)"
+                )
             self._init_memory_db()
 
     def _init_memory_db(self):

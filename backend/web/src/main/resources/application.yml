@@ -55,19 +55,20 @@ logging:
     file:    "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
 # CORS 允许来源（多个用逗号分隔）
-# 生产环境通过环境变量 CORS_ALLOWED_ORIGINS 注入，如 https://yourdomain.com
+# 生产环境需通过环境变量 CORS_ALLOWED_ORIGINS 注入具体域名
 cors:
-  allowed-origins: "${CORS_ALLOWED_ORIGINS:*}"
+  allowed-origins: "${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}"
 
 auth:
   jwt:
     # 生产环境必须通过环境变量 JWT_SECRET 注入强随机密钥（≥32 字符）
-    secret: "${JWT_SECRET:ABCDEFGHIJKLMNOPQRSTUVWXYZlinmiaoshusheng123}"
+    # 无默认值：未设置时服务启动失败，防止使用可预测密钥
+    secret: "${JWT_SECRET}"
     expiry-hours: 24
   users:
     - username: admin
       # 生产环境必须通过环境变量 ADMIN_PASSWORD 注入
-      password: "${ADMIN_PASSWORD:admin123}"
+      password: "${ADMIN_PASSWORD}"
 
 feishu:
   enabled: ${FEISHU_ENABLED:false}

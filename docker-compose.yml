@@ -73,7 +73,7 @@ services:
       - OLLAMA_BASE_URL=http://ollama:11434
       - API_HOST=0.0.0.0
       - API_PORT=8000
-      - LOG_LEVEL=WARNING
+      - LOG_LEVEL=INFO
       - TZ=Asia/Shanghai
       # JWT_SECRET 必须通过 .env / .env.docker 注入，禁止 docker-compose.yml 硬编码默认值
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 未设置，请在 .env.docker 中配置（≥32 字符强随机串）}

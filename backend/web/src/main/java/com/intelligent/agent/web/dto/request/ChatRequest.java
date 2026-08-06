@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.Size;
 import java.util.List;
 import java.util.Map;
 
@@ -20,6 +21,7 @@ import java.util.Map;
 @NoArgsConstructor
 public class ChatRequest {
     @NotBlank(message = "消息不能为空")
+    @Size(max = 32768, message = "消息长度不能超过 32KB")
     private String message;
 
     @JsonProperty("use_tools")
@@ -37,8 +39,9 @@ public class ChatRequest {
     @JsonProperty("session_id")
     private String sessionId;
 
-    /** 多模态图片（base64，不含 data URL 前缀；非多模态模型时忽略）*/
+    /** 多模态图片（base64，不含 data URL 前缀；非多模态模型时忽略；上限 10MB 原始图片 ≈ 13.3MB base64）*/
     @JsonProperty("image_base64")
+    @Size(max = 14_000_000, message = "图片大小不能超过 10MB")
     private String imageBase64;
 
     /** 请求来源渠道（"web"/"feishu_im"/...），决定 Python 端 system prompt 是否注入私密档案段。

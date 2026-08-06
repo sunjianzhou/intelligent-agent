@@ -115,8 +115,8 @@ class Settings(BaseSettings):
     filesystem_allowed_dirs: str = ""
 
     # JWT 鉴权（与 Java 后端必须使用相同的密钥）
-    # 本地开发默认值与 application.yml 保持一致；生产环境通过 JWT_SECRET 环境变量注入
-    jwt_secret: str = "local-dev-only-change-in-production-must-be-32chars"
+    # 无默认值：未设置时启动报错；本地开发见 .env.example
+    jwt_secret: str = ""
     jwt_enabled: bool = True
 
     # 角色配置

@@ -14,6 +14,7 @@ import asyncio
 import base64
 import copy
 import json
+import threading
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -28,6 +29,7 @@ _CLIENT_ID = uuid.uuid4().hex
 
 # 进度状态（由 WS 监听线程写入，由 get_progress() 读取）
 _progress_state: Dict[str, Any] = {"progress": 0.0, "step": 0, "max": 0, "prompt_id": None}
+_progress_lock = threading.Lock()  # 保护多用户并发写入 _progress_state
 
 # 轮询超时 / 间隔
 _POLL_TIMEOUT_S = 300
@@ -157,12 +159,13 @@ class ComfyUIProvider(BaseImageProvider):
 
     def get_progress(self) -> dict:
         """返回当前生成进度（由 WS 监听写入）。"""
-        return {
-            "progress":   _progress_state.get("progress", 0.0),
-            "step":       _progress_state.get("step", 0),
-            "max":        _progress_state.get("max", 0),
-            "prompt_id":  _progress_state.get("prompt_id"),
-        }
+        with _progress_lock:
+            return {
+                "progress":   _progress_state.get("progress", 0.0),
+                "step":       _progress_state.get("step", 0),
+                "max":        _progress_state.get("max", 0),
+                "prompt_id":  _progress_state.get("prompt_id"),
+            }
 
     @staticmethod
     def _load_workflow(path: str) -> Dict[str, Any]:
@@ -259,7 +262,8 @@ class ComfyUIProvider(BaseImageProvider):
                     f"size={req.size} sampler={req.sampler_name} prompt={req.prompt[:60]}")
 
         # 重置进度
-        _progress_state.update({"progress": 0.0, "step": 0, "max": 0, "prompt_id": None})
+        with _progress_lock:
+            _progress_state.update({"progress": 0.0, "step": 0, "max": 0, "prompt_id": None})
 
         async with httpx.AsyncClient(timeout=30) as client:
             try:
@@ -276,7 +280,8 @@ class ComfyUIProvider(BaseImageProvider):
             except Exception as e:
                 return self.unavailable_result(f"提交工作流失败: {e}")
 
-        _progress_state["prompt_id"] = prompt_id
+        with _progress_lock:
+            _progress_state["prompt_id"] = prompt_id
         logger.info(f"[ComfyUI] 已入队 prompt_id={prompt_id}")
 
         image_bytes = await self._wait_and_download(prompt_id)
@@ -284,7 +289,8 @@ class ComfyUIProvider(BaseImageProvider):
             return self.unavailable_result("ComfyUI 生成超时或输出为空")
 
         logger.info(f"[ComfyUI] 生成成功，图片大小: {len(image_bytes)} bytes")
-        _progress_state.update({"progress": 1.0, "step": 0, "max": 0})
+        with _progress_lock:
+            _progress_state.update({"progress": 1.0, "step": 0, "max": 0})
         return ImageResult(
             success=True,
             image_bytes=image_bytes,
@@ -318,10 +324,11 @@ class ComfyUIProvider(BaseImageProvider):
                         if mtype == "progress":
                             val = data.get("value", 0)
                             mx  = data.get("max", 1)
-                            _progress_state.update({
-                                "progress": val / mx if mx else 0.0,
-                                "step": val, "max": mx,
-                            })
+                            with _progress_lock:
+                                _progress_state.update({
+                                    "progress": val / mx if mx else 0.0,
+                                    "step": val, "max": mx,
+                                })
                             logger.debug(f"[ComfyUI WS] 进度 {val}/{mx}")
 
                         elif mtype == "executing" and data.get("node") is None:
@@ -354,7 +361,8 @@ class ComfyUIProvider(BaseImageProvider):
                 await asyncio.sleep(_POLL_INTERVAL_S)
                 elapsed += _POLL_INTERVAL_S
                 # 估算进度（无 WS 时按时间粗略估算，最多 80%）
-                _progress_state["progress"] = min(0.8, elapsed / 60)
+                with _progress_lock:
+                    _progress_state["progress"] = min(0.8, elapsed / 60)
                 try:
                     r = await client.get(f"{self._base_url}/history/{prompt_id}")
                     if r.status_code == 200 and prompt_id in r.json():

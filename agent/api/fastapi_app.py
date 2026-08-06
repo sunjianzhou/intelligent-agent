@@ -35,7 +35,7 @@ from skills.router import router as skills_router
 # 抑制 uvicorn 访问日志
 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
-_LOCAL_DEV_SECRET = "local-dev-only-change-in-production-must-be-32chars"
+
 
 
 # ── 云端服务商回调 ────────────────────────────────────────────────────────────
@@ -197,19 +197,15 @@ async def lifespan(app: FastAPI):
     # JWT 密钥检查
     if settings.jwt_enabled:
         if not settings.jwt_secret:
-            logger.error(
-                "❌ JWT_ENABLED=true 但 JWT_SECRET 为空，所有鉴权请求将被拒绝！"
-                "请设置 JWT_SECRET 环境变量。"
-            )
-        elif settings.jwt_secret == _LOCAL_DEV_SECRET:
             if not settings.debug:
                 raise RuntimeError(
-                    "生产模式下不允许使用默认 JWT 密钥！"
-                    "请通过 JWT_SECRET 环境变量设置强随机密钥（建议 ≥32 字符随机字符串）。"
+                    "JWT_ENABLED=true 但 JWT_SECRET 为空！"
+                    "请通过 JWT_SECRET 环境变量设置强随机密钥（建议 ≥32 字符）。"
                 )
             else:
                 logger.warning(
-                    "⚠️  使用本地开发 JWT 密钥，生产环境请通过 JWT_SECRET 环境变量注入强随机密钥。"
+                    "⚠️  JWT_SECRET 未设置（debug 模式放行），"
+                    "生产环境请通过 JWT_SECRET 环境变量注入强随机密钥。"
                 )
 
     # 恢复用户模型偏好

@@ -111,7 +111,8 @@ class RoleManager:
         for role_id in self.list_roles():
             path = self._role_path(role_id)
             try:
-                raw = json.loads(open(path, encoding="utf-8").read())
+                with open(path, encoding="utf-8") as f:
+                    raw = json.loads(f.read())
                 cards.append({
                     "role_id": role_id,
                     "role_card": raw.get("role_card", {}),

@@ -44,7 +44,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             "/favicon.ico",
             "/favicon.svg",
             // Vue Router 前端路由（SPA 入口，均返回 index.html）
-            "/",
+            // "/" 已移至 doFilterInternal 做精确匹配（equals），避免 startsWith 误匹配所有路径
             "/login",
             "/chat",
             "/tools",
@@ -63,8 +63,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String path = request.getRequestURI();
 
-        // 白名单直接放行
-        if (WHITE_LIST.stream().anyMatch(path::startsWith)) {
+        // 白名单直接放行（精确匹配"/"不走 startsWith，避免误匹配所有路径）
+        if ("/".equals(path) || WHITE_LIST.stream().anyMatch(path::startsWith)) {
             chain.doFilter(request, response);
             return;
         }

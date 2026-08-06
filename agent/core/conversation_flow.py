@@ -629,6 +629,7 @@ class ConversationFlowMixin:
             if cached is not None:
                 cache_hits_total.labels(level="L1").inc()
                 logger.debug(f"[L1-cache] 命中: {message[:40]}")
+                self._reset_request_ctx()
                 return {"content": cached, "tool_calls": [], "_from_cache": "L1"}
             cache_misses_total.labels(level="L1").inc()
 
@@ -638,6 +639,7 @@ class ConversationFlowMixin:
                 if sem_hit is not None:
                     cache_hits_total.labels(level="L2").inc()
                     self._cache_put(message, sem_hit, user_id=user_id)   # 回填 L1
+                    self._reset_request_ctx()
                     return {"content": sem_hit, "tool_calls": [], "_from_cache": "L2"}
                 cache_misses_total.labels(level="L2").inc()
 
@@ -785,7 +787,17 @@ class ConversationFlowMixin:
             if project_id:
                 asyncio.create_task(self._maybe_extract_context(user_id, project_id))
 
+        self._reset_request_ctx()
         return {"content": full_response, "tool_calls": tool_call_log}
+
+    def _reset_request_ctx(self) -> None:
+        """重置请求级 ContextVar，防止异常路径泄漏到同一 Task 的下一个请求。"""
+        for ctx in (_request_provider_ctx, _request_persona_ctx,
+                     _request_image_b64_ctx, _request_channel_ctx):
+            try:
+                ctx.set(None)
+            except (LookupError, ValueError):
+                pass  # Token 已被父上下文重置，忽略
 
     # ═══════════════════════════════════════════════════════════════
     # 任务 sentinel 解析
@@ -949,6 +961,7 @@ class ConversationFlowMixin:
             full_response, _sentinel_events = self._strip_task_sentinels(full_response, project_id)
             for _s_type, _s_data in _sentinel_events:
                 yield (_s_type, _s_data)
+            self._reset_request_ctx()
             yield ('done', {"content": full_response})
             return
 
@@ -1069,6 +1082,7 @@ class ConversationFlowMixin:
                 if project_id:
                     asyncio.create_task(self._maybe_extract_context(user_id, project_id))
                 yield ('token', cleaned)
+                self._reset_request_ctx()
                 yield ('done', {"content": cleaned})
                 return
 
@@ -1119,4 +1133,5 @@ class ConversationFlowMixin:
         for _s_type, _s_data in _sentinel_events:
             yield (_s_type, _s_data)
 
+        self._reset_request_ctx()
         yield ('done', {"content": full_response})
