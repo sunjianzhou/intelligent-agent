@@ -1178,15 +1178,18 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 
 ---
 
-## W13 Java 统一迁移 — 执行队列（2026-08-05 创建，未开始）
+## W13 Java 统一迁移 — 执行队列（2026-08-05 创建，2026-08-07 开始执行）
 
 > **来源**：`docs/superpowers/plans/README.md`（权威执行队列）+ 三份 2026-08-05 计划文件；设计见 `docs/superpowers/specs/2026-08-05-java-unification-design.md`。
 > **执行规则**：严格按 Plan 1 → 2 → 3 顺序执行；每项任务需跑对应测试命令并单独提交；Plan 3 的 Python 退役需先完成六项确认并经授权，不删除任何 Python 数据/卷/源码。
 > **注意**：plans/README.md 明确说明 TODOS.md 曾有无关未提交修改，因此计划文件是每任务细粒度步骤的权威来源；此处为队列级同步，勾选状态以这里为准、完成时同步回计划文件。
 
 ### TODO-107: Plan 1 — Java 后端基础 + AI 运行时（backend-ai-runtime）
+> **2026-08-07 完成**：Boot 2.7.18→3.5.16、Java 1.8→21（本地 JDK：`D:\software\jdk21\jdk-21.0.12+8`）、javax→jakarta 22 文件、WebConfig 迁移 HttpClient 5、springdoc 2.9.0、Docker Temurin 21。BuildBaselineTest 红转绿（commit `8f0dce9`）。
+> **已知问题**：全量 `mvnw test` 68 用例全部通过，但测试 JVM 因非 daemon 线程（`@EnableScheduling` / `ChannelAdapterManager.broadcastExecutor` / MockWebServer）不退出导致 Maven 挂起——Task 6 全量回归前需修复（surefire exit timeout 或线程 daemon 化）。
+> **计划偏差**：计划片段因 `@SpringBootTest(properties=...)` 自带属性、升级前也会通过，改为断言默认 `python` 模式以获得真实红转绿。
 
-- [ ] Task 1: 升级 Java 基线（Java 21 + Spring Boot 3.x + `ai.runtime.mode` 配置 + Docker JDK 21）
+- [x] Task 1: 升级 Java 基线（Java 21 + Spring Boot 3.x + `ai.runtime.mode` 配置 + Docker JDK 21）
 - [ ] Task 2: Provider 无关 LLM 契约（`ChatTurn` / `ModelEvent` / `LlmProvider`，事件限 token/tool_call/done/error）
 - [ ] Task 3: Ollama + 云 LLM 适配器与路由（`OllamaLlmProvider` / `OpenAiCompatibleLlmProvider` / `LlmProviderRouter`，凭据脱敏）
 - [ ] Task 4: 工具内核（`ToolExecutor`：5 轮上限 + JSON/标签/代码块/纯文本 4 种解析 + shadow 模式拒绝写工具）

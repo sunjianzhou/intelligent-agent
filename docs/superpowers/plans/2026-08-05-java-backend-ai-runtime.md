@@ -30,7 +30,7 @@
 
 **Produces:** Java 21 compilation and `ai.runtime.mode` with `python`, `shadow`, or `java`.
 
-- [ ] Write the failing configuration test.
+- [x] Write the failing configuration test.
 
 ```java
 @SpringBootTest(properties = "ai.runtime.mode=java")
@@ -40,8 +40,8 @@ class BuildBaselineTest {
 }
 ```
 
-- [ ] Run `cd backend/web; ./mvnw.cmd -Dtest=BuildBaselineTest test` and observe the pre-upgrade failure.
-- [ ] Upgrade the parent/BOM to a current Spring Boot 3.x line, set `<java.version>21</java.version>`, add Spring AI dependency management, update Docker to JDK/JRE 21, and add:
+- [x] Run `cd backend/web; ./mvnw.cmd -Dtest=BuildBaselineTest test` and observe the pre-upgrade failure.
+- [x] Upgrade the parent/BOM to a current Spring Boot 3.x line, set `<java.version>21</java.version>`, add Spring AI dependency management, update Docker to JDK/JRE 21, and add:
 
 ```yaml
 ai:
@@ -49,7 +49,7 @@ ai:
     mode: python
 ```
 
-- [ ] Run `cd backend/web; ./mvnw.cmd -Dtest=BuildBaselineTest test`; commit with `build: upgrade backend to Java 21 baseline`.
+- [x] Run `cd backend/web; ./mvnw.cmd -Dtest=BuildBaselineTest test`; commit with `build: upgrade backend to Java 21 baseline`.
 
 ### Task 2: Add provider-neutral LLM contracts
 
