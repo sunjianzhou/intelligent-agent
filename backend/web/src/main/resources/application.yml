@@ -1,6 +1,26 @@
 ai:
   runtime:
     mode: python
+  llm:
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      model: ${OLLAMA_MODEL:qwen2.5:7b}
+      temperature: ${OLLAMA_TEMPERATURE:0.7}
+      max-tokens: ${OLLAMA_MAX_TOKENS:2048}
+      top-p: ${OLLAMA_TOP_P:0.9}
+      top-k: ${OLLAMA_TOP_K:40}
+      repeat-penalty: ${OLLAMA_REPEAT_PENALTY:1.1}
+      num-ctx: ${OLLAMA_NUM_CTX:4096}
+      num-gpu: ${OLLAMA_NUM_GPU:-1}
+      keep-alive: ${OLLAMA_KEEP_ALIVE:-1}
+      timeout: ${OLLAMA_TIMEOUT:600s}
+    cloud:
+      provider: ${CLOUD_PROVIDER:}
+      api-key: ${CLOUD_API_KEY:}
+      base-url: ${CLOUD_BASE_URL:}
+      model: ${CLOUD_MODEL:}
+      models: ${CLOUD_MODELS:}
+      timeout: ${CLOUD_TIMEOUT:120s}
 
 server:
   port: 8080
