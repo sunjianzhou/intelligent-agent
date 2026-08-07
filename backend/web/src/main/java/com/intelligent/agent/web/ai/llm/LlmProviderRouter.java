@@ -1,7 +1,6 @@
 package com.intelligent.agent.web.ai.llm;
 
 import com.intelligent.agent.web.ai.llm.cloud.OpenAiCompatibleLlmProvider;
-import com.intelligent.agent.web.ai.llm.ollama.OllamaLlmProvider;
 
 import java.util.List;
 import java.util.Objects;
@@ -17,14 +16,14 @@ import java.util.stream.Collectors;
  */
 public class LlmProviderRouter {
 
-    private final OllamaLlmProvider ollama;
+    private final LlmProvider local;
     private final OpenAiCompatibleLlmProvider cloud;
     private final Set<String> cloudModels;
 
-    public LlmProviderRouter(OllamaLlmProvider ollama,
+    public LlmProviderRouter(LlmProvider local,
                              OpenAiCompatibleLlmProvider cloud,
                              List<String> cloudModels) {
-        this.ollama = Objects.requireNonNull(ollama, "ollama provider is required");
+        this.local = Objects.requireNonNull(local, "local provider is required");
         this.cloud = cloud;
         this.cloudModels = cloudModels == null ? Set.of() : cloudModels.stream()
                 .filter(m -> m != null && !m.isBlank())
@@ -38,6 +37,6 @@ public class LlmProviderRouter {
                 && (model.isEmpty() || cloudModels.contains(model))) {
             return cloud;
         }
-        return ollama;
+        return local;
     }
 }

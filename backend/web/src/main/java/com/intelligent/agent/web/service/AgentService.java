@@ -2,6 +2,7 @@ package com.intelligent.agent.web.service;
 import lombok.extern.slf4j.Slf4j;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.intelligent.agent.web.api.chat.LocalChatService;
 import com.intelligent.agent.web.dto.request.ChatRequest;
 import com.intelligent.agent.web.dto.WebSocketMessageType;
 import com.intelligent.agent.web.util.JsonUtil;
@@ -30,6 +31,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
@@ -47,19 +49,25 @@ public class AgentService {
     @Value("${intelligent-agent.python-service.base-url:http://localhost:8000}")
     private String pythonServiceBaseUrl;
 
+    @Value("${ai.runtime.mode:python}")
+    private String runtimeMode;
+
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final ExecutorService streamExecutor;
     private final CloseableHttpClient streamHttpClient;
+    private final LocalChatService localChatService;
 
     // token 管理委托给 PythonProxyService，不再重复维护
     @Autowired
     private PythonProxyService proxy;
 
     public AgentService(ObjectMapper objectMapper,
-                        @Qualifier("streamExecutor") ExecutorService streamExecutor) {
+                        @Qualifier("streamExecutor") ExecutorService streamExecutor,
+                        LocalChatService localChatService) {
         this.objectMapper   = objectMapper;
         this.streamExecutor = streamExecutor;
+        this.localChatService = localChatService;
 
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(30000);
@@ -120,6 +128,9 @@ public class AgentService {
     }
 
     public Map<String, Object> chatFull(ChatRequest request) {
+        if (useLocalRuntime()) {
+            return localChatFull(request);
+        }
         try {
             String url = pythonServiceBaseUrl + "/api/chat";
             log.info("调用Python智能体服务: {}", url);
@@ -183,6 +194,10 @@ public class AgentService {
 
     private void doStreamChat(ChatRequest request, WebSocketSession session,
                               String requestId, long startTime) {
+        if (useLocalRuntime()) {
+            localStreamChat(request, session, requestId, startTime);
+            return;
+        }
         String url = pythonServiceBaseUrl + "/api/chat/stream";
         log.info("开始流式聊天: {}, url: {}", requestId, url);
 
@@ -231,7 +246,7 @@ public class AgentService {
                                 resp.getEntity().getContent(), StandardCharsets.UTF_8));
 
                 StringBuilder fullMsg      = new StringBuilder();
-                int           toolCallCount = 0;
+                int[]         toolCallCount = {0};
                 String        line;
 
                 while ((line = reader.readLine()) != null) {
@@ -247,94 +262,18 @@ public class AgentService {
                     String             eventType = (String) event.get("type");
                     Object             eventData = event.get("data");
 
-                    Map<String, Object> wsMsg = new HashMap<>();
-                    wsMsg.put("request_id", requestId);
-                    wsMsg.put("timestamp",  LocalDateTime.now().toString());
-
-                    wsMsg.put("version", WebSocketMessageType.PROTOCOL_VERSION);
-                    switch (eventType) {
-                        case WebSocketMessageType.TOOL_CALL_START:
-                            wsMsg.put("type",      WebSocketMessageType.TOOL_CALL_START);
-                            wsMsg.put("tool_data", eventData);
-                            JsonUtil.sendJsonMessageQuiet(session, wsMsg);
-                            break;
-
-                        case "tool_call":
-                            // Python 单条工具结果事件（协议对称，透传给前端备用）
-                            wsMsg.put("type",      "tool_call");
-                            wsMsg.put("tool_data", eventData);
-                            JsonUtil.sendJsonMessageQuiet(session, wsMsg);
-                            break;
-
-                        case WebSocketMessageType.TOOL_CALLS_DONE:
-                            toolCallCount++;
-                            wsMsg.put("type",       WebSocketMessageType.TOOL_CALLS_DONE);
-                            wsMsg.put("tool_calls", eventData);
-                            JsonUtil.sendJsonMessage(session, wsMsg);
-                            log.info("工具调用完成 #{}, requestId: {}", toolCallCount, requestId);
-                            break;
-
-                        case "thinking_chunk":
-                            wsMsg.put("type",  WebSocketMessageType.THINKING_CHUNK);
-                            wsMsg.put("chunk", String.valueOf(eventData));
-                            JsonUtil.sendJsonMessageQuiet(session, wsMsg);
-                            break;
-
-                        case "token":
-                            String token = String.valueOf(eventData);
-                            fullMsg.append(token);
-                            wsMsg.put("type",  WebSocketMessageType.CHAT_TOKEN);
-                            wsMsg.put("token", token);
-                            JsonUtil.sendJsonMessageQuiet(session, wsMsg);
-                            break;
-
-                        case "done":
-                            double responseTime =
-                                    (System.currentTimeMillis() - startTime) / 1000.0;
-                            log.info("流式聊天完成, requestId: {}, 总耗时: {}秒, "
-                                            + "工具调用次数: {}, 回复长度: {}字",
-                                    requestId, responseTime,
-                                    toolCallCount, fullMsg.length());
-                            wsMsg.put("type",          WebSocketMessageType.CHAT_DONE);
-                            wsMsg.put("message",       fullMsg.toString());
-                            wsMsg.put("response_time", responseTime);
-                            if (eventData instanceof Map) {
-                                Map<?, ?> doneData = (Map<?, ?>) eventData;
-                                if (doneData.get("user_message_id") != null) {
-                                    wsMsg.put("user_message_id", doneData.get("user_message_id"));
-                                }
-                                if (doneData.get("assistant_message_id") != null) {
-                                    wsMsg.put("assistant_message_id", doneData.get("assistant_message_id"));
-                                }
-                            }
-                            JsonUtil.sendJsonMessage(session, wsMsg);
-                            chatDoneEmitted[0] = true;
-                            break;
-
-                        case "task_update":
-                            wsMsg.put("type",      WebSocketMessageType.TASK_UPDATE);
-                            wsMsg.put("task_data", eventData);
-                            JsonUtil.sendJsonMessageQuiet(session, wsMsg);
-                            log.info("任务状态更新, requestId: {}", requestId);
-                            break;
-
-                        case "task_blocked":
-                            wsMsg.put("type",      WebSocketMessageType.TASK_BLOCKED);
-                            wsMsg.put("task_data", eventData);
-                            JsonUtil.sendJsonMessageQuiet(session, wsMsg);
-                            log.info("任务被阻塞, requestId: {}", requestId);
-                            break;
-
-                        case "error":
-                            log.error("流式聊天错误, requestId: {}, 错误: {}",
-                                    requestId, eventData);
-                            wsMsg.put("type",    WebSocketMessageType.ERROR);
-                            wsMsg.put("message", String.valueOf(eventData));
-                            JsonUtil.sendJsonMessage(session, wsMsg);
-                            break;
-
-                        default:
-                            break;
+                    Map<String, Object> wsMsg = toWsMessage(
+                            eventType, eventData, requestId, fullMsg, toolCallCount, startTime);
+                    if (wsMsg == null) {
+                        continue;
+                    }
+                    if (WebSocketMessageType.CHAT_DONE.equals(wsMsg.get("type"))) {
+                        chatDoneEmitted[0] = true;
+                    }
+                    if (isQuietWsEvent(eventType)) {
+                        JsonUtil.sendJsonMessageQuiet(session, wsMsg);
+                    } else {
+                        JsonUtil.sendJsonMessage(session, wsMsg);
                     }
                 }
             }
@@ -351,19 +290,189 @@ public class AgentService {
             // 兜底保证：无论流正常结束、SSE 未收到 done 事件、异常中断还是 session 关闭，
             // 前端都能收到 chat_done 以清除 isStreaming 状态，避免输入框被永久锁死。
             if (!chatDoneEmitted[0]) {
-                try {
-                    double elapsed = (System.currentTimeMillis() - startTime) / 1000.0;
-                    Map<String, Object> doneMsg = new HashMap<>();
-                    doneMsg.put("type",          WebSocketMessageType.CHAT_DONE);
-                    doneMsg.put("message",       "");
-                    doneMsg.put("response_time", elapsed);
-                    doneMsg.put("request_id",    requestId);
-                    doneMsg.put("timestamp",     LocalDateTime.now().toString());
-                    JsonUtil.sendJsonMessageQuiet(session, doneMsg);
-                    log.info("finally 补发 chat_done, requestId: {}", requestId);
-                } catch (Exception ignored) {}
+                sendFallbackDone(session, requestId, startTime);
             }
         }
+    }
+
+    // ── 本地运行时（ai.runtime.mode = java / shadow）────────────────
+
+    private boolean useLocalRuntime() {
+        return "java".equals(runtimeMode) || "shadow".equals(runtimeMode);
+    }
+
+    private Map<String, Object> localChatFull(ChatRequest request) {
+        try {
+            String response = localChatService.complete(request).block(Duration.ofSeconds(620));
+            Map<String, Object> result = new HashMap<>();
+            result.put("response",   response == null ? "服务异常" : response);
+            result.put("tool_calls", Collections.emptyList());
+            log.info("本地聊天服务响应成功");
+            return result;
+        } catch (Exception e) {
+            log.error("调用本地聊天服务失败", e);
+            Map<String, Object> err = new HashMap<>();
+            err.put("response",   "智能体服务暂时不可用: " + e.getMessage());
+            err.put("tool_calls", Collections.emptyList());
+            return err;
+        }
+    }
+
+    private void localStreamChat(ChatRequest request, WebSocketSession session,
+                                 String requestId, long startTime) {
+        StringBuilder fullMsg      = new StringBuilder();
+        int[]         toolCallCount = {0};
+        boolean[]     chatDoneEmitted = {false};
+        try {
+            localChatService.stream(request).subscribe(
+                    event -> {
+                        if (!session.isOpen()) {
+                            return;
+                        }
+                        Map<String, Object> wsMsg = toWsMessage(
+                                event.type(), event.data(), requestId,
+                                fullMsg, toolCallCount, startTime);
+                        if (wsMsg == null) {
+                            return;
+                        }
+                        if (WebSocketMessageType.CHAT_DONE.equals(wsMsg.get("type"))) {
+                            chatDoneEmitted[0] = true;
+                        }
+                        if (isQuietWsEvent(event.type())) {
+                            JsonUtil.sendJsonMessageQuiet(session, wsMsg);
+                        } else {
+                            JsonUtil.sendJsonMessage(session, wsMsg);
+                        }
+                    },
+                    err -> {
+                        log.error("本地流式聊天异常, requestId: {}", requestId, err);
+                        try {
+                            Map<String, Object> errMsg = new HashMap<>();
+                            errMsg.put("type",       WebSocketMessageType.ERROR);
+                            errMsg.put("message",    "流式聊天失败: " + err.getMessage());
+                            errMsg.put("request_id", requestId);
+                            JsonUtil.sendJsonMessageQuiet(session, errMsg);
+                        } catch (Exception ignored) {}
+                    },
+                    () -> {
+                        if (!chatDoneEmitted[0]) {
+                            sendFallbackDone(session, requestId, startTime);
+                        }
+                    });
+        } catch (Exception e) {
+            log.error("本地流式聊天启动失败, requestId: {}", requestId, e);
+            sendFallbackDone(session, requestId, startTime);
+        }
+    }
+
+    /**
+     * 将流式事件（Python SSE 与本地 ModelEvent 共用）映射为 WebSocket 消息。
+     * 未知类型返回 null。
+     */
+    private Map<String, Object> toWsMessage(String eventType, Object eventData,
+                                            String requestId, StringBuilder fullMsg,
+                                            int[] toolCallCount, long startTime) {
+        Map<String, Object> wsMsg = new HashMap<>();
+        wsMsg.put("request_id", requestId);
+        wsMsg.put("timestamp",  LocalDateTime.now().toString());
+        wsMsg.put("version",    WebSocketMessageType.PROTOCOL_VERSION);
+
+        switch (eventType) {
+            case WebSocketMessageType.TOOL_CALL_START:
+                wsMsg.put("type",      WebSocketMessageType.TOOL_CALL_START);
+                wsMsg.put("tool_data", eventData);
+                return wsMsg;
+
+            case "tool_call":
+                // 单条工具结果事件（协议对称，透传给前端备用）
+                wsMsg.put("type",      "tool_call");
+                wsMsg.put("tool_data", eventData);
+                return wsMsg;
+
+            case WebSocketMessageType.TOOL_CALLS_DONE:
+                toolCallCount[0]++;
+                wsMsg.put("type",       WebSocketMessageType.TOOL_CALLS_DONE);
+                wsMsg.put("tool_calls", eventData);
+                log.info("工具调用完成 #{}, requestId: {}", toolCallCount[0], requestId);
+                return wsMsg;
+
+            case "thinking_chunk":
+                wsMsg.put("type",  WebSocketMessageType.THINKING_CHUNK);
+                wsMsg.put("chunk", String.valueOf(eventData));
+                return wsMsg;
+
+            case "token":
+                String token = String.valueOf(eventData);
+                fullMsg.append(token);
+                wsMsg.put("type",  WebSocketMessageType.CHAT_TOKEN);
+                wsMsg.put("token", token);
+                return wsMsg;
+
+            case "done":
+                double responseTime = (System.currentTimeMillis() - startTime) / 1000.0;
+                log.info("流式聊天完成, requestId: {}, 总耗时: {}秒, "
+                                + "工具调用次数: {}, 回复长度: {}字",
+                        requestId, responseTime,
+                        toolCallCount[0], fullMsg.length());
+                wsMsg.put("type",          WebSocketMessageType.CHAT_DONE);
+                wsMsg.put("message",       fullMsg.toString());
+                wsMsg.put("response_time", responseTime);
+                if (eventData instanceof Map) {
+                    Map<?, ?> doneData = (Map<?, ?>) eventData;
+                    if (doneData.get("user_message_id") != null) {
+                        wsMsg.put("user_message_id", doneData.get("user_message_id"));
+                    }
+                    if (doneData.get("assistant_message_id") != null) {
+                        wsMsg.put("assistant_message_id", doneData.get("assistant_message_id"));
+                    }
+                }
+                return wsMsg;
+
+            case "task_update":
+                wsMsg.put("type",      WebSocketMessageType.TASK_UPDATE);
+                wsMsg.put("task_data", eventData);
+                log.info("任务状态更新, requestId: {}", requestId);
+                return wsMsg;
+
+            case "task_blocked":
+                wsMsg.put("type",      WebSocketMessageType.TASK_BLOCKED);
+                wsMsg.put("task_data", eventData);
+                log.info("任务被阻塞, requestId: {}", requestId);
+                return wsMsg;
+
+            case "error":
+                log.error("流式聊天错误, requestId: {}, 错误: {}", requestId, eventData);
+                wsMsg.put("type",    WebSocketMessageType.ERROR);
+                wsMsg.put("message", String.valueOf(eventData));
+                return wsMsg;
+
+            default:
+                return null;
+        }
+    }
+
+    /** 需要静默发送（不逐条 INFO 日志）的事件类型。 */
+    private boolean isQuietWsEvent(String eventType) {
+        return switch (eventType) {
+            case "thinking_chunk", "token",
+                 WebSocketMessageType.TOOL_CALL_START, "tool_call",
+                 "task_update", "task_blocked" -> true;
+            default -> false;
+        };
+    }
+
+    private void sendFallbackDone(WebSocketSession session, String requestId, long startTime) {
+        try {
+            double elapsed = (System.currentTimeMillis() - startTime) / 1000.0;
+            Map<String, Object> doneMsg = new HashMap<>();
+            doneMsg.put("type",          WebSocketMessageType.CHAT_DONE);
+            doneMsg.put("message",       "");
+            doneMsg.put("response_time", elapsed);
+            doneMsg.put("request_id",    requestId);
+            doneMsg.put("timestamp",     LocalDateTime.now().toString());
+            JsonUtil.sendJsonMessageQuiet(session, doneMsg);
+            log.info("finally 补发 chat_done, requestId: {}", requestId);
+        } catch (Exception ignored) {}
     }
 
     public ObjectMapper getObjectMapper() { return objectMapper; }
