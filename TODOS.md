@@ -1184,19 +1184,19 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 > **执行规则**：严格按 Plan 1 → 2 → 3 顺序执行；每项任务需跑对应测试命令并单独提交；Plan 3 的 Python 退役需先完成六项确认并经授权，不删除任何 Python 数据/卷/源码。
 > **注意**：plans/README.md 明确说明 TODOS.md 曾有无关未提交修改，因此计划文件是每任务细粒度步骤的权威来源；此处为队列级同步，勾选状态以这里为准、完成时同步回计划文件。
 
-### TODO-107: Plan 1 — Java 后端基础 + AI 运行时（backend-ai-runtime）
+### ~~TODO-107: Plan 1 — Java 后端基础 + AI 运行时（backend-ai-runtime）~~ ✅ 已完成（2026-08-07）
 > **2026-08-07 完成**：Boot 2.7.18→3.5.16、Java 1.8→21（本地 JDK：`D:\software\jdk21\jdk-21.0.12+8`）、javax→jakarta 22 文件、WebConfig 迁移 HttpClient 5、springdoc 2.9.0、Docker Temurin 21。BuildBaselineTest 红转绿（commit `8f0dce9`）。
-> **已知问题**：全量 `mvnw test` 68 用例全部通过，但测试 JVM 因非 daemon 线程（`@EnableScheduling` / `ChannelAdapterManager.broadcastExecutor` / MockWebServer）不退出导致 Maven 挂起——Task 6 全量回归前需修复（surefire exit timeout 或线程 daemon 化）。
+> **已知问题（已修复）**：全量 `mvnw test` 曾因非 daemon 线程不退出导致 Maven 挂起——已通过 `ChannelAdapterManager.broadcastExecutor` daemon 化 + 新增 daemon `TaskScheduler` bean（`SchedulingConfig`）+ 修复 `FeishuIntegrationTest` 场景 3（发送响应补 `message_id` 避免 TODO-93 钩子无限重试、RestTemplate 加 3s 读超时、事件执行器 daemon 化）解决；全量 103 用例 30s 内全绿。
 > **计划偏差**：计划片段因 `@SpringBootTest(properties=...)` 自带属性、升级前也会通过，改为断言默认 `python` 模式以获得真实红转绿。
 
 - [x] Task 1: 升级 Java 基线（Java 21 + Spring Boot 3.x + `ai.runtime.mode` 配置 + Docker JDK 21）
-- [ ] Task 2: Provider 无关 LLM 契约（`ChatTurn` / `ModelEvent` / `LlmProvider`，事件限 token/tool_call/done/error）
-- [ ] Task 3: Ollama + 云 LLM 适配器与路由（`OllamaLlmProvider` / `OpenAiCompatibleLlmProvider` / `LlmProviderRouter`，凭据脱敏）
-- [ ] Task 4: 工具内核（`ToolExecutor`：5 轮上限 + JSON/标签/代码块/纯文本 4 种解析 + shadow 模式拒绝写工具）
-- [ ] Task 5: 本地 ReAct 编排（`AgentOrchestrator` + `LocalChatService`，`python`/`shadow`/`java` 模式切换）
-- [ ] Task 6: 锁定公开 chat 契约（`ChatContractTest` + `contracts/chat-stream-events.jsonl` 回归）
+- [x] Task 2: Provider 无关 LLM 契约（`ChatTurn` / `ModelEvent` / `LlmProvider`，事件限 token/tool_call_start/tool_call/tool_calls_done/done/error）— commit `ebd1c4a`
+- [x] Task 3: Ollama + 云 LLM 适配器与路由（`OllamaLlmProvider` / `OpenAiCompatibleLlmProvider` / `LlmProviderRouter`，凭据脱敏，MockWebServer 验证）— commit `c054df4`
+- [x] Task 4: 工具内核（`ToolExecutor`：5 轮上限 + JSON/标签/代码块/纯文本 4 种解析 + shadow 模式拒绝写工具 + readOnly/requiredRole/timeout 元数据）— commit `336d5fd`
+- [x] Task 5: 本地 ReAct 编排（`AgentOrchestrator` + `LocalChatService`，`python`/`shadow`/`java` 模式切换，SSE→WS 事件映射共用）— commit `b0c1093`
+- [x] Task 6: 锁定公开 chat 契约（`ChatContractTest` + `contracts/chat-stream-events.jsonl` 回归，全量 103 用例绿）— commit `071ef8b`
 
-**涉及文件**：`backend/web/pom.xml`, `backend/web/Dockerfile`, `backend/web/src/main/resources/application.yml`, `backend/web/src/main/java/com/intelligent/agent/web/`（新增 `ai/` + `api/chat/` 包）
+**涉及文件**：`backend/web/pom.xml`, `backend/web/Dockerfile`, `backend/web/src/main/resources/application.yml`, `backend/web/src/main/java/com/intelligent/agent/web/`（新增 `ai/llm/`, `ai/tool/`, `ai/agent/`, `api/chat/`, `config/SchedulingConfig.java`, `config/AgentConfig.java`, `config/LlmProviderConfig.java`）, `backend/web/src/test/`（`ai/` 测试 + `ChatContractTest` + `contracts/chat-stream-events.jsonl`）
 
 ### TODO-108: Plan 2 — 记忆 / 领域 API / 调度 / 集成（domain-and-integrations）
 

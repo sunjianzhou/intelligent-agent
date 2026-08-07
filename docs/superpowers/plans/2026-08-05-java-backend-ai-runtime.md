@@ -57,7 +57,7 @@ ai:
 
 **Produces:** `Flux<ModelEvent> stream(ChatTurn)` and `Mono<String> complete(ChatTurn)`; events are limited to `token`, `tool_call_start`, `tool_call`, `tool_calls_done`, `done`, and `error`.
 
-- [ ] Write the failing serialization test.
+- [x] Write the failing serialization test.
 
 ```java
 @Test void tokenUsesExistingSseShape() throws Exception {
@@ -66,8 +66,8 @@ ai:
 }
 ```
 
-- [ ] Run `cd backend/web; ./mvnw.cmd -Dtest=ModelEventTest test` and verify failure.
-- [ ] Implement immutable records, then run the same command and commit with `feat: add model streaming contracts`.
+- [x] Run `cd backend/web; ./mvnw.cmd -Dtest=ModelEventTest test` and verify failure.
+- [x] Implement immutable records, then run the same command and commit with `feat: add model streaming contracts`.
 
 ### Task 3: Implement Ollama and cloud providers
 
@@ -75,7 +75,7 @@ ai:
 
 **Produces:** `LlmProviderRouter.forUser(String userId, String requestedModel)` with request-specific model/options.
 
-- [ ] Write the failing router test.
+- [x] Write the failing router test.
 
 ```java
 @Test void resolvesCloudProviderForConfiguredCloudModel() {
@@ -83,9 +83,9 @@ ai:
 }
 ```
 
-- [ ] Run `cd backend/web; ./mvnw.cmd -Dtest=LlmProviderRouterTest test`.
-- [ ] Implement model routing and map Ollama/cloud chunks to `ModelEvent`; redact provider credentials from errors.
-- [ ] Verify with MockWebServer using the same focused command; commit with `feat: add local and cloud LLM adapters`.
+- [x] Run `cd backend/web; ./mvnw.cmd -Dtest=LlmProviderRouterTest test`.
+- [x] Implement model routing and map Ollama/cloud chunks to `ModelEvent`; redact provider credentials from errors.
+- [x] Verify with MockWebServer using the same focused command; commit with `feat: add local and cloud LLM adapters`.
 
 ### Task 4: Build the tool kernel
 
@@ -93,7 +93,7 @@ ai:
 
 **Produces:** `ToolExecutor.execute(ToolCall, ToolExecutionContext): ToolResult`, five-round limit, and four legacy parsers (JSON, tag, fenced JSON, plain text).
 
-- [ ] Write the failing shadow-mode test.
+- [x] Write the failing shadow-mode test.
 
 ```java
 @Test void deniesWriteToolInShadowMode() {
@@ -101,8 +101,8 @@ ai:
 }
 ```
 
-- [ ] Run `cd backend/web; ./mvnw.cmd -Dtest=ToolExecutorTest test`.
-- [ ] Implement `readOnly`, `requiredRole`, and `timeout` metadata plus the parser set; rerun the test and commit with `feat: add bounded tool execution kernel`.
+- [x] Run `cd backend/web; ./mvnw.cmd -Dtest=ToolExecutorTest test`.
+- [x] Implement `readOnly`, `requiredRole`, and `timeout` metadata plus the parser set; rerun the test and commit with `feat: add bounded tool execution kernel`.
 
 ### Task 5: Implement local ReAct orchestration
 
@@ -110,7 +110,7 @@ ai:
 
 **Produces:** `Flux<ModelEvent> AgentOrchestrator.stream(AgentRequestContext)` and mode switching inside existing `AgentService`.
 
-- [ ] Write the failing no-tool event-order test.
+- [x] Write the failing no-tool event-order test.
 
 ```java
 StepVerifier.create(orchestrator.stream(context))
@@ -119,9 +119,9 @@ StepVerifier.create(orchestrator.stream(context))
   .verifyComplete();
 ```
 
-- [ ] Run `cd backend/web; ./mvnw.cmd -Dtest=AgentOrchestratorTest test`.
-- [ ] Compose context, run at most five tool rounds, emit established events, and retain Python behavior when mode is `python`.
-- [ ] Run `cd backend/web; ./mvnw.cmd -Dtest=AgentOrchestratorTest,ChatControllerTest test`; commit with `feat: run chat orchestration in Java`.
+- [x] Run `cd backend/web; ./mvnw.cmd -Dtest=AgentOrchestratorTest test`.
+- [x] Compose context, run at most five tool rounds, emit established events, and retain Python behavior when mode is `python`.
+- [x] Run `cd backend/web; ./mvnw.cmd -Dtest=AgentOrchestratorTest,ChatControllerTest test`; commit with `feat: run chat orchestration in Java`.
 
 ### Task 6: Lock public chat contracts
 
@@ -129,13 +129,13 @@ StepVerifier.create(orchestrator.stream(context))
 
 **Produces:** regression coverage for `/api/chat` and `/api/chat/stream` payloads.
 
-- [ ] Write the failing non-stream contract test.
+- [x] Write the failing non-stream contract test.
 
 ```java
 mockMvc.perform(post("/api/chat").contentType(APPLICATION_JSON).content("{\"message\":\"hi\"}"))
   .andExpect(status().isOk()).andExpect(jsonPath("$.response").isString());
 ```
 
-- [ ] Run `cd backend/web; ./mvnw.cmd -Dtest=ChatContractTest test`.
-- [ ] Map internal events to wire events in the controller; rerun the focused test and then `cd backend/web; ./mvnw.cmd test`.
-- [ ] Commit with `test: lock chat API and SSE contracts`.
+- [x] Run `cd backend/web; ./mvnw.cmd -Dtest=ChatContractTest test`.
+- [x] Map internal events to wire events in the controller; rerun the focused test and then `cd backend/web; ./mvnw.cmd test`.
+- [x] Commit with `test: lock chat API and SSE contracts`.
