@@ -1,0 +1,7 @@
+{"type":"token","data":"你"}
+{"type":"token","data":"好"}
+{"type":"tool_call_start","data":{"name":"web_search"}}
+{"type":"tool_call","data":{"name":"web_search","arguments":{"query":"java"}}}
+{"type":"tool_calls_done","data":[{"name":"web_search","arguments":{"query":"java"}}]}
+{"type":"done","data":{}}
+{"type":"error","data":"provider unavailable"}

@@ -19,7 +19,12 @@ import java.util.concurrent.*;
 public class ChannelAdapterManager {
 
     private final Map<ChannelType, ChannelAdapter> adapters = new ConcurrentHashMap<>();
-    private final ExecutorService broadcastExecutor = Executors.newFixedThreadPool(4);
+    // daemon 线程：避免测试 JVM 因广播线程不退出而挂起（W13 Task 6 全量回归前置修复）
+    private final ExecutorService broadcastExecutor = Executors.newFixedThreadPool(4, r -> {
+        Thread t = new Thread(r, "channel-broadcast");
+        t.setDaemon(true);
+        return t;
+    });
 
     /** Spring 自动注入所有 ChannelAdapter Bean */
     public ChannelAdapterManager(List<ChannelAdapter> adapterList) {
@@ -99,5 +104,10 @@ public class ChannelAdapterManager {
                 log.error("停止 {} 失败: {}", a.channelType().getValue(), e.getMessage());
             }
         }
+    }
+
+    @jakarta.annotation.PreDestroy
+    public void shutdown() {
+        broadcastExecutor.shutdownNow();
     }
 }

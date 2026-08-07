@@ -12,6 +12,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.client.RestTemplate;
@@ -73,7 +74,11 @@ class FeishuIntegrationTest {
                 agentService,
                 feishuMessageSender,
                 objectMapper,
-                Executors.newSingleThreadExecutor(),
+                Executors.newSingleThreadExecutor(r -> {
+                    Thread t = new Thread(r, "feishu-test-event");
+                    t.setDaemon(true);
+                    return t;
+                }),
                 feishuRecallBridge);
 
         String event = buildEvent("ou_user01", "oc_chat01", "你好 Agent");
@@ -129,8 +134,10 @@ class FeishuIntegrationTest {
                 .setBody("{\"code\":0,\"tenant_access_token\":\"tok\",\"expire\":7200}")
                 .addHeader("Content-Type", "application/json"));
         // 2. mock 发消息响应
+        //    必须带 message_id，否则 TODO-93 的 verifyMessageId 钩子会触发无限重试
+        //    （且无读超时）导致测试永久挂起。
         mockFeishuApi.enqueue(new MockResponse()
-                .setBody("{\"code\":0}")
+                .setBody("{\"code\":0,\"data\":{\"message_id\":\"om_int_1\"}}")
                 .addHeader("Content-Type", "application/json"));
 
         FeishuConfig config = new FeishuConfig();
@@ -138,9 +145,12 @@ class FeishuIntegrationTest {
         config.setAppSecret("test-secret");
 
         // 使用 package-private 构造器，将 feishuBase 指向 MockWebServer
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(3000);
+        factory.setReadTimeout(3000);
         FeishuMessageSender sender = new FeishuMessageSender(
                 config,
-                new RestTemplate(),
+                new RestTemplate(factory),
                 objectMapper,
                 mockFeishuApi.url("/").toString());
 
