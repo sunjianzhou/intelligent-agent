@@ -62,6 +62,8 @@ spring:
 
 # 智能体配置（可通过环境变量覆盖）
 intelligent-agent:
+  # Java 领域服务数据目录（角色/会话/项目/任务等 JSON 持久化）
+  data-dir: ${INTELLIGENT_AGENT_DATA_DIR:data}
   python-service:
     base-url: ${PYTHON_SERVICE_BASE_URL:http://localhost:8000}
     timeout: ${PYTHON_SERVICE_TIMEOUT:600s}
