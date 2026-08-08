@@ -35,18 +35,25 @@ public class BackendClient {
     private final SseEventParser parser = new SseEventParser();
 
     public BackendClient(String baseUrl, String token) {
+        this(baseUrl, token, 600);
+    }
+
+    public BackendClient(String baseUrl, String token, int timeoutSeconds) {
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         this.token = token;
+        this.timeoutSeconds = Math.max(10, timeoutSeconds);
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
     }
 
+    private final int timeoutSeconds;
+
     public String complete(String message, Map<String, Object> options) throws Exception {
         Map<String, Object> body = requestBody(message, options);
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/api/chat"))
-                .timeout(Duration.ofMinutes(10))
+                .timeout(Duration.ofSeconds(timeoutSeconds))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + token)
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
@@ -153,7 +160,7 @@ public class BackendClient {
             throws Exception {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + path))
-                .timeout(Duration.ofMinutes(5))
+                .timeout(Duration.ofSeconds(timeoutSeconds))
                 .header("Authorization", "Bearer " + token);
         if (body != null) {
             builder.header("Content-Type", "application/json")
@@ -171,7 +178,7 @@ public class BackendClient {
         Map<String, Object> body = requestBody(message, options);
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/api/chat/stream"))
-                .timeout(Duration.ofMinutes(10))
+                .timeout(Duration.ofSeconds(timeoutSeconds))
                 .header("Content-Type", "application/json")
                 .header("Accept", "text/event-stream")
                 .header("Authorization", "Bearer " + token)

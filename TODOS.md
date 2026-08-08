@@ -1315,5 +1315,8 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 
 ### Task 6: CLI 补齐
 
-- [ ] `--load` 恢复历史会话（SessionStore.load 已存在，CLI 未暴露）
-- [ ] `--timeout` 参数（当前固定超时）
+- [x] `--load` 恢复历史会话（ChatCommand 暴露 SessionStore.load）
+- [x] `--timeout` 参数（BackendClient 可配置超时，默认 600s）
+
+> **2026-08-08 进度**：Task 6 完成。剩余 Task 3（persona/prompt/soul）、Task 4（chat 高级行为）、
+> Task 5（降级项提升）、Task 1 的 database/feishu 工具。

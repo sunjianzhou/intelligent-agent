@@ -9,6 +9,7 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -49,6 +50,12 @@ public class ChatCommand implements Callable<Integer> {
     @Option(names = "--no-save", description = "Do not save session")
     private boolean noSave;
 
+    @Option(names = "--load", description = "Load a previous session JSON file")
+    private Path loadFile;
+
+    @Option(names = "--timeout", defaultValue = "600", description = "Request timeout in seconds")
+    private int timeout;
+
     @Option(names = "--data-dir", defaultValue = "./datas", description = "Session data dir")
     private Path dataDir;
 
@@ -86,9 +93,14 @@ public class ChatCommand implements Callable<Integer> {
         if (model != null) options.put("model", model);
         if (persona != null) options.put("persona", persona);
 
-        BackendClient client = new BackendClient(url, token);
+        BackendClient client = new BackendClient(url, token, timeout);
         SessionStore sessionStore = new SessionStore(dataDir);
-        Map<String, Object> session = sessionStore.newSession(user);
+        Map<String, Object> session = loadFile != null && Files.exists(loadFile)
+                ? sessionStore.load(loadFile)
+                : sessionStore.newSession(user);
+        if (loadFile != null && Files.exists(loadFile)) {
+            System.out.println("[session loaded] " + loadFile);
+        }
         sessionStore.append(session, "user", message);
 
         String answer;
