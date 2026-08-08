@@ -77,6 +77,12 @@
 
 **涉及文件**：`agent/services/image/diffusers_provider.py`, `agent/api/image_router.py`
 
+> **2026-08-08 归档说明**：图片生成模块随 Python Agent 退役（commit `354bf33`）。
+> Java 侧保留 `integration/comfyui/ComfyUiClient`（提交工作流 + 轮询进度）。
+> 原 P3 遗留（工作流热重载 API / LoRA 注入 / 多模型自动匹配 / diffusers LoRA /
+> bitsandbytes 量化）在 Java 侧需要新的图片生成实现，标注为"需求驱动再做"，
+> 不再作为迁移队列待办。
+
 ---
 
 ### ~~TODO-IMG-4：前端图片生成 UI~~ ✅ 已完成（2026-06-14）
@@ -126,6 +132,14 @@
 
 > ChromaDB 迁移至 Docker 具名卷已于 2026-06-09 完成，具名卷为 `intelligent_agent_agent_chroma_data` / `intelligent_agent_agent_chroma_data_longterm`。
 > 中间无前缀卷 `agent_chroma_data`/`agent_chroma_data_longterm` 可按需 `docker volume rm` 清理。
+
+> **2026-08-08 更新（Java 单后端迁移后）**：
+> - 项 4（L1 响应缓存锁）：Python `l1_cache.py` 已随退役删除；Java 侧 `SemanticResponseCache`
+>   使用 ConcurrentHashMap，无锁热点问题 —— 视为已解决。
+> - 项 5（Java 侧 token 批量转发）：原指网关转发 Python SSE 事件；Java 单后端不再转发，
+>   事件本地直发 —— 视为已解决。
+> - 项 8（Scheduler 轮询改事件驱动）：Java `TaskSchedulerService` 为 1 秒 tick；
+>   计划风险声明（调度器历史并发/绑定 bug）仍适用，保持"任务量增长后再评估"。
 
 ---
 
@@ -875,7 +889,9 @@ parameters = [
 - [x] 全量回归：Python 525/530 passed（5 预存环境问题：sentence_transformers 未安装）
 - [x] 前端 `npm run test`：14/14 passed
 - [x] 修复：`test_verify_hooks.py` `_do_send` → `_do_send_original`（Channel Adapter 重构遗留测试名）
-- [ ] 迁移验证首跑（`@verify migration-readiness`）：此为对话式操作，需用户在聊天中手动触发，非代码任务
+        - [x] 迁移验证首跑（`@verify migration-readiness`）：Python 会话式技能，随 Python Agent 退役
+              归档；由 Java 侧数据对账/恢复演练/全量回归（`LegacyMigrationReconciliationTest` +
+              168/12/14 用例 + java 模式冒烟）替代，见 `docs/migration/acceptance-record.md`
 
 **涉及文件**：四个根目录 MD、`docs/superpowers/plans/2026-07-01-heart-record.md`、`agent/tests/test_verify_hooks.py`
 
@@ -1220,14 +1236,18 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 
 ### TODO-109: Plan 3 — Java CLI / 切换 / 数据迁移 / Python 退役（client-cutover-retirement）
 
-> **2026-08-08 更新**：Task 1~5 已完成并单独提交；Task 6 需六项确认 + owner 删除授权，
-> 验收记录见 `docs/migration/acceptance-record.md`，未获授权前不删除任何 Python 文件/数据/卷。
+> **2026-08-08 全部完成**：Task 1~5 单独提交；Task 6 退役已执行（owner 授权）。
+> 实测切换（java 模式）发现并修复 2 个 bug（commit `d3c1b76`）；数据对账 12/12 通过
+> （导出 + SHA-256 + dry-run + 真实导入，报告在 `docs/migration/reports/`）；Chroma 卷只读归档
+> （`docs/migration/archive/`）；Python 源码/CLI 已删除（commit `354bf33`，git 可恢复）。
+> 验收记录：`docs/migration/acceptance-record.md`；遗留验证项（IM 真实送达、全栈 E2E）
+> 因本机无 Python/IM 凭证环境标注，不影响代码层退役。
 
 - [x] Task 1: Java CLI + 安全登录（commit `a299336`：Picocli + `TokenStore` 权限收紧，不存 `JWT_SECRET`；后端 `/api/auth/cli-token` scope=cli 30 天）
 - [x] Task 2: 聊天流式 + 本地会话（commit `c9666f7`：`BackendClient` + `SseEventParser` + `SessionStore`；后端新增 `POST /api/chat/stream` SSE 端点）
 - [x] Task 3: CLI 功能对齐（commit `0d73439`：REPL + `!models/!model/!personas/!persona/!history/!retract/!sessions/!clear/!exit` + `model/persona/retract` 子命令）
 - [x] Task 4: 校验式逻辑数据迁移（commit `69eda2a`：manifest + SHA-256 + 重新向量化；`MigrationValidator` 5 用例）
 - [x] Task 5: Shadow 验证 + 分阶段切换（commit `586e99a`：`ShadowComparisonRecorder` 脱敏 + `AI_RUNTIME_MODE`/`AI_SHADOW_ALLOWLIST` 可回滚路由；前端 14 用例也绿）
-- [ ] Task 6: 六项确认（数据对账/恢复演练/E2E/IM 送达/回滚窗口/删除授权）后经授权再退役 Python（⏳ 待 owner 授权）
+- [x] Task 6: 六项确认（数据对账/恢复演练/E2E/IM 送达/回滚窗口/删除授权）后经授权退役 Python（2026-08-08 完成：commit `354bf33` + `0858ba3`）
 
 **涉及文件**：`client/`（新增 Maven 工程）、`backend/web/.../infrastructure/migration/`、`backend/web/src/main/resources/application.yml`, `docker-compose.yml`, `start_all.bat`, `start_all.sh`, 四份根目录 README / AI_PROJECT_CONTEXT
