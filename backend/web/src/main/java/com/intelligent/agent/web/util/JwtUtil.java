@@ -40,6 +40,22 @@ public class JwtUtil {
                 .compact();
     }
 
+    /**
+     * 生成 scoped CLI token：30 天有效期 + scope=cli 声明。
+     * CLI 用它调用受保护 API，但 token 文件不含 JWT_SECRET（Plan 3 约束）。
+     */
+    public String generateCliToken(String username) {
+        long now    = System.currentTimeMillis();
+        long expiry = now + 30L * 24 * 3600_000L;
+        return Jwts.builder()
+                .setSubject(username)
+                .claim("scope", "cli")
+                .setIssuedAt(new Date(now))
+                .setExpiration(new Date(expiry))
+                .signWith(getKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
     public Claims parse(String token) {
         return Jwts.parserBuilder()
                 .setSigningKey(getKey())

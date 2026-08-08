@@ -50,6 +50,31 @@ public class AuthController {
         return ResponseEntity.ok(result);
     }
 
+    /** CLI 专用登录：换发 30 天 scoped token（scope=cli），不暴露 JWT_SECRET。 */
+    @PostMapping("/cli-token")
+    public ResponseEntity<?> cliToken(@RequestBody Map<String, String> body) {
+        String username = body.getOrDefault("username", "");
+        String password = body.getOrDefault("password", "");
+
+        boolean valid = authProperties.getUsers().stream().anyMatch(u ->
+                u.getUsername().equals(username) && u.getPassword().equals(password)
+        );
+
+        Map<String, Object> result = new HashMap<>();
+        if (!valid) {
+            result.put("success", false);
+            result.put("message", "用户名或密码错误");
+            return ResponseEntity.status(401).body(result);
+        }
+
+        String token = jwtUtil.generateCliToken(username);
+        result.put("token", token);
+        result.put("success", true);
+        result.put("username", username);
+        result.put("scope", "cli");
+        return ResponseEntity.ok(result);
+    }
+
     @PostMapping("/logout")
     public ResponseEntity<?> logout() {
         // 前端清 token 即可，无需服务端操作
