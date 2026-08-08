@@ -2,10 +2,12 @@ package com.intelligent.agent.web.domain;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.intelligent.agent.web.controller.ConversationsProxyController;
+import com.intelligent.agent.web.controller.ProjectProxyController;
 import com.intelligent.agent.web.controller.RoleController;
 import com.intelligent.agent.web.domain.conversation.ConversationService;
+import com.intelligent.agent.web.domain.project.ProjectService;
 import com.intelligent.agent.web.domain.role.RoleService;
-import com.intelligent.agent.web.feishu.FeishuRecallBridge;
+import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -37,18 +39,23 @@ class DomainApiContractTest {
     private MockMvc mockMvc;
     private RoleService roleService;
     private ConversationService conversationService;
+    private ProjectService projectService;
 
     @BeforeEach
     void setUp() throws Exception {
         Path dataDir = Files.createTempDirectory("domain-contract");
         roleService = new RoleService(dataDir);
         conversationService = new ConversationService(dataDir);
+        projectService = new ProjectService(dataDir, new VectorMemoryRepository());
         RoleController roleController =
                 new RoleController(null, MAPPER, roleService, "java");
         ConversationsProxyController conversationController =
                 new ConversationsProxyController(null, MAPPER, conversationService,
                         "java", null);
-        mockMvc = MockMvcBuilders.standaloneSetup(roleController, conversationController).build();
+        ProjectProxyController projectController =
+                new ProjectProxyController(null, MAPPER, projectService, "java");
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                roleController, conversationController, projectController).build();
     }
 
     // ── Role 切片 ─────────────────────────────────────────────
@@ -250,6 +257,108 @@ class DomainApiContractTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.deleted").value(1));
+    }
+
+    // ── Project 切片 ──────────────────────────────────────────
+
+    @Test
+    void projectListCreateGetRoundTrip() throws Exception {
+        mockMvc.perform(get("/api/projects"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.projects").isArray())
+                .andExpect(jsonPath("$.count").value(0));
+
+        mockMvc.perform(post("/api/projects")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"title\":\"Java 迁移\",\"id\":\"proj_1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.project.title").value("Java 迁移"))
+                .andExpect(jsonPath("$.project.id").isString());
+
+        mockMvc.perform(get("/api/projects/proj_1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.project.title").value("Java 迁移"));
+    }
+
+    @Test
+    void projectCreateRejectsBlankTitle() throws Exception {
+        mockMvc.perform(post("/api/projects")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"title\":\"  \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    void projectUpdateAndDelete() throws Exception {
+        mockMvc.perform(post("/api/projects")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"title\":\"旧标题\",\"id\":\"proj_1\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/projects/proj_1")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"title\":\"新标题\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.project.title").value("新标题"))
+                .andExpect(jsonPath("$.project.id").value("proj_1"));
+
+        mockMvc.perform(delete("/api/projects/proj_1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.project_id").value("proj_1"));
+
+        mockMvc.perform(get("/api/projects/proj_1"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void projectSpecRoundTrip() throws Exception {
+        mockMvc.perform(put("/api/project/spec")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"project_id\":\"p1\",\"content\":\"规格内容\",\"version\":2}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.project_id").value("p1"))
+                .andExpect(jsonPath("$.version").value(2))
+                .andExpect(jsonPath("$.synced").value(true));
+
+        mockMvc.perform(get("/api/project/spec").param("project_id", "p1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").value("规格内容"))
+                .andExpect(jsonPath("$.version").value(2));
+    }
+
+    @Test
+    void projectContextExtractAndQuery() throws Exception {
+        mockMvc.perform(post("/api/project/context/extract")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"project_id\":\"p1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.extracted").isNumber())
+                .andExpect(jsonPath("$.version").isNumber());
+
+        mockMvc.perform(get("/api/project/context").param("project_id", "p1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.project_id").value("p1"))
+                .andExpect(jsonPath("$.nuggets").isArray());
+    }
+
+    @Test
+    void projectTaskDecomposeAndList() throws Exception {
+        mockMvc.perform(post("/api/project/tasks/decompose")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"project_id\":\"p1\",\"task_description\":\"完成迁移\\n编写测试\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.project_id").value("p1"))
+                .andExpect(jsonPath("$.task_tree.root_tasks").isArray());
+
+        mockMvc.perform(get("/api/project/tasks").param("project_id", "p1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.project_id").value("p1"))
+                .andExpect(jsonPath("$.task_tree").isArray())
+                .andExpect(jsonPath("$.note").isString());
     }
 
     private static Map<String, Object> roleBody(String roleId, String cardName) {

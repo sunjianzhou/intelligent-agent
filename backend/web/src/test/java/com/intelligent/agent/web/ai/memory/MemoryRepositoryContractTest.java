@@ -101,4 +101,19 @@ class MemoryRepositoryContractTest {
 
         assertThat(hits).extracting(MemoryRecord::id).containsExactly("m2", "m1");
     }
+
+    @Test
+    void listFiltersWithoutQueryText() {
+        repository.upsert(new MemoryRecord("m1", "alice", "spec v1", null, "p1", "project_spec", Map.of(), 0.8));
+        repository.upsert(new MemoryRecord("m2", "alice", "spec v2", null, "p1", "project_spec", Map.of(), 0.8));
+        repository.upsert(new MemoryRecord("m3", "bob", "bob spec", null, "p1", "project_spec", Map.of(), 0.8));
+
+        MemorySearchQuery filter = MemorySearchQuery.builder("alice", "", 10)
+                .projectId("p1")
+                .type("project_spec")
+                .build();
+
+        assertThat(repository.list(filter)).extracting(MemoryRecord::id)
+                .containsExactlyInAnyOrder("m1", "m2");
+    }
 }

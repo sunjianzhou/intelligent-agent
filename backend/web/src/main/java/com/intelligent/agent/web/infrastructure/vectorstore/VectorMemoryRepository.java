@@ -57,6 +57,16 @@ public class VectorMemoryRepository implements MemoryRepository {
     }
 
     @Override
+    public List<MemoryRecord> list(MemorySearchQuery filter) {
+        return records.values().stream()
+                .filter(record -> record.userId().equals(filter.userId()))
+                .filter(record -> matches(record, filter))
+                .sorted(Comparator.comparing(MemoryRecord::createdAt).reversed())
+                .limit(filter.limit())
+                .toList();
+    }
+
+    @Override
     public boolean delete(String userId, String memoryId) {
         MemoryRecord existing = records.get(memoryId);
         if (existing == null || !existing.userId().equals(userId)) {

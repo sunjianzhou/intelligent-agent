@@ -2,6 +2,8 @@ package com.intelligent.agent.web.config;
 
 import com.intelligent.agent.web.domain.role.RoleService;
 import com.intelligent.agent.web.domain.conversation.ConversationService;
+import com.intelligent.agent.web.domain.project.ProjectService;
+import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,5 +29,10 @@ public class DomainConfig {
     @Bean
     public ConversationService conversationService() {
         return new ConversationService(Path.of(dataDir));
+    }
+
+    @Bean
+    public ProjectService projectService(VectorMemoryRepository vectorMemoryRepository) {
+        return new ProjectService(Path.of(dataDir), vectorMemoryRepository);
     }
 }
