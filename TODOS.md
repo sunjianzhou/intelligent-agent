@@ -1220,11 +1220,14 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 
 ### TODO-109: Plan 3 — Java CLI / 切换 / 数据迁移 / Python 退役（client-cutover-retirement）
 
-- [ ] Task 1: Java CLI + 安全登录（Picocli + `TokenStore`，token 文件权限收紧，不存 `JWT_SECRET`）
-- [ ] Task 2: 聊天流式 + 本地会话（`BackendClient` + SSE 解析 + JSON 会话文件）
-- [ ] Task 3: CLI 功能对齐（`!models` / `!personas` / `!history` / `!retract` / `!sessions` 等）
-- [ ] Task 4: 校验式逻辑数据迁移（manifest + SHA-256 + 重新向量化，先 dry-run 副本卷）
-- [ ] Task 5: Shadow 验证 + 分阶段切换（`ShadowComparisonRecorder` 脱敏对比，allowlist 可回滚）
-- [ ] Task 6: 六项确认（数据对账/恢复演练/E2E/IM 送达/回滚窗口/删除授权）后经授权再退役 Python
+> **2026-08-08 更新**：Task 1~5 已完成并单独提交；Task 6 需六项确认 + owner 删除授权，
+> 验收记录见 `docs/migration/acceptance-record.md`，未获授权前不删除任何 Python 文件/数据/卷。
+
+- [x] Task 1: Java CLI + 安全登录（commit `a299336`：Picocli + `TokenStore` 权限收紧，不存 `JWT_SECRET`；后端 `/api/auth/cli-token` scope=cli 30 天）
+- [x] Task 2: 聊天流式 + 本地会话（commit `c9666f7`：`BackendClient` + `SseEventParser` + `SessionStore`；后端新增 `POST /api/chat/stream` SSE 端点）
+- [x] Task 3: CLI 功能对齐（commit `0d73439`：REPL + `!models/!model/!personas/!persona/!history/!retract/!sessions/!clear/!exit` + `model/persona/retract` 子命令）
+- [x] Task 4: 校验式逻辑数据迁移（commit `69eda2a`：manifest + SHA-256 + 重新向量化；`MigrationValidator` 5 用例）
+- [x] Task 5: Shadow 验证 + 分阶段切换（commit `586e99a`：`ShadowComparisonRecorder` 脱敏 + `AI_RUNTIME_MODE`/`AI_SHADOW_ALLOWLIST` 可回滚路由；前端 14 用例也绿）
+- [ ] Task 6: 六项确认（数据对账/恢复演练/E2E/IM 送达/回滚窗口/删除授权）后经授权再退役 Python（⏳ 待 owner 授权）
 
 **涉及文件**：`client/`（新增 Maven 工程）、`backend/web/.../infrastructure/migration/`、`backend/web/src/main/resources/application.yml`, `docker-compose.yml`, `start_all.bat`, `start_all.sh`, 四份根目录 README / AI_PROJECT_CONTEXT
