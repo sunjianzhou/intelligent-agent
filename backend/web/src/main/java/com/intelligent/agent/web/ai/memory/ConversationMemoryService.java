@@ -45,11 +45,12 @@ public class ConversationMemoryService {
         if (!ctx.useMemory()) {
             return AgentContext.empty();
         }
-        List<ChatMessage> history = historyMessages(ctx.userId());
+        String userId = effectiveUserId(ctx.userId());
+        List<ChatMessage> history = historyMessages(userId);
 
         List<MemoryRecord> recall = ctx.message() == null || ctx.message().isBlank()
                 ? List.of()
-                : memoryRepository.search(ctx.userId(), ctx.message(), RAG_TOP_K);
+                : memoryRepository.search(userId, ctx.message(), RAG_TOP_K);
 
         String projectContext = projectContext(ctx);
 
@@ -63,7 +64,7 @@ public class ConversationMemoryService {
         if (!ctx.useMemory()) {
             return;
         }
-        String userId = ctx.userId();
+        String userId = effectiveUserId(ctx.userId());
         append(userId, "user", ctx.message());
         if (answer != null && !answer.isBlank()) {
             append(userId, "assistant", answer);
@@ -126,8 +127,9 @@ public class ConversationMemoryService {
         if (ctx.projectId() == null || ctx.projectId().isBlank()) {
             return "";
         }
+        String userId = effectiveUserId(ctx.userId());
         List<MemoryRecord> projectRecords = memoryRepository.search(
-                MemorySearchQuery.builder(ctx.userId(), ctx.message() == null ? "" : ctx.message(), 5)
+                MemorySearchQuery.builder(userId, ctx.message() == null ? "" : ctx.message(), 5)
                         .projectId(ctx.projectId())
                         .build());
         return projectRecords.stream()
@@ -153,6 +155,10 @@ public class ConversationMemoryService {
     }
 
     private record StampedMessage(String role, String content, Instant createdAt) {
+    }
+
+    private static String effectiveUserId(String userId) {
+        return userId == null || userId.isBlank() ? "default" : userId;
     }
 
     private record OptionalCacheResult(java.util.Optional<String> answer) {

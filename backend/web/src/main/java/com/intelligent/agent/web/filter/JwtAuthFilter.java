@@ -32,6 +32,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             // Auth & health
             "/api/auth/login",
             "/api/auth/logout",
+            "/api/auth/cli-token",        // CLI scoped token 换取（用户名+密码换 token，无需已有 token）
             "/api/health",
             "/feishu/event",              // 飞书 Webhook 事件接收端点（外部回调，无 JWT）
             "/feishu/callback/interactive", // 飞书卡片回调，由 FeishuCrypto.verifyEventSignature 鉴权
