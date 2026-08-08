@@ -8,6 +8,11 @@ import com.intelligent.agent.web.ai.memory.SemanticResponseCache;
 import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
 import com.intelligent.agent.web.ai.tool.AgentTool;
 import com.intelligent.agent.web.ai.tool.ToolExecutor;
+import com.intelligent.agent.web.ai.tool.builtin.CalculatorTool;
+import com.intelligent.agent.web.ai.tool.builtin.TimeTool;
+import com.intelligent.agent.web.ai.tool.builtin.file.FileTool;
+import com.intelligent.agent.web.ai.tool.builtin.shell.ShellTool;
+import com.intelligent.agent.web.ai.tool.builtin.web.WebSearchTool;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,6 +30,32 @@ public class AgentConfig {
     @Bean
     public ToolExecutor toolExecutor(@Autowired(required = false) List<AgentTool> tools) {
         return new ToolExecutor(tools == null ? List.of() : tools);
+    }
+
+    /** TODO-110 Task 1：内置工具注册（calculator/time/file/shell/web_search）。 */
+    @Bean
+    public CalculatorTool calculatorTool() {
+        return new CalculatorTool();
+    }
+
+    @Bean
+    public TimeTool timeTool() {
+        return new TimeTool();
+    }
+
+    @Bean
+    public FileTool fileTool() {
+        return new FileTool();
+    }
+
+    @Bean
+    public ShellTool shellTool() {
+        return new ShellTool();
+    }
+
+    @Bean
+    public WebSearchTool webSearchTool() {
+        return new WebSearchTool();
     }
 
     @Bean

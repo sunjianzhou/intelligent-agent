@@ -1261,13 +1261,16 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 
 ### Task 1: 工具系统迁移（核心缺口，工具注册表当前为空）
 
-- [ ] 迁移 calculator / time 等无外部依赖工具
-- [ ] 迁移 file_tool（路径白名单 + 只读模式，对齐 TODO-76 安全要求）
-- [ ] 迁移 shell_tool（命令白名单 + 禁网络）
-- [ ] 迁移 web_search（可配置搜索端点）
+- [x] 迁移 calculator / time 等无外部依赖工具（`ai/tool/builtin/{CalculatorTool,TimeTool}`，exp4j 安全求值）
+- [x] 迁移 file_tool（路径白名单 + 只读模式，对齐 TODO-76 安全要求，`ai/tool/builtin/file/FileTool`）
+- [x] 迁移 shell_tool（命令白名单 + 敏感路径拒绝，`ai/tool/builtin/shell/ShellTool`）
+- [x] 迁移 web_search（DuckDuckGo HTML 端点 + jsoup 解析，可注入 URL 便于测试，`ai/tool/builtin/web/WebSearchTool`）
 - [ ] 迁移 database_tool（MySQL 连接器，按配置启用）
 - [ ] 迁移 feishu_calendar / feishu_task（依赖飞书 OAuth，随 Task 3 OAuth 本地化）
-- [ ] 注入 ToolExecutor（AgentConfig），验证 ReAct 工具调用端到端
+- [x] 注入 ToolExecutor（AgentConfig 注册 5 个内置工具 bean），ToolExecutor 端到端验证通过
+
+> **2026-08-08 进度**：5 个核心工具已迁移（commit 待填），`BuiltinToolTest` 8 用例 + 全量 176 绿。
+> database_tool 需 MySQL 驱动与配置（随 Task 2 /api/config 本地化一起）；feishu 工具随 Task 3 OAuth。
 
 ### Task 2: 死端点本地化（前端页面恢复可用）
 
