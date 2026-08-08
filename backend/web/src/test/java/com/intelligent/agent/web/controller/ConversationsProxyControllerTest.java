@@ -29,10 +29,8 @@ class ConversationsProxyControllerTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        controller = new ConversationsProxyController();
-        controller.proxy = proxy;
-        controller.objectMapper = new ObjectMapper();
-        controller.feishuRecallBridge = recallBridge;
+        controller = new ConversationsProxyController(
+                proxy, new ObjectMapper(), null, "python", recallBridge);
         when(proxy.extractUserIdFromRequest(req)).thenReturn("u1");
     }
 

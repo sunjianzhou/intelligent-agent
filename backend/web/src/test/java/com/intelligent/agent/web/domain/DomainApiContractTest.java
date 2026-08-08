@@ -1,8 +1,11 @@
 package com.intelligent.agent.web.domain;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.intelligent.agent.web.controller.ConversationsProxyController;
 import com.intelligent.agent.web.controller.RoleController;
+import com.intelligent.agent.web.domain.conversation.ConversationService;
 import com.intelligent.agent.web.domain.role.RoleService;
+import com.intelligent.agent.web.feishu.FeishuRecallBridge;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -33,14 +36,19 @@ class DomainApiContractTest {
 
     private MockMvc mockMvc;
     private RoleService roleService;
+    private ConversationService conversationService;
 
     @BeforeEach
     void setUp() throws Exception {
         Path dataDir = Files.createTempDirectory("domain-contract");
         roleService = new RoleService(dataDir);
+        conversationService = new ConversationService(dataDir);
         RoleController roleController =
                 new RoleController(null, MAPPER, roleService, "java");
-        mockMvc = MockMvcBuilders.standaloneSetup(roleController).build();
+        ConversationsProxyController conversationController =
+                new ConversationsProxyController(null, MAPPER, conversationService,
+                        "java", null);
+        mockMvc = MockMvcBuilders.standaloneSetup(roleController, conversationController).build();
     }
 
     // ── Role 切片 ─────────────────────────────────────────────
@@ -157,6 +165,91 @@ class DomainApiContractTest {
                         .content(MAPPER.writeValueAsString(updated)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role.role_card.name").value("新名字"));
+    }
+
+    // ── Conversation 切片 ─────────────────────────────────────
+
+    @Test
+    void conversationAppendListAndGetRoundTrip() throws Exception {
+        mockMvc.perform(post("/api/conversations/append")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"session_id\":\"s1\",\"messages\":["
+                                + "{\"role\":\"user\",\"content\":\"你好\",\"id\":\"m1\"}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.session_id").value("s1"));
+
+        mockMvc.perform(get("/api/conversations"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.count").value(1))
+                .andExpect(jsonPath("$.sessions[0].session_id").value("s1"))
+                .andExpect(jsonPath("$.sessions[0].preview").value("你好"));
+
+        mockMvc.perform(get("/api/conversations/s1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.session.session_id").value("s1"))
+                .andExpect(jsonPath("$.session.messages[0].id").value("m1"))
+                .andExpect(jsonPath("$.session.messages[0].content").value("你好"));
+    }
+
+    @Test
+    void conversationRetractRemovesMessages() throws Exception {
+        mockMvc.perform(post("/api/conversations/append")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"session_id\":\"s1\",\"messages\":["
+                                + "{\"role\":\"user\",\"content\":\"甲\",\"id\":\"m1\"},"
+                                + "{\"role\":\"assistant\",\"content\":\"乙\",\"id\":\"m2\"}]}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/conversations/s1/retract")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"message_ids\":[\"m1\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requested").value(1))
+                .andExpect(jsonPath("$.deleted").value(1))
+                .andExpect(jsonPath("$.deleted_ids[0]").value("m1"));
+
+        mockMvc.perform(get("/api/conversations/s1"))
+                .andExpect(jsonPath("$.session.messages.length()").value(1))
+                .andExpect(jsonPath("$.session.messages[0].id").value("m2"));
+    }
+
+    @Test
+    void conversationBranchCreatesNewSession() throws Exception {
+        mockMvc.perform(post("/api/conversations/branch")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"parent_session_id\":\"s1\",\"messages\":["
+                                + "{\"role\":\"user\",\"content\":\"分支\",\"id\":\"m1\"}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.session_id").isString());
+    }
+
+    @Test
+    void conversationDeleteAndClear() throws Exception {
+        mockMvc.perform(post("/api/conversations/append")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"session_id\":\"s1\",\"messages\":["
+                                + "{\"role\":\"user\",\"content\":\"你好\",\"id\":\"m1\"}]}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(delete("/api/conversations/s1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.session_id").value("s1"));
+
+        mockMvc.perform(get("/api/conversations/s1"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(post("/api/conversations/append")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"session_id\":\"s2\",\"messages\":["
+                                + "{\"role\":\"user\",\"content\":\"你好2\",\"id\":\"m2\"}]}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(delete("/api/conversations"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.deleted").value(1));
     }
 
     private static Map<String, Object> roleBody(String roleId, String cardName) {
