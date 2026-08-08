@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.intelligent.agent.web.controller.ConversationsProxyController;
 import com.intelligent.agent.web.controller.ProjectProxyController;
 import com.intelligent.agent.web.controller.RoleController;
+import com.intelligent.agent.web.controller.TaskProxyController;
 import com.intelligent.agent.web.domain.conversation.ConversationService;
 import com.intelligent.agent.web.domain.project.ProjectService;
 import com.intelligent.agent.web.domain.role.RoleService;
+import com.intelligent.agent.web.domain.task.TaskService;
 import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +42,7 @@ class DomainApiContractTest {
     private RoleService roleService;
     private ConversationService conversationService;
     private ProjectService projectService;
+    private TaskService taskService;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -47,6 +50,7 @@ class DomainApiContractTest {
         roleService = new RoleService(dataDir);
         conversationService = new ConversationService(dataDir);
         projectService = new ProjectService(dataDir, new VectorMemoryRepository());
+        taskService = new TaskService();
         RoleController roleController =
                 new RoleController(null, MAPPER, roleService, "java");
         ConversationsProxyController conversationController =
@@ -54,8 +58,10 @@ class DomainApiContractTest {
                         "java", null);
         ProjectProxyController projectController =
                 new ProjectProxyController(null, MAPPER, projectService, "java");
+        TaskProxyController taskController =
+                new TaskProxyController(null, MAPPER, taskService, "java");
         mockMvc = MockMvcBuilders.standaloneSetup(
-                roleController, conversationController, projectController).build();
+                roleController, conversationController, projectController, taskController).build();
     }
 
     // ── Role 切片 ─────────────────────────────────────────────
@@ -359,6 +365,76 @@ class DomainApiContractTest {
                 .andExpect(jsonPath("$.project_id").value("p1"))
                 .andExpect(jsonPath("$.task_tree").isArray())
                 .andExpect(jsonPath("$.note").isString());
+    }
+
+    // ── Task 切片 ─────────────────────────────────────────────
+
+    @Test
+    void taskListIsEmptyInitially() throws Exception {
+        mockMvc.perform(get("/api/tasks/list"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tasks").isArray())
+                .andExpect(jsonPath("$.count").value(0));
+    }
+
+    @Test
+    void taskCreatePatchAndList() throws Exception {
+        mockMvc.perform(post("/api/tasks/create")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"name\":\"提醒\",\"action\":\"log\",\"id\":\"task_1\","
+                                + "\"schedule_type\":\"delay\","
+                                + "\"delay_seconds\":60,\"args\":{\"message\":\"该吃药了\"}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.task.name").value("提醒"))
+                .andExpect(jsonPath("$.task.schedule_type").value("delay"))
+                .andExpect(jsonPath("$.task.status").value("pending"))
+                .andExpect(jsonPath("$.task.args.message").value("该吃药了"))
+                .andExpect(jsonPath("$.task.id").isString());
+
+        mockMvc.perform(patch("/api/tasks/task_1")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"name\":\"提醒v2\",\"delay_seconds\":120}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.task.name").value("提醒v2"))
+                .andExpect(jsonPath("$.task.delay_seconds").value(120));
+
+        mockMvc.perform(get("/api/tasks/list").param("status", "pending"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.count").value(1))
+                .andExpect(jsonPath("$.tasks[0].name").value("提醒v2"));
+    }
+
+    @Test
+    void taskCancelDeleteExecuteAndStats() throws Exception {
+        String taskId = "task_a";
+        mockMvc.perform(post("/api/tasks/create")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"name\":\"任务A\",\"action\":\"log\",\"id\":\"task_a\"}"))
+                .andExpect(jsonPath("$.task.id").value(taskId));
+
+        mockMvc.perform(post("/api/tasks/" + taskId + "/cancel"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(post("/api/tasks/" + taskId + "/execute"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(get("/api/tasks/stats"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total_tasks").value(1))
+                .andExpect(jsonPath("$.tasks_by_status.cancelled").value(1))
+                .andExpect(jsonPath("$.scheduler_running").isBoolean());
+
+        mockMvc.perform(delete("/api/tasks/" + taskId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.task_id").value(taskId));
+
+        mockMvc.perform(get("/api/tasks/actions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.actions").isArray());
     }
 
     private static Map<String, Object> roleBody(String roleId, String cardName) {

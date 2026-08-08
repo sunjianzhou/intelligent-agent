@@ -3,6 +3,7 @@ package com.intelligent.agent.web.config;
 import com.intelligent.agent.web.domain.role.RoleService;
 import com.intelligent.agent.web.domain.conversation.ConversationService;
 import com.intelligent.agent.web.domain.project.ProjectService;
+import com.intelligent.agent.web.domain.task.TaskService;
 import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -34,5 +35,10 @@ public class DomainConfig {
     @Bean
     public ProjectService projectService(VectorMemoryRepository vectorMemoryRepository) {
         return new ProjectService(Path.of(dataDir), vectorMemoryRepository);
+    }
+
+    @Bean
+    public TaskService taskService() {
+        return new TaskService();
     }
 }
