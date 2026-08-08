@@ -1275,14 +1275,17 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 ### Task 2: 死端点本地化（前端页面恢复可用）
 
 - [ ] /api/image/* 与 /api/images（图片生成：ComfyUiClient 已具备基础，补 generate/列表/删除/provider-status）
-- [ ] /api/memory/*（记忆管理：list/search/delete/clear 接 MemoryRepository + ConversationMemoryService）
-- [ ] /api/tools/list（工具列表：从 ToolExecutor/McpToolRegistry 聚合）
+- [x] /api/memory/*（记忆管理：stats/list/search/delete/importance/clear 本地化，`GapFillContractTest` 覆盖）
+- [x] /api/tools/list（工具列表：ToolExecutor/McpToolRegistry 聚合，java 模式本地返回）
 - [ ] /api/config/*（运行时配置读写：接 application.yml + 领域服务）
 - [ ] /api/cloud/*（云端服务商 CRUD + API KEY 绑定：接 LlmProviderRouter 配置）
-- [ ] /api/models 与 /api/model/switch（本地：Ollama /api/tags + LlmProviderRouter）
-- [ ] /api/notifications/poll（调度器通知队列本地实现）
+- [x] /api/models 与 /api/model/switch（本地：`ModelService` Ollama /api/tags + per-user 偏好持久化）
+- [x] /api/notifications/poll（`TaskSchedulerService` 通知队列，log action 入队）
 - [ ] /api/feishu/oauth/*（authorize/callback/status 本地 OAuth 流程 + FeishuChannelClient token 持久化）
-- [ ] /api/python/health（前端 getPythonHealth → Java 自身健康状态）
+- [x] /api/python/health（java 模式返回 `java-only` 自包含状态）
+
+> **2026-08-08 进度**：tools/memory/models/switch/python-health/notifications 已本地化（commit 待填），
+> `GapFillContractTest` 7 用例 + 全量 183 绿。剩余 image/config/cloud/feishu-oauth 继续。
 
 ### Task 3: persona / prompt / soul 系统
 

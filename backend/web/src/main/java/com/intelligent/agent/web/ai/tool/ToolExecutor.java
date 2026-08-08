@@ -86,4 +86,9 @@ public class ToolExecutor {
             return ToolResult.error("tool failed: " + e.getMessage());
         }
     }
+
+    /** 已注册工具的定义列表（/api/tools/list 与 LLM 工具提示用）。 */
+    public List<ToolDefinition> definitions() {
+        return tools.values().stream().map(AgentTool::definition).toList();
+    }
 }

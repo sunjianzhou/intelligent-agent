@@ -15,6 +15,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ScheduledFuture;
 
 /**
@@ -29,6 +31,7 @@ public class TaskSchedulerService {
     private final TaskService taskService;
     private final Path actionLog;
     private final TaskScheduler taskScheduler;
+    private final Queue<Map<String, Object>> notifications = new ConcurrentLinkedQueue<>();
     private ScheduledFuture<?> scheduledFuture;
 
     public TaskSchedulerService(TaskService taskService, Path dataDir) {
@@ -123,6 +126,10 @@ public class TaskSchedulerService {
             if ("log".equals(action)) {
                 String message = messageOf(task.get("args"));
                 appendLog(now, message);
+                notifications.add(Map.of(
+                        "message", message,
+                        "timestamp", now,
+                        "task_id", String.valueOf(task.getOrDefault("id", ""))));
                 task.put("last_result", "logged");
                 task.put("status", "completed");
                 task.put("completed_at", now);
@@ -177,5 +184,15 @@ public class TaskSchedulerService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** 取出并清空待推送通知（前端每 30s 轮询一次）。 */
+    public List<Map<String, Object>> pollNotifications() {
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        Map<String, Object> next;
+        while ((next = notifications.poll()) != null) {
+            out.add(next);
+        }
+        return out;
     }
 }

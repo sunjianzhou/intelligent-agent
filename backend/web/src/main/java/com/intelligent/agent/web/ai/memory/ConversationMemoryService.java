@@ -84,6 +84,22 @@ public class ConversationMemoryService {
         }
     }
 
+    /** 某用户短期记忆条数（/api/memory 统计用）。 */
+    public int shortTermCount(String userId) {
+        return historyMessages(effectiveUserId(userId)).size();
+    }
+
+    /** 某用户短期记忆消息列表（/api/memory/list 用）。 */
+    public List<ChatMessage> shortTermMessages(String userId) {
+        return historyMessages(effectiveUserId(userId));
+    }
+
+    /** 清空某用户短期记忆（/api/memory 清空用）。 */
+    public void clearShortTerm(String userId) {
+        shortTerm.remove(effectiveUserId(userId));
+        turnCounts.remove(effectiveUserId(userId));
+    }
+
     // ── 短期历史 ──────────────────────────────────────────────
 
     private void append(String userId, String role, String content) {

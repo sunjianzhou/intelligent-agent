@@ -3,9 +3,12 @@ import lombok.extern.slf4j.Slf4j;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.intelligent.agent.web.service.AgentService;
+import com.intelligent.agent.web.service.ModelService;
 import com.intelligent.agent.web.service.PythonProxyService;
+import com.intelligent.agent.web.infrastructure.scheduler.TaskSchedulerService;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.ResourceAccessException;
@@ -27,6 +30,10 @@ public class HealthController {
     @Autowired private AgentService agentService;
     @Autowired private PythonProxyService proxy;
     @Autowired private ObjectMapper objectMapper;
+    @Autowired private ModelService modelService;
+    @Autowired(required = false) private TaskSchedulerService taskSchedulerService;
+    @Value("${ai.runtime.mode:python}")
+    private String runtimeMode;
 
     // ── 健康检查 ──────────────────────────────────────────────
 
@@ -42,6 +49,13 @@ public class HealthController {
 
     @GetMapping("/python/health")
     public ResponseEntity<Map<String, Object>> pythonHealth() {
+        if ("java".equals(runtimeMode) || "shadow".equals(runtimeMode)) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "java-only");
+            response.put("message", "Python Agent 已退役（2026-08-08），Java 后端自包含运行");
+            response.put("java_version", System.getProperty("java.version"));
+            return ResponseEntity.ok(response);
+        }
         Map<String, Object> response = new HashMap<>();
         try {
             ResponseEntity<String> res = proxy.get("/health");
@@ -85,6 +99,10 @@ public class HealthController {
 
     @GetMapping("/models")
     public ResponseEntity<Map<String, Object>> models(HttpServletRequest req) {
+        if ("java".equals(runtimeMode) || "shadow".equals(runtimeMode)) {
+            return ResponseEntity.ok(modelService.getModels(
+                    proxy != null ? proxy.extractUserIdFromRequest(req) : null));
+        }
         String userId = proxy.extractUserIdFromRequest(req);
         return ResponseEntity.ok(agentService.getModels(userId));
     }
@@ -122,6 +140,13 @@ public class HealthController {
     @GetMapping("/notifications/poll")
     @SuppressWarnings("unchecked")
     public ResponseEntity<Map<String, Object>> pollNotifications() {
+        if (taskSchedulerService != null
+                && ("java".equals(runtimeMode) || "shadow".equals(runtimeMode))) {
+            Map<String, Object> empty = new HashMap<>();
+            empty.put("notifications", taskSchedulerService.pollNotifications());
+            empty.put("count", ((java.util.List<?>) empty.get("notifications")).size());
+            return ResponseEntity.ok(empty);
+        }
         try {
             ResponseEntity<String> res = proxy.get("/api/notifications/poll");
             if (res.getStatusCode().is2xxSuccessful())
@@ -144,6 +169,10 @@ public class HealthController {
             err.put("success", false);
             err.put("message", "model 参数不能为空");
             return ResponseEntity.badRequest().body(err);
+        }
+        if ("java".equals(runtimeMode) || "shadow".equals(runtimeMode)) {
+            return ResponseEntity.ok(modelService.switchModel(
+                    proxy != null ? proxy.extractUserIdFromRequest(req) : null, modelName));
         }
         String userId = proxy.extractUserIdFromRequest(req);
         return ResponseEntity.ok(agentService.switchModel(modelName, userId));

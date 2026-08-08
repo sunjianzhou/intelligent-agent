@@ -47,4 +47,9 @@ public record MemoryRecord(
         return new MemoryRecord(id, userId, roleId, projectId, type, content, metadata,
                 importance, createdAt, Instant.now(), newAccessCount);
     }
+
+    public MemoryRecord withImportance(double newImportance) {
+        return new MemoryRecord(id, userId, roleId, projectId, type, content, metadata,
+                newImportance, createdAt, updatedAt, accessCount);
+    }
 }
