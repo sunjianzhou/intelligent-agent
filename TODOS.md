@@ -1281,11 +1281,13 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 - [x] /api/cloud/*（`CloudService`：服务商 CRUD + 激活/停用 + API KEY 掩码，激活联动 `ModelService.activateCloud`）
 - [x] /api/models 与 /api/model/switch（本地：`ModelService` Ollama /api/tags + per-user 偏好持久化）
 - [x] /api/notifications/poll（`TaskSchedulerService` 通知队列，log action 入队）
-- [ ] /api/feishu/oauth/*（authorize/callback/status 本地 OAuth 流程 + FeishuChannelClient token 持久化）
+- [x] /api/feishu/oauth/*（`FeishuOAuthService` 本地流程：authorize 链接 + state CSRF + code 换
+      user_access_token + `FeishuChannelClient` 持久化；`FeishuOAuthServiceTest` 4 用例）
 - [x] /api/python/health（java 模式返回 `java-only` 自包含状态）
 
-> **2026-08-08 进度**：tools/memory/models/switch/python-health/notifications/config/cloud 已本地化，
-> `GapFillContractTest` 9 用例 + 全量 185 绿。剩余 image / feishu-oauth 继续。
+> **2026-08-08 进度**：tools/memory/models/switch/python-health/notifications/config/cloud/feishu-oauth
+> 已本地化，`GapFillContractTest` 9 用例 + `FeishuOAuthServiceTest` 4 用例 + 全量 189 绿。
+> Task 2 仅剩 image 生成端点。
 
 ### Task 3: persona / prompt / soul 系统
 
