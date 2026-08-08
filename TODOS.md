@@ -1198,13 +1198,23 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 
 **涉及文件**：`backend/web/pom.xml`, `backend/web/Dockerfile`, `backend/web/src/main/resources/application.yml`, `backend/web/src/main/java/com/intelligent/agent/web/`（新增 `ai/llm/`, `ai/tool/`, `ai/agent/`, `api/chat/`, `config/SchedulingConfig.java`, `config/AgentConfig.java`, `config/LlmProviderConfig.java`）, `backend/web/src/test/`（`ai/` 测试 + `ChatContractTest` + `contracts/chat-stream-events.jsonl`）
 
-### TODO-108: Plan 2 — 记忆 / 领域 API / 调度 / 集成（domain-and-integrations）
+### ~~TODO-108: Plan 2 — 记忆 / 领域 API / 调度 / 集成（domain-and-integrations）~~ ✅ 已完成（2026-08-08）
 
-- [ ] Task 1: 记忆与向量库端口（`MemoryRepository` + `VectorMemoryRepository`，按 user/role/project 过滤）
-- [ ] Task 2: 会话记忆 / RAG / 语义缓存迁移（`ConversationMemoryService` + 蒸馏 + 摘要 + persona/model 感知缓存键）
-- [ ] Task 3: 逐个替换 role / conversation / project / task 代理为本地服务（每片单独提交）
-- [ ] Task 4: 迁移 knowledge / skills / analytics / teaching（含 413 超限用例 + 句子级分块）
-- [ ] Task 5: 调度器 + 具名集成（ComfyUI / MCP / 飞书 / 企微 / Telegram，幂等广播 + 限流 + 重试 + 回调校验）
+> **2026-08-08 完成**：Plan 2 全部 5 个 Task 落地，每项单独提交，全量 155 用例绿（0 失败）。
+>
+> - Task 1 记忆/向量端口（commit `45b3044`）：`ai/memory/{MemoryRepository,MemoryRecord,MemorySearchQuery}` + `infrastructure/vectorstore/VectorMemoryRepository`（字符 n-gram 哈希嵌入 + 余弦，用户隔离契约 7 用例）
+> - Task 2 会话记忆/RAG/缓存（commit `1c1fad9`）：`ConversationMemoryService`（短期 deque TTL 24h/100 条 + 5 轮蒸馏 + 10 轮摘要 + 项目上下文）+ `SemanticResponseCache`（persona/model 感知键 + 24h TTL + 相似检索）+ `TextEmbedding` 抽取复用；`AgentOrchestrator` 注入记忆并缓存短路；11 用例
+> - Task 3 领域代理逐个替换（4 次单独提交）：role `199d25d` / conversation `5257524` / project `2a18438` / task `912296c`；`DomainApiContractTest` 18 用例；project 旧路径映射顺带修正（原 `/spec` 等缺 `/api/project` 前缀导致 GET spec 405）
+> - Task 4 knowledge/skills/analytics/teaching（commit `0ba4fb0`）：句子级分块写入 MemoryRepository、413 超限用例、PDF 提取（pdfbox）、内置 Skill 模板、反馈/Skill 日志/工具调用统计、教学题库 24 题 + 批改/错题本；`KnowledgeAndSkillContractTest` 7 用例；新增 Java 侧 `TeachingController`
+> - Task 5 调度器 + 具名集成（commit `129f531`）：`TaskSchedulerService`（秒级 tick，immediate/delay/interval/datetime/cron 到期计算）+ `integration/*`（Feishu/WeChat/Telegram 通道客户端限流+重试+OAuth token 持久化、ComfyUiClient 进度轮询、McpToolRegistry）+ `ChannelRouter` 幂等广播去重；`ChannelDeduplicationTest` 5 用例（MockWebServer）
+>
+> **设计说明**：所有控制器在 `ai.runtime.mode=java|shadow` 时走本地领域服务，`python` 模式保持原代理路径（向后兼容，Plan 3 shadow 切换时回退可用）。
+
+- [x] Task 1: 记忆与向量库端口（`MemoryRepository` + `VectorMemoryRepository`，按 user/role/project 过滤）
+- [x] Task 2: 会话记忆 / RAG / 语义缓存迁移（`ConversationMemoryService` + 蒸馏 + 摘要 + persona/model 感知缓存键）
+- [x] Task 3: 逐个替换 role / conversation / project / task 代理为本地服务（每片单独提交）
+- [x] Task 4: 迁移 knowledge / skills / analytics / teaching（含 413 超限用例 + 句子级分块）
+- [x] Task 5: 调度器 + 具名集成（ComfyUI / MCP / 飞书 / 企微 / Telegram，幂等广播 + 限流 + 重试 + 回调校验）
 
 **涉及文件**：`backend/web/src/main/java/com/intelligent/agent/web/`（新增 `ai/memory/`, `infrastructure/`, `domain/`, `integration/` 包）+ 对应 Proxy Controller
 
