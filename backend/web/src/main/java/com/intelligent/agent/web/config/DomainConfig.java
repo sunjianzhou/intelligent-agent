@@ -4,6 +4,10 @@ import com.intelligent.agent.web.domain.role.RoleService;
 import com.intelligent.agent.web.domain.conversation.ConversationService;
 import com.intelligent.agent.web.domain.project.ProjectService;
 import com.intelligent.agent.web.domain.task.TaskService;
+import com.intelligent.agent.web.domain.knowledge.KnowledgeService;
+import com.intelligent.agent.web.domain.skill.SkillService;
+import com.intelligent.agent.web.domain.analytics.AnalyticsService;
+import com.intelligent.agent.web.domain.teaching.TeachingService;
 import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -40,5 +44,25 @@ public class DomainConfig {
     @Bean
     public TaskService taskService() {
         return new TaskService();
+    }
+
+    @Bean
+    public KnowledgeService knowledgeService(VectorMemoryRepository vectorMemoryRepository) {
+        return new KnowledgeService(Path.of(dataDir), vectorMemoryRepository);
+    }
+
+    @Bean
+    public SkillService skillService() {
+        return new SkillService(Path.of(dataDir));
+    }
+
+    @Bean
+    public AnalyticsService analyticsService() {
+        return new AnalyticsService(Path.of(dataDir));
+    }
+
+    @Bean
+    public TeachingService teachingService() {
+        return new TeachingService(Path.of(dataDir));
     }
 }
