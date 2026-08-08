@@ -1265,12 +1265,14 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 - [x] 迁移 file_tool（路径白名单 + 只读模式，对齐 TODO-76 安全要求，`ai/tool/builtin/file/FileTool`）
 - [x] 迁移 shell_tool（命令白名单 + 敏感路径拒绝，`ai/tool/builtin/shell/ShellTool`）
 - [x] 迁移 web_search（DuckDuckGo HTML 端点 + jsoup 解析，可注入 URL 便于测试，`ai/tool/builtin/web/WebSearchTool`）
-- [ ] 迁移 database_tool（MySQL 连接器，按配置启用）
-- [ ] 迁移 feishu_calendar / feishu_task（依赖飞书 OAuth，随 Task 3 OAuth 本地化）
+- [x] 迁移 database_tool（`DatabaseTool`：MySQL JDBC + 只读白名单 + list_tables/describe/sample，
+      DB_* 配置启用；H2 内存库测试 4 用例）
+- [x] 迁移 feishu_calendar / feishu_task（`FeishuCalendarTool`/`FeishuTaskTool`：
+      list/create/complete，user_access_token 来自本地化 OAuth；`FeishuToolTest` 4 用例）
 - [x] 注入 ToolExecutor（AgentConfig 注册 5 个内置工具 bean），ToolExecutor 端到端验证通过
 
 > **2026-08-08 进度**：5 个核心工具已迁移（commit 待填），`BuiltinToolTest` 8 用例 + 全量 176 绿。
-> database_tool 需 MySQL 驱动与配置（随 Task 2 /api/config 本地化一起）；feishu 工具随 Task 3 OAuth。
+> 2026-08-08 补充：database_tool + feishu_calendar/feishu_task 已迁移，Task 1 全部完成（全量 201 绿）。
 
 ### Task 2: 死端点本地化（前端页面恢复可用）
 
@@ -1311,7 +1313,11 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 - [ ] 记忆蒸馏升级为 LLM 提取（当前规则式）
 - [ ] 语义缓存真实 embedding（当前 n-gram 哈希近似，需嵌入模型/向量库）
 - [ ] 项目上下文提取 LLM 化（当前简化版）
-- [ ] 调度器 llm_generate action（当前仅 log）
+- [x] 调度器 llm_generate action（`TaskSchedulerService` 注入 `LlmProviderRouter`，
+      生成结果入通知队列；mock 路由测试通过）
+
+> **2026-08-08 进度**：Task 1 与 Task 6 全部完成；Task 5 的 LLM 蒸馏 / 真实 embedding /
+> 项目上下文 LLM 化三项依赖外部模型环境（本机无 Ollama/嵌入模型），保留为环境依赖待办。
 
 ### Task 6: CLI 补齐
 

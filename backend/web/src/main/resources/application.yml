@@ -132,3 +132,12 @@ image:
     provider: ${IMAGE_GEN_PROVIDER:comfyui}
     base-url: ${IMAGE_GEN_BASE_URL:http://localhost:8188}
     model: ${IMAGE_GEN_MODEL:}
+
+# 数据库只读工具（DatabaseTool；未配置时工具不可用但注册）
+db:
+  type: ${DB_TYPE:}
+  host: ${DB_HOST:}
+  port: ${DB_PORT:3306}
+  database: ${DB_DATABASE:}
+  user: ${DB_USER:}
+  password: ${DB_PASSWORD:}

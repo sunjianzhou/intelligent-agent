@@ -1,6 +1,9 @@
 package com.intelligent.agent.web.infrastructure.scheduler;
 
 import com.intelligent.agent.web.domain.task.TaskService;
+import com.intelligent.agent.web.ai.llm.ChatMessage;
+import com.intelligent.agent.web.ai.llm.ChatTurn;
+import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -32,16 +35,23 @@ public class TaskSchedulerService {
     private final Path actionLog;
     private final TaskScheduler taskScheduler;
     private final Queue<Map<String, Object>> notifications = new ConcurrentLinkedQueue<>();
+    private final LlmProviderRouter llmRouter;
     private ScheduledFuture<?> scheduledFuture;
 
     public TaskSchedulerService(TaskService taskService, Path dataDir) {
-        this(taskService, dataDir, null);
+        this(taskService, dataDir, null, null);
     }
 
     public TaskSchedulerService(TaskService taskService, Path dataDir, TaskScheduler taskScheduler) {
+        this(taskService, dataDir, taskScheduler, null);
+    }
+
+    public TaskSchedulerService(TaskService taskService, Path dataDir, TaskScheduler taskScheduler,
+                                LlmProviderRouter llmRouter) {
         this.taskService = taskService;
         this.actionLog = dataDir.resolve("actions.log");
         this.taskScheduler = taskScheduler;
+        this.llmRouter = llmRouter;
     }
 
     @PostConstruct
@@ -126,13 +136,28 @@ public class TaskSchedulerService {
             if ("log".equals(action)) {
                 String message = messageOf(task.get("args"));
                 appendLog(now, message);
-                notifications.add(Map.of(
-                        "message", message,
-                        "timestamp", now,
-                        "task_id", String.valueOf(task.getOrDefault("id", ""))));
+                notify(now, task, message);
                 task.put("last_result", "logged");
                 task.put("status", "completed");
                 task.put("completed_at", now);
+            } else if ("llm_generate".equals(action)) {
+                if (llmRouter == null) {
+                    task.put("last_error", "llm_generate 未配置 LLM 路由");
+                    task.put("status", "failed");
+                } else {
+                    String prompt = messageOf(task.get("args"));
+                    if (prompt.isBlank()) {
+                        prompt = String.valueOf(task.getOrDefault("name", "生成一段文字"));
+                    }
+                    String text = llmRouter.forUser("default", null)
+                            .complete(new ChatTurn("default", null,
+                                    List.of(ChatMessage.user(prompt)), Map.of()))
+                            .block(Duration.ofSeconds(120));
+                    notify(now, task, text);
+                    task.put("last_result", text);
+                    task.put("status", "completed");
+                    task.put("completed_at", now);
+                }
             } else {
                 task.put("last_error", "action 未注册: " + action);
                 task.put("status", "failed");
@@ -143,6 +168,13 @@ public class TaskSchedulerService {
             task.put("status", "failed");
         }
         taskService.saveTask(task);
+    }
+
+    private void notify(String now, Map<String, Object> task, String message) {
+        notifications.add(Map.of(
+                "message", message,
+                "timestamp", now,
+                "task_id", String.valueOf(task.getOrDefault("id", ""))));
     }
 
     private void appendLog(String timestamp, String message) {

@@ -2,6 +2,7 @@ package com.intelligent.agent.web.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.intelligent.agent.web.domain.task.TaskService;
+import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.feishu.FeishuMessageSender;
 import com.intelligent.agent.web.im.RetryConfig;
 import com.intelligent.agent.web.infrastructure.scheduler.TaskSchedulerService;
@@ -83,7 +84,9 @@ public class IntegrationConfig {
 
     @Bean
     public TaskSchedulerService taskSchedulerService(TaskService taskService,
-                                                     TaskScheduler taskScheduler) {
-        return new TaskSchedulerService(taskService, Path.of(dataDir), taskScheduler);
+                                                     TaskScheduler taskScheduler,
+                                                     LlmProviderRouter llmProviderRouter) {
+        return new TaskSchedulerService(
+                taskService, Path.of(dataDir), taskScheduler, llmProviderRouter);
     }
 }

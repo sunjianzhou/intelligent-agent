@@ -4,6 +4,9 @@ import com.intelligent.agent.web.domain.task.TaskService;
 import com.intelligent.agent.web.im.ChannelMessage;
 import com.intelligent.agent.web.im.ChannelType;
 import com.intelligent.agent.web.infrastructure.scheduler.TaskSchedulerService;
+import com.intelligent.agent.web.ai.llm.ChatTurn;
+import com.intelligent.agent.web.ai.llm.LlmProvider;
+import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.integration.comfyui.ComfyUiClient;
 import com.intelligent.agent.web.integration.telegram.TelegramChannelClient;
 import okhttp3.mockwebserver.MockResponse;
@@ -16,6 +19,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -149,5 +153,28 @@ class ChannelDeduplicationTest {
         assertThat(task.get("status")).isEqualTo("completed");
         assertThat(((Number) task.get("run_count")).intValue()).isEqualTo(1);
         assertThat(task.get("last_run")).isNotNull();
+    }
+
+    @Test
+    void schedulerRunsLlmGenerateAction() {
+        LlmProvider provider = mock(LlmProvider.class);
+        when(provider.complete(any(ChatTurn.class))).thenReturn(Mono.just("生成的提醒文本"));
+        LlmProviderRouter router = mock(LlmProviderRouter.class);
+        when(router.forUser(any(), any())).thenReturn(provider);
+
+        TaskService taskService = new TaskService();
+        Map<String, Object> created = taskService.createTask(Map.of(
+                "name", "日报", "action", "llm_generate", "schedule_type", "delay",
+                "delay_seconds", -1, "args", Map.of("message", "生成今日日报")));
+        String taskId = (String) ((Map<?, ?>) created.get("task")).get("id");
+
+        TaskSchedulerService scheduler = new TaskSchedulerService(
+                taskService, java.nio.file.Path.of("target", "scheduler-test"), null, router);
+        scheduler.tick();
+
+        Map<String, Object> task = taskService.allTasks().stream()
+                .filter(t -> taskId.equals(t.get("id"))).findFirst().orElseThrow();
+        assertThat(task.get("status")).isEqualTo("completed");
+        assertThat(task.get("last_result")).isEqualTo("生成的提醒文本");
     }
 }

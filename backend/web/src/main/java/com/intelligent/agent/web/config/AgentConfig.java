@@ -13,6 +13,11 @@ import com.intelligent.agent.web.ai.tool.builtin.TimeTool;
 import com.intelligent.agent.web.ai.tool.builtin.file.FileTool;
 import com.intelligent.agent.web.ai.tool.builtin.shell.ShellTool;
 import com.intelligent.agent.web.ai.tool.builtin.web.WebSearchTool;
+import com.intelligent.agent.web.ai.tool.builtin.database.DatabaseTool;
+import com.intelligent.agent.web.ai.tool.builtin.feishu.FeishuCalendarTool;
+import com.intelligent.agent.web.ai.tool.builtin.feishu.FeishuTaskTool;
+import com.intelligent.agent.web.integration.feishu.FeishuChannelClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -56,6 +61,32 @@ public class AgentConfig {
     @Bean
     public WebSearchTool webSearchTool() {
         return new WebSearchTool();
+    }
+
+    /** TODO-110 Task 1：数据库工具（DB_* 未配置时不可用，但工具始终注册）。 */
+    @Bean
+    public DatabaseTool databaseTool(@Value("${db.type:}") String dbType,
+                                     @Value("${db.host:}") String dbHost,
+                                     @Value("${db.port:3306}") int dbPort,
+                                     @Value("${db.database:}") String dbDatabase,
+                                     @Value("${db.user:}") String dbUser,
+                                     @Value("${db.password:}") String dbPassword) {
+        return new DatabaseTool(dbType, dbHost, dbPort, dbDatabase, dbUser, dbPassword);
+    }
+
+    /** TODO-110 Task 1：飞书日历/任务工具（依赖用户 OAuth token）。 */
+    @Bean
+    public FeishuCalendarTool feishuCalendarTool(
+            FeishuChannelClient feishuChannelClient,
+            @Value("${feishu.oauth-base-url:https://open.feishu.cn}") String feishuBase) {
+        return new FeishuCalendarTool(feishuChannelClient, feishuBase);
+    }
+
+    @Bean
+    public FeishuTaskTool feishuTaskTool(
+            FeishuChannelClient feishuChannelClient,
+            @Value("${feishu.oauth-base-url:https://open.feishu.cn}") String feishuBase) {
+        return new FeishuTaskTool(feishuChannelClient, feishuBase);
     }
 
     @Bean
