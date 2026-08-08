@@ -1251,3 +1251,59 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 - [x] Task 6: 六项确认（数据对账/恢复演练/E2E/IM 送达/回滚窗口/删除授权）后经授权退役 Python（2026-08-08 完成：commit `354bf33` + `0858ba3`）
 
 **涉及文件**：`client/`（新增 Maven 工程）、`backend/web/.../infrastructure/migration/`、`backend/web/src/main/resources/application.yml`, `docker-compose.yml`, `start_all.bat`, `start_all.sh`, 四份根目录 README / AI_PROJECT_CONTEXT
+
+---
+
+## TODO-110: Java 迁移补缺 — 功能等价（2026-08-08 创建）
+
+> **来源**：2026-08-08 功能等价审计。Plan 1-3 覆盖计划文件范围，但 Python 侧以下能力未纳入迁移，
+> 当前 java 模式下失效或降级。按优先级逐项补齐，每项独立提交。
+
+### Task 1: 工具系统迁移（核心缺口，工具注册表当前为空）
+
+- [ ] 迁移 calculator / time 等无外部依赖工具
+- [ ] 迁移 file_tool（路径白名单 + 只读模式，对齐 TODO-76 安全要求）
+- [ ] 迁移 shell_tool（命令白名单 + 禁网络）
+- [ ] 迁移 web_search（可配置搜索端点）
+- [ ] 迁移 database_tool（MySQL 连接器，按配置启用）
+- [ ] 迁移 feishu_calendar / feishu_task（依赖飞书 OAuth，随 Task 3 OAuth 本地化）
+- [ ] 注入 ToolExecutor（AgentConfig），验证 ReAct 工具调用端到端
+
+### Task 2: 死端点本地化（前端页面恢复可用）
+
+- [ ] /api/image/* 与 /api/images（图片生成：ComfyUiClient 已具备基础，补 generate/列表/删除/provider-status）
+- [ ] /api/memory/*（记忆管理：list/search/delete/clear 接 MemoryRepository + ConversationMemoryService）
+- [ ] /api/tools/list（工具列表：从 ToolExecutor/McpToolRegistry 聚合）
+- [ ] /api/config/*（运行时配置读写：接 application.yml + 领域服务）
+- [ ] /api/cloud/*（云端服务商 CRUD + API KEY 绑定：接 LlmProviderRouter 配置）
+- [ ] /api/models 与 /api/model/switch（本地：Ollama /api/tags + LlmProviderRouter）
+- [ ] /api/notifications/poll（调度器通知队列本地实现）
+- [ ] /api/feishu/oauth/*（authorize/callback/status 本地 OAuth 流程 + FeishuChannelClient token 持久化）
+- [ ] /api/python/health（前端 getPythonHealth → Java 自身健康状态）
+
+### Task 3: persona / prompt / soul 系统
+
+- [ ] SystemPromptBuilder：persona 描述 → 模型覆盖层 → 工具指令（对齐 Python PromptBuilder）
+- [ ] channel-aware 系统提示（web/CLI 与 IM 隐私分层）
+- [ ] rules.md / heart.md 铁律注入 + 隐私分级（对齐 TODO-96~98 W7-W9）
+- [ ] heart_record 工具（rule_add/list/delete，随 Task 1 工具系统落地）
+
+### Task 4: chat 高级行为
+
+- [ ] 多模态 image_base64 透传（ChatRequest → AgentOrchestrator → LLM）
+- [ ] 群聊场景静默（scene_chat_type / scene_mentioned + NO_REPLY 规则）
+- [ ] [TASK_DONE]/[TASK_BLOCKED] 任务标记 → task_update/task_blocked WS 事件
+- [ ] 分支失败检测（对齐 _detect_branch_failure 信号）+ 铁律违反扫描
+- [ ] 撤回级联清理记忆（retract 时 delete_by_ids 短期 + 长期排除检索）
+
+### Task 5: 降级项提升（可选，标注依赖）
+
+- [ ] 记忆蒸馏升级为 LLM 提取（当前规则式）
+- [ ] 语义缓存真实 embedding（当前 n-gram 哈希近似，需嵌入模型/向量库）
+- [ ] 项目上下文提取 LLM 化（当前简化版）
+- [ ] 调度器 llm_generate action（当前仅 log）
+
+### Task 6: CLI 补齐
+
+- [ ] `--load` 恢复历史会话（SessionStore.load 已存在，CLI 未暴露）
+- [ ] `--timeout` 参数（当前固定超时）
