@@ -6,6 +6,9 @@ import com.intelligent.agent.web.ai.llm.LlmProvider;
 import com.intelligent.agent.web.ai.llm.LlmProviderException;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.ai.llm.ModelEvent;
+import com.intelligent.agent.web.ai.memory.AgentContext;
+import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
+import com.intelligent.agent.web.ai.memory.MemoryRecord;
 import com.intelligent.agent.web.ai.tool.TextToolCallParser;
 import com.intelligent.agent.web.ai.tool.ToolCall;
 import com.intelligent.agent.web.ai.tool.ToolExecutionContext;
@@ -36,6 +39,7 @@ public class AgentOrchestrator {
     private final LlmProviderRouter router;
     private final ToolExecutor toolExecutor;
     private final TextToolCallParser toolCallParser;
+    private final ConversationMemoryService memoryService;
     private final int maxToolRounds;
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor) {
@@ -43,28 +47,78 @@ public class AgentOrchestrator {
     }
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor, int maxToolRounds) {
+        this(router, toolExecutor, null, maxToolRounds);
+    }
+
+    public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
+                             ConversationMemoryService memoryService, int maxToolRounds) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.toolExecutor = Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
         this.toolCallParser = new TextToolCallParser();
+        this.memoryService = memoryService;
         this.maxToolRounds = maxToolRounds;
     }
 
     public Flux<ModelEvent> stream(AgentRequestContext context) {
         Objects.requireNonNull(context, "context must not be null");
-        return Flux.defer(() -> runToolRounds(context, initialMessages(context), 0, List.of())
-                .flatMapMany(state -> streamFinal(context, state)));
+        AgentContext memory = loadMemory(context);
+        if (memory.cachedAnswer().isPresent()) {
+            String cached = memory.cachedAnswer().get();
+            return Flux.concat(
+                            Flux.just(ModelEvent.token(cached)),
+                            Flux.just(ModelEvent.done(Map.of())))
+                    .doOnComplete(() -> recordTurn(context, cached));
+        }
+        StringBuilder tokens = new StringBuilder();
+        return Flux.defer(() -> runToolRounds(context, initialMessages(context, memory), 0, List.of())
+                        .flatMapMany(state -> streamFinal(context, state)))
+                .doOnNext(event -> {
+                    if ("token".equals(event.type())) {
+                        tokens.append(event.data());
+                    }
+                })
+                .doOnComplete(() -> recordTurn(context, tokens.toString()));
     }
 
     public Mono<String> complete(AgentRequestContext context) {
         Objects.requireNonNull(context, "context must not be null");
-        return Mono.defer(() -> runToolRounds(context, initialMessages(context), 0, List.of())
-                .flatMap(state -> completeFinal(context, state)));
+        AgentContext memory = loadMemory(context);
+        if (memory.cachedAnswer().isPresent()) {
+            String cached = memory.cachedAnswer().get();
+            return Mono.just(cached).doOnSuccess(answer -> recordTurn(context, answer));
+        }
+        return Mono.defer(() -> runToolRounds(context, initialMessages(context, memory), 0, List.of())
+                        .flatMap(state -> completeFinal(context, state)))
+                .doOnSuccess(answer -> recordTurn(context, answer));
     }
 
-    private List<ChatMessage> initialMessages(AgentRequestContext ctx) {
+    private AgentContext loadMemory(AgentRequestContext ctx) {
+        return memoryService == null ? AgentContext.empty() : memoryService.loadContext(ctx);
+    }
+
+    private void recordTurn(AgentRequestContext ctx, String answer) {
+        if (memoryService != null) {
+            memoryService.recordTurn(ctx, answer);
+        }
+    }
+
+    private List<ChatMessage> initialMessages(AgentRequestContext ctx, AgentContext memory) {
         List<ChatMessage> messages = new ArrayList<>();
         if (ctx.persona() != null && !ctx.persona().isBlank()) {
             messages.add(ChatMessage.system("你是 " + ctx.persona() + "。"));
+        }
+        if (ctx.useMemory()) {
+            if (!memory.longTermRecall().isEmpty()) {
+                StringBuilder recall = new StringBuilder("[LONG-TERM MEMORY]\n");
+                for (MemoryRecord record : memory.longTermRecall()) {
+                    recall.append("- ").append(record.content()).append('\n');
+                }
+                messages.add(ChatMessage.system(recall.toString().trim()));
+            }
+            if (!memory.projectContext().isBlank()) {
+                messages.add(ChatMessage.system("[PROJECT CONTEXT]\n" + memory.projectContext()));
+            }
+            messages.addAll(memory.history());
         }
         messages.add(ChatMessage.user(ctx.message()));
         return messages;

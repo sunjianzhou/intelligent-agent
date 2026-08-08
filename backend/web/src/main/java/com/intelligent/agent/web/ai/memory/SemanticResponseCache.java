@@ -1,0 +1,120 @@
+package com.intelligent.agent.web.ai.memory;
+
+import com.intelligent.agent.web.infrastructure.vectorstore.TextEmbedding;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * L2 语义响应缓存（24h TTL）。
+ * <p>
+ * 缓存键必须包含 userId + persona + model + 归一化问题 ——
+ * 不同角色/模型/用户之间严格隔离；同时提供相似问题检索。
+ */
+public class SemanticResponseCache {
+
+    public static final Duration DEFAULT_TTL = Duration.ofHours(24);
+
+    private final Map<String, CacheEntry> entries = new ConcurrentHashMap<>();
+    private final Duration ttl;
+
+    public SemanticResponseCache() {
+        this(DEFAULT_TTL);
+    }
+
+    public SemanticResponseCache(Duration ttl) {
+        this.ttl = ttl;
+    }
+
+    /** 便捷写入：model 为 null。 */
+    public void put(String userId, String persona, String question, String answer) {
+        put(userId, persona, null, question, answer);
+    }
+
+    /** 便捷读取：model 为 null。 */
+    public Optional<String> get(String userId, String persona, String question) {
+        return get(userId, persona, null, question);
+    }
+
+    public void put(String userId, String persona, String model, String question, String answer) {
+        if (question == null || question.isBlank() || answer == null || answer.isBlank()) {
+            return;
+        }
+        entries.put(key(userId, persona, model, question), new CacheEntry(answer, Instant.now()));
+    }
+
+    public Optional<String> get(String userId, String persona, String model, String question) {
+        if (question == null || question.isBlank()) {
+            return Optional.empty();
+        }
+        CacheEntry entry = entries.get(key(userId, persona, model, question));
+        if (entry == null || expired(entry)) {
+            if (entry != null) {
+                entries.remove(key(userId, persona, model, question));
+            }
+            return Optional.empty();
+        }
+        return Optional.of(entry.answer());
+    }
+
+    /** 语义相似检索：同用户/角色/模型范围内，与问题最相似且超过阈值的缓存答案。 */
+    public Optional<String> findSimilar(String userId, String persona, String model,
+                                        String question, double minSimilarity) {
+        if (question == null || question.isBlank()) {
+            return Optional.empty();
+        }
+        double[] queryVector = TextEmbedding.embed(question);
+        List<Scored> scored = new ArrayList<>();
+        for (Map.Entry<String, CacheEntry> e : entries.entrySet()) {
+            String[] parts = e.getKey().split("\\|", 4);
+            if (parts.length < 4
+                    || !parts[0].equals(safe(userId))
+                    || !parts[1].equals(safe(persona))
+                    || !parts[2].equals(safe(model))) {
+                continue;
+            }
+            CacheEntry entry = e.getValue();
+            if (expired(entry)) {
+                entries.remove(e.getKey());
+                continue;
+            }
+            double similarity = TextEmbedding.cosine(queryVector, TextEmbedding.embed(parts[3]));
+            if (similarity >= minSimilarity) {
+                scored.add(new Scored(entry.answer(), similarity));
+            }
+        }
+        return scored.stream()
+                .sorted(Comparator.comparingDouble(Scored::similarity).reversed())
+                .findFirst()
+                .map(Scored::answer);
+    }
+
+    private boolean expired(CacheEntry entry) {
+        return entry.createdAt().plus(ttl).isBefore(Instant.now());
+    }
+
+    private static String key(String userId, String persona, String model, String question) {
+        return safe(userId) + "|" + safe(persona) + "|" + safe(model) + "|"
+                + normalize(question);
+    }
+
+    private static String normalize(String text) {
+        return text == null ? "" : text.trim().toLowerCase().replaceAll("\\s+", " ");
+    }
+
+    private static String safe(String value) {
+        return value == null ? "" : value.replace("|", "");
+    }
+
+    private record CacheEntry(String answer, Instant createdAt) {
+    }
+
+    private record Scored(String answer, double similarity) {
+    }
+}

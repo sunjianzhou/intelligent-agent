@@ -2,6 +2,10 @@ package com.intelligent.agent.web.config;
 
 import com.intelligent.agent.web.ai.agent.AgentOrchestrator;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
+import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
+import com.intelligent.agent.web.ai.memory.MemoryDistillationService;
+import com.intelligent.agent.web.ai.memory.SemanticResponseCache;
+import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
 import com.intelligent.agent.web.ai.tool.AgentTool;
 import com.intelligent.agent.web.ai.tool.ToolExecutor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +29,33 @@ public class AgentConfig {
 
     @Bean
     public AgentOrchestrator agentOrchestrator(LlmProviderRouter llmProviderRouter,
-                                               ToolExecutor toolExecutor) {
-        return new AgentOrchestrator(llmProviderRouter, toolExecutor);
+                                               ToolExecutor toolExecutor,
+                                               ConversationMemoryService conversationMemoryService) {
+        return new AgentOrchestrator(llmProviderRouter, toolExecutor, conversationMemoryService,
+                AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS);
+    }
+
+    @Bean
+    public VectorMemoryRepository vectorMemoryRepository() {
+        return new VectorMemoryRepository();
+    }
+
+    @Bean
+    public SemanticResponseCache semanticResponseCache() {
+        return new SemanticResponseCache();
+    }
+
+    @Bean
+    public MemoryDistillationService memoryDistillationService() {
+        return new MemoryDistillationService();
+    }
+
+    @Bean
+    public ConversationMemoryService conversationMemoryService(
+            VectorMemoryRepository vectorMemoryRepository,
+            SemanticResponseCache semanticResponseCache,
+            MemoryDistillationService memoryDistillationService) {
+        return new ConversationMemoryService(
+                vectorMemoryRepository, semanticResponseCache, memoryDistillationService);
     }
 }
