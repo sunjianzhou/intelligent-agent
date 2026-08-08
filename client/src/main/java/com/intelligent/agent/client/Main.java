@@ -1,6 +1,10 @@
 package com.intelligent.agent.client;
 
 import com.intelligent.agent.client.auth.LoginCommand;
+import com.intelligent.agent.client.chat.ReplCommand;
+import com.intelligent.agent.client.conversation.RetractCommand;
+import com.intelligent.agent.client.model.ModelCommand;
+import com.intelligent.agent.client.role.PersonaCommand;
 import picocli.CommandLine;
 
 /**
@@ -16,7 +20,11 @@ import picocli.CommandLine;
         mixinStandardHelpOptions = true,
         subcommands = {
                 LoginCommand.class,
-                com.intelligent.agent.client.chat.ChatCommand.class
+                com.intelligent.agent.client.chat.ChatCommand.class,
+                ReplCommand.class,
+                ModelCommand.class,
+                PersonaCommand.class,
+                RetractCommand.class
         }
 )
 public class Main implements Runnable {

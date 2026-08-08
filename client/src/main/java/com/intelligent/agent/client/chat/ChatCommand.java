@@ -3,6 +3,7 @@ package com.intelligent.agent.client.chat;
 import com.intelligent.agent.client.auth.TokenStore;
 import com.intelligent.agent.client.http.BackendClient;
 import com.intelligent.agent.client.session.SessionStore;
+import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
@@ -63,8 +64,20 @@ public class ChatCommand implements Callable<Integer> {
             return 2;
         }
         if (message == null || message.isBlank()) {
-            System.out.println("REPL 模式将在 Task 3 提供；当前请直接传入消息: agent-cli chat \"你好\"");
-            return 0;
+            java.util.List<String> replArgs = new java.util.ArrayList<>();
+            replArgs.add("--url");
+            replArgs.add(url);
+            replArgs.add("--user");
+            replArgs.add(user);
+            replArgs.add("--data-dir");
+            replArgs.add(dataDir.toString());
+            if (noTools) replArgs.add("--no-tools");
+            if (noMemory) replArgs.add("--no-memory");
+            if (tokenFile != null) {
+                replArgs.add("--token-file");
+                replArgs.add(tokenFile.toString());
+            }
+            return new CommandLine(new ReplCommand()).execute(replArgs.toArray(new String[0]));
         }
 
         Map<String, Object> options = new LinkedHashMap<>();

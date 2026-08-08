@@ -14,6 +14,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -61,6 +62,107 @@ public class BackendClient {
             }
         }
         return String.valueOf(result.getOrDefault("message", "服务异常"));
+    }
+
+    /** 撤回会话中的指定消息（!retract）。 */
+    public RetractResult retract(String sessionId, List<String> messageIds) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("message_ids", messageIds);
+        HttpResponse<String> response = sendJson(
+                "POST", "/api/conversations/" + sessionId + "/retract", body);
+        Map<String, Object> result = objectMapper.readValue(
+                response.body(), new TypeReference<Map<String, Object>>() {});
+        return new RetractResult(
+                Boolean.TRUE.equals(result.get("success")),
+                number(result.get("requested")),
+                number(result.get("deleted")),
+                stringList(result.get("deleted_ids")));
+    }
+
+    /** 可用模型列表（!models）。 */
+    public List<String> models() throws Exception {
+        HttpResponse<String> response = sendJson("GET", "/api/models", null);
+        Map<String, Object> result = objectMapper.readValue(
+                response.body(), new TypeReference<Map<String, Object>>() {});
+        return stringList(result.get("available_models"));
+    }
+
+    /** 切换模型（!model）。 */
+    public boolean switchModel(String modelName) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", modelName);
+        HttpResponse<String> response = sendJson("POST", "/api/model/switch", body);
+        Map<String, Object> result = objectMapper.readValue(
+                response.body(), new TypeReference<Map<String, Object>>() {});
+        return Boolean.TRUE.equals(result.get("success"));
+    }
+
+    /** 激活角色（!persona）。 */
+    public boolean activatePersona(String roleId) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("role_id", roleId);
+        HttpResponse<String> response = sendJson("POST", "/api/roles/activate", body);
+        Map<String, Object> result = objectMapper.readValue(
+                response.body(), new TypeReference<Map<String, Object>>() {});
+        return Boolean.TRUE.equals(result.get("success"));
+    }
+
+    /** 会话列表（!sessions）。 */
+    public List<Map<String, Object>> listConversations() throws Exception {
+        HttpResponse<String> response = sendJson("GET", "/api/conversations", null);
+        Map<String, Object> result = objectMapper.readValue(
+                response.body(), new TypeReference<Map<String, Object>>() {});
+        Object sessions = result.get("sessions");
+        if (sessions instanceof List) {
+            return ((List<?>) sessions).stream()
+                    .filter(item -> item instanceof Map)
+                    .map(item -> (Map<String, Object>) item)
+                    .toList();
+        }
+        return List.of();
+    }
+
+    /** 角色列表（!personas）：返回 [{role_id, name}]。 */
+    public List<Map<String, String>> personas() throws Exception {
+        HttpResponse<String> response = sendJson("GET", "/api/roles", null);
+        Map<String, Object> result = objectMapper.readValue(
+                response.body(), new TypeReference<Map<String, Object>>() {});
+        Object roles = result.get("roles");
+        if (!(roles instanceof List)) {
+            return List.of();
+        }
+        List<Map<String, String>> out = new java.util.ArrayList<>();
+        for (Object roleObj : (List<?>) roles) {
+            if (!(roleObj instanceof Map)) {
+                continue;
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> role = (Map<String, Object>) roleObj;
+            Map<String, String> entry = new LinkedHashMap<>();
+            entry.put("role_id", String.valueOf(role.getOrDefault("role_id", "")));
+            Object card = role.get("role_card");
+            String name = card instanceof Map
+                    ? String.valueOf(((Map<String, Object>) card).getOrDefault("name", "")) : "";
+            entry.put("name", name);
+            out.add(entry);
+        }
+        return out;
+    }
+
+    private HttpResponse<String> sendJson(String method, String path, Map<String, Object> body)
+            throws Exception {
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + path))
+                .timeout(Duration.ofMinutes(5))
+                .header("Authorization", "Bearer " + token);
+        if (body != null) {
+            builder.header("Content-Type", "application/json")
+                    .method(method, HttpRequest.BodyPublishers.ofString(
+                            objectMapper.writeValueAsString(body)));
+        } else {
+            builder.method(method, HttpRequest.BodyPublishers.noBody());
+        }
+        return httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
     }
 
     /** 流式聊天：逐行解析 SSE 事件并回调；返回完整回复文本。 */
@@ -126,5 +228,17 @@ public class BackendClient {
             }
             return trimmed;
         }
+    }
+
+    private static int number(Object value) {
+        return value instanceof Number ? ((Number) value).intValue() : 0;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> stringList(Object value) {
+        if (!(value instanceof List)) {
+            return List.of();
+        }
+        return ((List<Object>) value).stream().map(String::valueOf).toList();
     }
 }
