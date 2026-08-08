@@ -126,3 +126,9 @@ telegram:
 comfyui:
   enabled: ${COMFYUI_ENABLED:false}
   base-url: ${COMFYUI_BASE_URL:http://localhost:8188}
+
+image:
+  gen:
+    provider: ${IMAGE_GEN_PROVIDER:comfyui}
+    base-url: ${IMAGE_GEN_BASE_URL:http://localhost:8188}
+    model: ${IMAGE_GEN_MODEL:}

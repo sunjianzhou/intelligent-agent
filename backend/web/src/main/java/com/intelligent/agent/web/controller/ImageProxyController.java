@@ -1,25 +1,24 @@
 package com.intelligent.agent.web.controller;
 
+import com.intelligent.agent.web.service.ImageService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 图片生成代理端点：
- *   - /api/images/{filename}      — 二进制图片流（无 JWT，浏览器直接访问）
- *   - /api/image/provider-status  — Provider 状态查询
- *   - /api/image/models           — 模型列表
- *   - /api/image/switch-model     — 切换模型
- *   - /api/image/generate         — REST 生成图片
- *   - /api/images                 — 历史图片列表
- *   - DELETE /api/images/{filename} — 删除图片
+ * 图片生成端点（TODO-110 Task 2 本地化）。
+ * java / shadow：走本地 {@link ImageService}（ComfyUI provider，本地图片目录）；
+ * python：回退代理旧 Python 服务。
  */
 @Slf4j
 @RestController
@@ -28,22 +27,39 @@ public class ImageProxyController extends AbstractProxyController {
     @Value("${intelligent-agent.python-service.base-url:http://localhost:8000}")
     private String pythonBaseUrl;
 
-    // ── 二进制图片流代理（不需要 JWT，保持 RestTemplate 直传）────────────────
+    @Autowired(required = false)
+    private ImageService imageService;
+
+    @Value("${ai.runtime.mode:python}")
+    private String runtimeMode;
 
     private final RestTemplate binaryRestTemplate = new RestTemplate();
 
     @GetMapping("/api/images/{filename}")
     public ResponseEntity<byte[]> proxyImageBinary(@PathVariable String filename) {
+        if (localRuntime() && imageService != null) {
+            Path file = imageService.resolveImage(filename);
+            if (file == null) {
+                return ResponseEntity.notFound().build();
+            }
+            try {
+                return ResponseEntity.ok()
+                        .contentType(MediaType.IMAGE_PNG)
+                        .cacheControl(CacheControl.maxAge(3600, java.util.concurrent.TimeUnit.SECONDS))
+                        .body(Files.readAllBytes(file));
+            } catch (Exception e) {
+                log.warn("读取本地图片失败: {} - {}", filename, e.getMessage());
+                return ResponseEntity.internalServerError().build();
+            }
+        }
         String url = pythonBaseUrl + "/api/images/" + filename;
         try {
             ResponseEntity<byte[]> resp = binaryRestTemplate.exchange(
                     url, HttpMethod.GET, HttpEntity.EMPTY, byte[].class);
-
             MediaType contentType = resp.getHeaders().getContentType();
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(contentType != null ? contentType : MediaType.IMAGE_PNG);
             headers.setCacheControl(CacheControl.maxAge(3600, java.util.concurrent.TimeUnit.SECONDS));
-
             return ResponseEntity.ok().headers(headers).body(resp.getBody());
         } catch (Exception e) {
             log.warn("图片代理失败: {} - {}", filename, e.getMessage());
@@ -51,10 +67,11 @@ public class ImageProxyController extends AbstractProxyController {
         }
     }
 
-    // ── JSON API 代理 ──────────────────────────────────────────────────────────
-
     @GetMapping("/api/image/provider-status")
     public ResponseEntity<Map<String, Object>> getProviderStatus(HttpServletRequest req) {
+        if (localRuntime() && imageService != null) {
+            return ResponseEntity.ok(imageService.providerStatus());
+        }
         Map<String, Object> fallback = new HashMap<>();
         fallback.put("available", false);
         fallback.put("message", "无法连接到 Python 服务");
@@ -63,6 +80,9 @@ public class ImageProxyController extends AbstractProxyController {
 
     @GetMapping("/api/image/progress")
     public ResponseEntity<Map<String, Object>> getProgress(HttpServletRequest req) {
+        if (localRuntime() && imageService != null) {
+            return ResponseEntity.ok(imageService.progress());
+        }
         Map<String, Object> fallback = new HashMap<>();
         fallback.put("progress", 0.0);
         fallback.put("eta", 0.0);
@@ -71,6 +91,9 @@ public class ImageProxyController extends AbstractProxyController {
 
     @GetMapping("/api/image/models")
     public ResponseEntity<Map<String, Object>> listModels(HttpServletRequest req) {
+        if (localRuntime() && imageService != null) {
+            return ResponseEntity.ok(imageService.listModels());
+        }
         Map<String, Object> fallback = new HashMap<>();
         fallback.put("models", Collections.emptyList());
         return proxyGet("/api/image/models", req, fallback);
@@ -79,17 +102,43 @@ public class ImageProxyController extends AbstractProxyController {
     @PostMapping("/api/image/switch-model")
     public ResponseEntity<Map<String, Object>> switchModel(
             @RequestBody Map<String, Object> body, HttpServletRequest req) {
+        if (localRuntime() && imageService != null) {
+            return ResponseEntity.ok(imageService.switchModel(
+                    String.valueOf(body.getOrDefault("model", ""))));
+        }
         return proxyPost("/api/image/switch-model", body, req);
     }
 
     @PostMapping("/api/image/generate")
     public ResponseEntity<Map<String, Object>> generateImage(
             @RequestBody Map<String, Object> body, HttpServletRequest req) {
+        if (localRuntime() && imageService != null) {
+            String prompt = String.valueOf(body.getOrDefault("prompt", "")).trim();
+            if (prompt.isEmpty()) {
+                return ResponseEntity.badRequest().body(
+                        Map.of("success", false, "message", "prompt 不能为空"));
+            }
+            int width = number(body.get("width"), 512);
+            int height = number(body.get("height"), 512);
+            int steps = number(body.get("steps"), 20);
+            double cfg = body.get("cfg") instanceof Number
+                    ? ((Number) body.get("cfg")).doubleValue() : 7.0;
+            int seed = number(body.get("seed"), -1);
+            if (seed < 0) {
+                seed = (int) (System.currentTimeMillis() % Integer.MAX_VALUE);
+            }
+            return ResponseEntity.ok(imageService.generate(prompt,
+                    String.valueOf(body.getOrDefault("negative_prompt", "")),
+                    width, height, steps, cfg, seed));
+        }
         return proxyPost("/api/image/generate", body, req);
     }
 
     @GetMapping("/api/images")
     public ResponseEntity<Map<String, Object>> listImages(HttpServletRequest req) {
+        if (localRuntime() && imageService != null) {
+            return ResponseEntity.ok(imageService.listImages());
+        }
         Map<String, Object> fallback = new HashMap<>();
         fallback.put("images", Collections.emptyList());
         return proxyGet("/api/images", req, fallback);
@@ -98,6 +147,17 @@ public class ImageProxyController extends AbstractProxyController {
     @DeleteMapping("/api/images/{filename}")
     public ResponseEntity<Map<String, Object>> deleteImage(
             @PathVariable String filename, HttpServletRequest req) {
+        if (localRuntime() && imageService != null) {
+            return ResponseEntity.ok(imageService.deleteImage(filename));
+        }
         return proxyDelete("/api/images/" + filename, req);
+    }
+
+    private boolean localRuntime() {
+        return "java".equals(runtimeMode) || "shadow".equals(runtimeMode);
+    }
+
+    private static int number(Object value, int defaultValue) {
+        return value instanceof Number ? ((Number) value).intValue() : defaultValue;
     }
 }

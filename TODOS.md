@@ -1274,7 +1274,9 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 
 ### Task 2: 死端点本地化（前端页面恢复可用）
 
-- [ ] /api/image/* 与 /api/images（图片生成：ComfyUiClient 已具备基础，补 generate/列表/删除/provider-status）
+- [x] /api/image/* 与 /api/images（`ImageService` + `ComfyUiClient` 扩展：provider-status/models/switch-model/
+      generate（默认 txt2img 工作流 + 轮询 + 本地保存）/progress/列表/删除/5GB 清理/二进制流本地读取；
+      `ImageServiceTest` 3 用例）
 - [x] /api/memory/*（记忆管理：stats/list/search/delete/importance/clear 本地化，`GapFillContractTest` 覆盖）
 - [x] /api/tools/list（工具列表：ToolExecutor/McpToolRegistry 聚合，java 模式本地返回）
 - [x] /api/config/*（`ConfigRuntimeService`：GET/PATCH /api/config/runtime，边界 clamp + data/runtime_config.json 持久化）
@@ -1285,9 +1287,9 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       user_access_token + `FeishuChannelClient` 持久化；`FeishuOAuthServiceTest` 4 用例）
 - [x] /api/python/health（java 模式返回 `java-only` 自包含状态）
 
-> **2026-08-08 进度**：tools/memory/models/switch/python-health/notifications/config/cloud/feishu-oauth
-> 已本地化，`GapFillContractTest` 9 用例 + `FeishuOAuthServiceTest` 4 用例 + 全量 189 绿。
-> Task 2 仅剩 image 生成端点。
+> **2026-08-08 进度**：Task 2 全部完成——tools/memory/models/switch/python-health/notifications/
+> config/cloud/feishu-oauth/image 已本地化，`GapFillContractTest` 9 + `FeishuOAuthServiceTest` 4 +
+> `ImageServiceTest` 3 用例，全量 192 绿。死端点清零，前端页面在 java 模式全部可用。
 
 ### Task 3: persona / prompt / soul 系统
 
