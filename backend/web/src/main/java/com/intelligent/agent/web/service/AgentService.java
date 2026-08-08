@@ -52,6 +52,9 @@ public class AgentService {
     @Value("${ai.runtime.mode:python}")
     private String runtimeMode;
 
+    @Value("${ai.runtime.shadow.allowlist:}")
+    private String shadowAllowlist;
+
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final ExecutorService streamExecutor;
@@ -128,7 +131,7 @@ public class AgentService {
     }
 
     public Map<String, Object> chatFull(ChatRequest request) {
-        if (useLocalRuntime()) {
+        if (useLocalRuntime(request.getUserId())) {
             return localChatFull(request);
         }
         try {
@@ -194,7 +197,7 @@ public class AgentService {
 
     private void doStreamChat(ChatRequest request, WebSocketSession session,
                               String requestId, long startTime) {
-        if (useLocalRuntime()) {
+        if (useLocalRuntime(request.getUserId())) {
             localStreamChat(request, session, requestId, startTime);
             return;
         }
@@ -297,8 +300,28 @@ public class AgentService {
 
     // ── 本地运行时（ai.runtime.mode = java / shadow）────────────────
 
-    private boolean useLocalRuntime() {
-        return "java".equals(runtimeMode) || "shadow".equals(runtimeMode);
+    private boolean useLocalRuntime(String userId) {
+        if ("java".equals(runtimeMode)) {
+            return true;
+        }
+        if ("shadow".equals(runtimeMode)) {
+            return isAllowlisted(userId);
+        }
+        return false;
+    }
+
+    /** shadow 模式 allowlist：逗号分隔的 user id；"*" 表示全部。 */
+    private boolean isAllowlisted(String userId) {
+        if (shadowAllowlist == null || shadowAllowlist.isBlank()) {
+            return false;
+        }
+        for (String entry : shadowAllowlist.split(",")) {
+            String trimmed = entry.trim();
+            if ("*".equals(trimmed) || trimmed.equals(userId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Map<String, Object> localChatFull(ChatRequest request) {

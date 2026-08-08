@@ -129,6 +129,8 @@ services:
       - .env.docker
     environment:
       - PYTHON_SERVICE_BASE_URL=http://agent:8000
+      - AI_RUNTIME_MODE=${AI_RUNTIME_MODE:-python}
+      - AI_SHADOW_ALLOWLIST=${AI_SHADOW_ALLOWLIST:-}
       - SPRING_PROFILES_ACTIVE=docker
       - LOG_LEVEL=INFO
       # 临时诊断飞书长连接是否真的收到帧（含心跳），排查完移除

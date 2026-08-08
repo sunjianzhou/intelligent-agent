@@ -1,6 +1,10 @@
 ai:
   runtime:
-    mode: python
+    mode: ${AI_RUNTIME_MODE:python}
+    shadow:
+      enabled: ${AI_SHADOW_ENABLED:false}
+      # 逗号分隔的 user id allowlist；shadow 模式下命中列表的用户路由到 Java
+      allowlist: ${AI_SHADOW_ALLOWLIST:}
   llm:
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
