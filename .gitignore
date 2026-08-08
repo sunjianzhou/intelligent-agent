@@ -61,3 +61,4 @@ soul/whisper.md
 # Java-only runtime data (migrated from retired Python agent; archived in docs/migration)
 backend/web/data/
 datas/
+docs/migration/reports/
