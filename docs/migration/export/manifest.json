@@ -1,0 +1,78 @@
+{
+    "id":  "legacy-export-20260808-124518",
+    "exported_at":  "2026-08-08T04:45:18Z",
+    "collections":  [
+                        {
+                            "name":  "scheduler_config.json",
+                            "recordCount":  1,
+                            "sha256":  "204e69c765f5b596eb02c5dc5cc75846c4c96d58b62e3822af3f853fb6d504d4",
+                            "jsonl":  "business/scheduler_config.json"
+                        },
+                        {
+                            "name":  "skills.json",
+                            "recordCount":  1,
+                            "sha256":  "e3df6b56fb085cf5537f684d401c6bcadfd7a75c6bbffa38c2b7cdcc17ed30ae",
+                            "jsonl":  "business/skills.json"
+                        },
+                        {
+                            "name":  "tasks.json",
+                            "recordCount":  1,
+                            "sha256":  "a2cca33be4092fea1e7bdfc6ce8b32491da79b9a17471eb61b9be13df2944673",
+                            "jsonl":  "business/tasks.json"
+                        },
+                        {
+                            "name":  "user_model_prefs.json",
+                            "recordCount":  1,
+                            "sha256":  "72ffafaf34734db5b3748e5ed223eb9f3a586c1e242f095f550429955ee08def",
+                            "jsonl":  "business/user_model_prefs.json"
+                        },
+                        {
+                            "name":  "feedback__admin__records.json",
+                            "recordCount":  1,
+                            "sha256":  "6261f58d301b2c196840c69e7775338f7fea3da6dfc2f222991e26807d4e17f0",
+                            "jsonl":  "business/feedback/admin/records.json"
+                        },
+                        {
+                            "name":  "memory__agent-design__questions.md",
+                            "recordCount":  1,
+                            "sha256":  "e839c2d1359753b11cdac5456df4af90c2436fc668f0809cf7c14e4d502e8168",
+                            "jsonl":  "business/memory/agent-design/questions.md"
+                        },
+                        {
+                            "name":  "memory__k8s-learning__commands.md",
+                            "recordCount":  1,
+                            "sha256":  "08b334b5ad248832733b81b7db7549ef89dac77cd0fd4414b4a99916b401b48a",
+                            "jsonl":  "business/memory/k8s-learning/commands.md"
+                        },
+                        {
+                            "name":  "memory__k8s-learning__questions.md",
+                            "recordCount":  1,
+                            "sha256":  "7e16d3f7c0fe89d1999e0f6fea15121828bf5f28769171714ef1075e35cce735",
+                            "jsonl":  "business/memory/k8s-learning/questions.md"
+                        },
+                        {
+                            "name":  "memory__llm-learning__questions.md",
+                            "recordCount":  1,
+                            "sha256":  "656043b08b24b546526804b4ee274358c597a9aeb9e0fe8c7feb9a4f0936c94e",
+                            "jsonl":  "business/memory/llm-learning/questions.md"
+                        },
+                        {
+                            "name":  "roles__example_role.json",
+                            "recordCount":  1,
+                            "sha256":  "c172309e0172a6037896a2ab587f6c09d077c29ec8cb5ee0884d95f85237ee90",
+                            "jsonl":  "business/roles/example_role.json"
+                        },
+                        {
+                            "name":  "skill_logs__default__records.json",
+                            "recordCount":  1,
+                            "sha256":  "26e6bb5b7652602dd528d0b5534dde5625efd1df88d6060a4194ab2b0d5f8174",
+                            "jsonl":  "business/skill_logs/default/records.json"
+                        },
+                        {
+                            "name":  "tool_calls__calls.jsonl",
+                            "recordCount":  1,
+                            "sha256":  "d892326108fb60af8faa3586f5ea1a40ba647b1719e2e3d09f5de7f611814228",
+                            "jsonl":  "business/tool_calls/calls.jsonl"
+                        }
+                    ]
+}

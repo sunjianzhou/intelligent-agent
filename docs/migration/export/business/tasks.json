@@ -1,0 +1,31 @@
+[
+  {
+    "id": "task_1260020f",
+    "name": "QA测试任务",
+    "description": "测试任务创建功能",
+    "action": "log",
+    "args": {
+      "message": "⏰ 这是一个QA测试提醒消息",
+      "role": "assistant"
+    },
+    "schedule_type": "delay",
+    "interval_seconds": null,
+    "delay_seconds": 60,
+    "run_at": null,
+    "cron_expression": null,
+    "max_runs": null,
+    "retry_count": 0,
+    "max_retries": 3,
+    "status": "completed",
+    "created_at": "2026-06-01T09:12:46.485088",
+    "started_at": "2026-06-01T09:13:47.633967",
+    "completed_at": "2026-06-01T09:13:47.634977",
+    "last_run": "2026-06-01T09:13:47.633967",
+    "next_run": "2026-06-01T09:13:46.485088",
+    "run_count": 1,
+    "last_result": "{\"message\": \"⏰ 这是一个QA测试提醒消息\", \"level\": \"INFO\", \"timestamp\": \"2026-06-01T09:13:47.634977\"}",
+    "last_error": null,
+    "tags": [],
+    "metadata": {}
+  }
+]

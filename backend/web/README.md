@@ -1,24 +1,23 @@
 # Java Backend 模块
 
-> 最后更新：2026-07-09（Channel Adapter 抽象层 Java 侧：ChannelAdapter + FeishuChannelAdapter + ChannelAdapterManager）
+> 最后更新：2026-08-08（W13 Java 统一迁移完成：唯一服务端，Python Agent 已退役）
 
 ## 技术栈与运行环境
 
 | 项目 | 版本 |
 |------|------|
-| **语言** | Java **1.8**（JDK 8，`pom.xml` 中 `<java.version>1.8</java.version>`）|
-| Web 框架 | Spring Boot **2.7.18** |
+| **语言** | Java **21**（JDK 21，`pom.xml` 中 `<java.version>21</java.version>`）|
+| Web 框架 | Spring Boot **3.5.16** |
 | 构建工具 | Maven 3.6+（项目内置 `mvnw` wrapper）|
 | WebSocket | Spring WebSocket（`TextWebSocketHandler`）|
-| HTTP 客户端 | Apache HttpClient 4.5 |
-| JSON | Jackson 2.11 |
+| HTTP 客户端 | Apache HttpClient 5 / java.net.http |
+| JSON | Jackson 2.18 |
 | 测试 | JUnit 5（`./mvnw test`）|
-
-> **JDK 8 限制**：`Map.of()`、`List.of()` 等 Java 9+ API 不可用，多值 Map 须用 `new HashMap<>()` 或 `Collections.singletonMap()`。
 
 ---
 
-> Spring Boot 2.7 服务，port 8080。纯粹的 WebSocket 网关 + HTTP 代理层，不含任何 AI 业务逻辑。
+> Spring Boot 3.5 服务，port 8080。唯一服务端：WebSocket 网关 + 全部 AI 逻辑
+> （记忆/RAG/领域 API/调度/Channel 集成）。`ai.runtime.mode` 控制本地/影子/回退路由。
 
 ---
 
@@ -26,12 +25,13 @@
 
 | 职责 | 说明 |
 |------|------|
-| WebSocket 网关 | 接收前端 WS 消息，异步转发至 Python SSE 流，推送 token / 工具事件 / 任务更新 |
+| WebSocket 网关 | 接收前端 WS 消息，本地 ReAct 编排（java/shadow）或回退 Python SSE（python 模式） |
 | JWT 认证 | 前端 JWT 验证；向 Python 发请求时使用服务间 token（`java-service`）|
-| HTTP 代理 | 所有 `/api/*` 请求透明代理至 Python Agent（附带 jwt 鉴权）|
-| 模型 / 角色切换 | HealthController + PersonaProxyController 封装后转发至 Python |
+| 领域 API | role/conversation/project/task/knowledge/skill/analytics/teaching 本地服务（java/shadow 模式）|
+| 记忆与 AI | 短期会话/蒸馏/摘要/语义缓存 + ReAct 编排 + Ollama/云端 LLM + 工具内核 |
+| 调度与集成 | TaskSchedulerService + Feishu/WeCom/Telegram/ComfyUI/MCP + 幂等广播 |
 
-**不在这里做的事**：LLM 推理、记忆存取、工具执行——这些全在 Python。
+**Python 回退**：`ai.runtime.mode=python` 时仍可代理旧 Python 服务（回滚窗口用）。
 
 ---
 

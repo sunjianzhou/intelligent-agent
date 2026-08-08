@@ -56,67 +56,6 @@ services:
               count: all
               capabilities: [gpu]
 
-  # ── Python Agent ──────────────────────────────────────────
-  agent:
-    build:
-      context: ./agent
-      dockerfile: Dockerfile
-      args:
-        # 默认不安装 GitHub MCP，减少 200MB+ 镜像体积；如需开启传 INSTALL_MCP=1
-        INSTALL_MCP: ${INSTALL_MCP:-0}
-    container_name: ia-agent
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env.docker
-    environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - API_HOST=0.0.0.0
-      - API_PORT=8000
-      - LOG_LEVEL=INFO
-      - TZ=Asia/Shanghai
-      # JWT_SECRET 必须通过 .env / .env.docker 注入，禁止 docker-compose.yml 硬编码默认值
-      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET 未设置，请在 .env.docker 中配置（≥32 字符强随机串）}
-      # 限制 torch/OpenMP 线程数，降低 RSS（不影响语义搜索质量）
-      - OMP_NUM_THREADS=2
-      - MKL_NUM_THREADS=2
-      - OPENBLAS_NUM_THREADS=2
-      - TOKENIZERS_PARALLELISM=false
-      # 模型 GPU 层数：-1=自动；大模型（如 dolphin 16GB）+ 小显存 GPU 需手动设置
-      # 例：GTX1660 6GB 跑 dolphin 建议 OLLAMA_NUM_GPU=18
-      - OLLAMA_NUM_GPU=${OLLAMA_NUM_GPU:--1}
-      # 自动记忆提炼 + 阶段摘要间隔（9.3 / 9.4）；覆盖 settings.py 默认值
-      - MEMORY_DISTILL_INTERVAL=${MEMORY_DISTILL_INTERVAL:-5}
-      - MEMORY_SUMMARY_INTERVAL=${MEMORY_SUMMARY_INTERVAL:-10}
-      # CPU 单核串行推理：dolphin 是 CPU 密集型，并发=1 防止多请求争抢 CPU 导致超时
-      - INFERENCE_CONCURRENCY=${INFERENCE_CONCURRENCY:-1}
-      # HuggingFace 离线模式：模型已预缓存至 volume，跳过网络检查加快启动
-      - HF_HUB_OFFLINE=1
-      # 飞书消息发送工具（Python im_message Tool）：值已通过 env_file（.env.docker）注入，此处不再重复声明
-      # （重复声明会用 .env 里的默认值覆盖 env_file 的真实值）
-    volumes:
-      - agent_chroma_data:/app/chroma-data
-      - agent_chroma_data_longterm:/app/chroma-data-longterm
-      - ./agent/prompts:/app/prompts       # 挂载 prompts 目录，修改 YAML 无需重新构建
-      - ./agent/skills:/app/skills         # 挂载 skills 目录，同上
-      - ./agent/personas:/app/personas     # 挂载 personas 目录（9.2），新增角色无需重建
-      - agent_data:/app/data
-      - agent_cache:/home/appuser/.cache
-    restart: unless-stopped
-    networks:
-      - ia_net
-    deploy:
-      resources:
-        limits:
-          memory: 2g       # 适当增大：embedding + CPU offload 层需要更多内存
-          cpus: "4.0"      # i7-10700 有 8 核，给 agent 4 核，剩余留给 Ollama
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s   # 嵌入模型冷加载需要时间（HF_HUB_OFFLINE=1 后通常 <30s）
-
   # ── Java 后端 ──────────────────────────────────────────────
   backend:
     build:
@@ -128,8 +67,8 @@ services:
     env_file:
       - .env.docker
     environment:
-      - PYTHON_SERVICE_BASE_URL=http://agent:8000
-      - AI_RUNTIME_MODE=${AI_RUNTIME_MODE:-python}
+      # Python Agent 已于 2026-08-08 退役；Java 后端为唯一服务端（默认 java 模式）
+      - AI_RUNTIME_MODE=${AI_RUNTIME_MODE:-java}
       - AI_SHADOW_ALLOWLIST=${AI_SHADOW_ALLOWLIST:-}
       - SPRING_PROFILES_ACTIVE=docker
       - LOG_LEVEL=INFO
@@ -140,9 +79,6 @@ services:
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
       # 飞书 IM 通道：值已通过 env_file（.env.docker）注入，此处不再重复声明
       # （重复声明会用 .env 里的默认值覆盖 env_file 的真实值）
-    depends_on:
-      agent:
-        condition: service_healthy
     restart: unless-stopped
     networks:
       - ia_net

@@ -1,32 +1,24 @@
 # Intelligent Agent System
 
-> 本地优先的三层 AI 智能体平台：Ollama 本地推理 · Spring Boot WebSocket 网关 · Vue 3 聊天界面 · Python CLI 客户端  
+> 本地优先的 AI 智能体平台：Ollama 本地推理 · Spring Boot 单后端（WebSocket + REST + 全部 AI 逻辑）· Vue 3 聊天界面 · Java CLI 客户端
 > 支持多工具调用、长期记忆、任务调度、多角色切换、项目上下文持久化。
-> 最后更新：2026-07-09（W1-W12 全部落地：主人永久铁律 + Channel Adapter 抽象层 + 双通道并行广播 + SoulLayer v1.1 大文件承载）
+> 最后更新：2026-08-08（W13 Java 统一迁移完成：Python Agent 已退役，全部逻辑并入 Java 单后端）
 
 ```
 浏览器 / CLI 客户端
         │  WebSocket (流式) + REST
         ▼
-┌─────────────────────────────────┐
-│  Java 后端  (Spring Boot :8080) │  ← 纯网关：JWT 鉴权、WS 管理、代理转发
-└────────────────┬────────────────┘
-                 │  HTTP + SSE
-                 ▼
-┌─────────────────────────────────────────────────────┐
-│  Python Agent  (FastAPI  :8000)                    │  ← 全部 AI 逻辑在此
-│  ┌──────────┐  ┌─────────────┐  ┌──────────────┐  │
-│  │ 记忆系统 │  │  工具管理   │  │ Channel      │  │
-│  │ 任务调度 │  │  角色系统   │  │ Adapter 层   │  │
-│  │ 项目系统 │  │  技能路由   │  │ 4channel统一 │  │
-│  └──────────┘  └─────────────┘  └──────────────┘  │
-└──────────┬──────────────────────────────────────────┘
-           │
-     ┌─────┴──────┐
-     ▼            ▼
-  Ollama       ChromaDB
- (:11434)    (进程内嵌入)
- 本地 LLM     向量长期记忆
+┌────────────────────────────────────────────────┐
+│  Java 后端 (Spring Boot :8080)                │
+│   JWT 鉴权 · WS 管理 · 记忆/RAG · 领域 API    │
+│   任务调度 · Channel 集成 · 语义缓存 · 工具内核 │
+└───────────────────┬────────────────────────────┘
+                    │
+              ┌─────┴──────┐
+              ▼            ▼
+           Ollama      向量存储
+          (:11434)   (内存/迁移后持久化)
+           本地 LLM      长期记忆
 ```
 
 ---
@@ -47,10 +39,12 @@ cp .env.docker.example .env.docker    # 容器运行时变量（含 IM 集成、
 
 | 命令 | 启动的服务 | 适用场景 |
 |------|-----------|---------|
-| `docker compose up -d --build` | agent · backend · frontend | 纯本地使用，云端 LLM 或不需要公网 |
-| `docker compose --profile tunnel up -d --build` | agent · backend · frontend · **cloudflared** | 需要公网访问（企业微信/飞书回调），使用云端 LLM |
-| `docker compose --profile local up -d --build` | agent · backend · frontend · **ollama · comfyui** | 本地 GPU 推理，无需公网 |
+| `docker compose up -d --build` | backend · frontend | 纯本地使用，云端 LLM 或不需要公网（Java 单后端） |
+| `docker compose --profile tunnel up -d --build` | backend · frontend · **cloudflared** | 需要公网访问（企业微信/飞书回调），使用云端 LLM |
+| `docker compose --profile local up -d --build` | backend · frontend · **ollama · comfyui** | 本地 GPU 推理，无需公网 |
 | `docker compose --profile local --profile tunnel up -d --build` | 全部服务 | 本地 GPU 推理 + 公网隧道 |
+| `start_all.bat` / `start_all.sh` | backend · frontend · CLI（Java-only） | 本机非容器启动 |
+| `start_java_mode.bat` | backend（java 模式） | 仅启动后端 |
 
 > **重启宿主机后**：Docker Desktop 若已设置为随系统自启，容器会自动恢复，无需手动执行任何命令。  
 > 如需手动恢复，执行与原来相同的启动命令即可。Cloudflare 隧道会自动重连，域名和回调 URL 无需重新配置。
@@ -86,7 +80,13 @@ cp .env.docker.example .env.docker    # 容器运行时变量（含 IM 集成、
 
 ## 模块介绍
 
-### Python Agent (`agent/`)
+### Java 后端（`backend/web/`，唯一服务端）
+
+> Python Agent 已于 2026-08-08 退役（commit `acf1f6b` 验收记录 + `git rm` 退役提交）。
+> 全部 AI 逻辑并入 Java 单后端：记忆/蒸馏/摘要/语义缓存、角色/会话/项目/任务领域服务、
+> 知识/技能/分析/教学、任务调度、Channel 集成（飞书/企微/Telegram）、ComfyUI/MCP 集成。
+> 运行时模式 `AI_RUNTIME_MODE`：`java`（默认，全本地）/ `shadow`（allowlist 渐进切换）/
+> `python`（仅回滚用，需旧 Python 服务）。
 
 **技术栈**：Python 3.10 · FastAPI · Uvicorn · ChromaDB · sentence-transformers · Ollama SDK
 

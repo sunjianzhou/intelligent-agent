@@ -1,11 +1,11 @@
 # 智能体项目 — AI 上下文速查文档
 
 > **本文档专为大模型阅读设计**。新对话开始时先读此文件，5 分钟内建立完整项目认知，无需再反复询问基础背景。
-> 最后更新：2026-07-09（W1-W12 全部落地：主人永久铁律 + Channel Adapter 抽象层 + 双通道并行广播 + 可观测性）
+> 最后更新：2026-08-08（W13 Java 统一迁移完成：Python Agent 已退役，全部 AI 逻辑并入 Java 单后端）
 
 ---
 
-## 一、整体架构（三层 + 公网接入 + IM 渠道）
+## 一、整体架构（Java 单后端 + 公网接入 + IM 渠道）
 
 ```
 浏览器（PWA）/ CLI
@@ -23,40 +23,32 @@
     │  /wecom/*  → proxy → backend:8080（企业微信回调）
     │  /feishu/* → proxy → backend:8080（飞书回调）
     ▼
-Java 后端 (Spring Boot, port 8080)   ← 纯网关，无 AI 逻辑
-    │                                   含 ChannelAdapterManager（FeishuChannelAdapter + broadcast）
-    │                                   含 WeComCallbackController、FeishuWebSocketClient
-    │  HTTP + SSE
-    ▼
-Python Agent (FastAPI, port 8000)    ← 所有 AI 逻辑在此
+Java 后端 (Spring Boot, port 8080)   ← 唯一服务端：JWT/WS 网关 + 全部 AI 逻辑
     │
-    ├── Channel Adapter 层             ← 4 channel 统一接口（飞书/企微/Web/Telegram）
-    │   ├── ChannelAdapter（ABC）      ← send_text/card/file/image + TokenBucket + RetryConfig + ChannelMetric
-    │   ├── FeishuAdapter             ← 按操作独立限流（text 50/s, card 1.67/s），Session 连接池
-    │   ├── WeComAdapter              ← 限流 1.67/s，4KB card 截断
-    │   ├── WebAdapter                ← WS 推送，无限流
-    │   ├── TelegramAdapter           ← 限流 30/s，Inline Keyboard card
-    │   ├── ChannelRouter             ← 单通道/广播/去重/fallback/指标聚合，全局单例
-    │   ├── ChannelAdapterFactory     ← 自动发现 4 adapter
-    │   ├── ChannelMessageTool        ← LLM 统一 IM 工具（替代 FeishuIMTool）
-    │   └── ChannelNotifier           ← 整合通知系统 + GET /health/channels 可观测性
+    ├── ai.memory                     ← 短期会话/蒸馏/摘要/语义缓存/项目上下文（Task 2）
+    ├── domain.*                      ← 角色/会话/项目/任务/知识/技能/分析/教学（Task 3-4）
+    ├── infrastructure.scheduler      ← 任务调度（immediate/delay/interval/datetime/cron）
+    ├── integration.*                 ← Feishu/WeCom/Telegram 通道 + ComfyUI/MCP（Task 5）
+    ├── ai.agent / ai.llm / ai.tool   ← ReAct 编排 + Ollama/云端 LLM + 工具内核（Plan 1）
     │
     ├── Ollama (port 11434)           ← 本地 LLM 推理（--profile local，默认模型 dolphin:latest）
-    ├── 云端 LLM（按需在 /admin/models 激活，不作全局默认）
-    └── ChromaDB (进程内)            ← 向量存储（具名 Docker 卷）
+    └── 云端 LLM（按需在 /admin/models 激活，不作全局默认）
 ```
 
 **Docker 容器名**：
-- 核心：`ia-frontend`(3000) / `ia-backend`(8080) / `ia-agent`(8000)
+- 核心：`ia-frontend`(3000) / `ia-backend`(8080)（Python Agent 已于 2026-08-08 退役）
 - 可选：`ia-ollama`(11434, `--profile local`) / `ia-comfyui`(8188, `--profile local`) / `ia-cloudflared`(`--profile tunnel`)
 
 **profile 组合**：
 | 命令 | 启动内容 |
 |------|---------|
-| `docker compose up -d` | 核心三件套（无公网隧道） |
+| `docker compose up -d` | backend + frontend（Java 单后端，无公网隧道） |
 | `docker compose --profile tunnel up -d` | + cloudflared（公网 + IM 回调） |
 | `docker compose --profile local up -d` | + ollama + comfyui（本地推理 + 图片生成） |
 | `docker compose --profile local --profile tunnel up -d` | 全量 |
+
+**运行时模式**：`AI_RUNTIME_MODE` 环境变量 —— `java`（默认，全部走本地 Java 服务）/
+`shadow`（allowlist 用户走 Java，其余回退）/ `python`（仅回滚窗口使用，需旧 Python 服务）。
 
 **前端热更新命令**（不需要重建镜像，~10秒）：
 ```bash

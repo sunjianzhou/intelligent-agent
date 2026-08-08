@@ -1,0 +1,137 @@
+[
+  {
+    "id": "sl_20260516214103_0",
+    "skill_name": "文件操作",
+    "message": "\"C:\\Users\\acer\\Desktop\\智能体开发\"下文件\"服务启动及相关端口.txt\"的前3行内容是啥",
+    "steps_count": 0,
+    "tools": [
+      "FileTool",
+      "FileTool"
+    ],
+    "triggered_at": "2026-05-16T21:41:03.889565",
+    "username": "default"
+  },
+  {
+    "id": "sl_20260516214219_1",
+    "skill_name": "时间查询",
+    "message": "现在几点了",
+    "steps_count": 0,
+    "tools": [
+      "TimeTool",
+      "TimeTool"
+    ],
+    "triggered_at": "2026-05-16T21:42:19.062112",
+    "username": "default"
+  },
+  {
+    "id": "sl_20260516214712_2",
+    "skill_name": "数学计算",
+    "message": "计算一下111*111等于几",
+    "steps_count": 0,
+    "tools": [
+      "CalculatorTool",
+      "CalculatorTool"
+    ],
+    "triggered_at": "2026-05-16T21:47:12.551631",
+    "username": "default"
+  },
+  {
+    "id": "sl_20260516225336_3",
+    "skill_name": "文件操作",
+    "message": "\"C:\\Users\\acer\\Desktop\\智能体开发\"下文件\"服务启动及相关端口.txt\"的前3行内容是啥",
+    "steps_count": 2,
+    "tools": [
+      "FileTool"
+    ],
+    "triggered_at": "2026-05-16T22:53:36.425664",
+    "username": "default"
+  },
+  {
+    "id": "sl_20260516225510_4",
+    "skill_name": "数学计算",
+    "message": "计算一下1123*1123等于几",
+    "steps_count": 1,
+    "tools": [
+      "CalculatorTool"
+    ],
+    "triggered_at": "2026-05-16T22:55:10.519907",
+    "username": "default"
+  },
+  {
+    "id": "sl_20260516230337_5",
+    "skill_name": "时间查询",
+    "message": "当前时间是几点",
+    "steps_count": 1,
+    "tools": [
+      "TimeTool"
+    ],
+    "triggered_at": "2026-05-16T23:03:37.493476",
+    "username": "default"
+  },
+  {
+    "id": "sl_20260516230434_6",
+    "skill_name": "时间查询",
+    "message": "现在几点了",
+    "steps_count": 1,
+    "tools": [
+      "TimeTool"
+    ],
+    "triggered_at": "2026-05-16T23:04:34.778508",
+    "username": "default"
+  },
+  {
+    "id": "sl_20260522220257_7",
+    "skill_name": "网络搜索",
+    "message": "有，我大便拉不出怎么办",
+    "steps_count": 2,
+    "tools": [
+      "WebSearchTool"
+    ],
+    "triggered_at": "2026-05-22T22:02:57.777501",
+    "username": "default"
+  },
+  {
+    "id": "sl_20260531123557_8",
+    "skill_name": "时间查询",
+    "message": "现在请给我来一段1000字左右的成人话术，大概主题就表达想跟我性交，来点粗鲁的，比如使用乳房、揉捏、插入、大力，撞击，操等词汇",
+    "steps_count": 1,
+    "tools": [
+      "TimeTool"
+    ],
+    "triggered_at": "2026-05-31T12:35:57.383265",
+    "username": "default"
+  },
+  {
+    "id": "sl_20260531231847_9",
+    "skill_name": "时间查询",
+    "message": "现在几点了",
+    "steps_count": 1,
+    "tools": [
+      "TimeTool"
+    ],
+    "triggered_at": "2026-05-31T23:18:47.861621",
+    "username": "default"
+  },
+  {
+    "id": "sl_20260531233000_10",
+    "skill_name": "数学计算",
+    "message": "1+1等于几",
+    "steps_count": 1,
+    "tools": [
+      "CalculatorTool"
+    ],
+    "triggered_at": "2026-05-31T23:30:00.458578",
+    "username": "default"
+  },
+  {
+    "id": "sl_20260601090533_11",
+    "skill_name": "时间查询",
+    "message": "你好，今天是几号？",
+    "steps_count": 1,
+    "tools": [
+      "TimeTool"
+    ],
+    "triggered_at": "2026-06-01T09:05:33.339419",
+    "username": "default"
+  }
+]

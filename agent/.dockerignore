@@ -1,9 +1,0 @@
-__pycache__
-*.pyc
-*.pyo
-.env
-chroma-data/
-chroma-data-longterm/
-tests/
-*.log
-.git

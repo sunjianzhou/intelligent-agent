@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Intelligent Agent — unified startup script (Linux / macOS / WSL)
+# Intelligent Agent — Java-only unified startup (Python Agent retired 2026-08-08)
 #
 # Usage:
-#   ./start_all.sh           # start all services (native)
+#   ./start_all.sh           # start all services (native, java mode backend)
 #   ./start_all.sh stop      # stop all native services
 #   ./start_all.sh docker    # start via docker compose
-#   ./start_all.sh client    # start only the CLI client
+#   ./start_all.sh client    # start only the Java CLI client (REPL)
 #
 # Override defaults by creating .env.local in the project root:
-#   PYTHON_EXE=/path/to/python   # explicit Python path
-#   MVN=/path/to/mvnw            # explicit Maven wrapper path
+#   JAVA_HOME=/path/to/jdk21  # explicit JDK home
+#   MVN=/path/to/mvnw         # explicit Maven wrapper path
 
 set -euo pipefail
 
@@ -18,7 +18,6 @@ ACTION="${1:-start}"
 PID_DIR="$ROOT/.pids"
 LOG_DIR="$ROOT/logs"
 
-# ── Colours ───────────────────────────────────────────────────
 CYAN='\033[0;36m'; GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; NC='\033[0m'
 step() { echo -e "\n${CYAN}>>> $*${NC}"; }
 ok()   { echo -e "  ${GREEN}[OK]${NC} $*"; }
@@ -26,31 +25,13 @@ err()  { echo -e "  ${RED}[ERR]${NC} $*" >&2; }
 info() { echo -e "  ${YELLOW}[ - ]${NC} $*"; }
 
 mkdir -p "$PID_DIR" "$LOG_DIR"
-
-# ── Load optional local overrides ────────────────────────────
 [[ -f "$ROOT/.env.local" ]] && { set -a; source "$ROOT/.env.local"; set +a; }
 
-# ── Find Python (prefers conda python310 env) ─────────────────
-find_python() {
-    [[ -n "${PYTHON_EXE:-}" && -x "$PYTHON_EXE" ]] && { echo "$PYTHON_EXE"; return; }
-    # conda environments (common install locations)
-    for base in "$HOME/anaconda3" "$HOME/miniconda3" "$HOME/opt/anaconda3" \
-                "/opt/conda" "/usr/local/anaconda3"; do
-        local p="$base/envs/python310/bin/python"
-        [[ -x "$p" ]] && { echo "$p"; return; }
-    done
-    # system Python 3.9+
-    for cmd in python3.10 python3.11 python3.9 python3 python; do
-        local path; path=$(command -v "$cmd" 2>/dev/null) || continue
-        local ok; ok=$("$path" -c "import sys; print(sys.version_info >= (3,9))" 2>/dev/null)
-        [[ "$ok" == "True" ]] && { echo "$path"; return; }
-    done
-}
-
-PYTHON="${PYTHON_EXE:-$(find_python)}"
 MVN="${MVN:-$ROOT/backend/web/mvnw}"
+JAVA="${JAVA_HOME:+$JAVA_HOME/bin/java}"
+JAVA="${JAVA:-$(command -v java)}"
+[[ -n "$JAVA" ]] || { err "Java 21 not found. Set JAVA_HOME in .env.local."; exit 1; }
 
-# ── Wait for a TCP port to open ───────────────────────────────
 wait_port() {
     local port=$1 name=$2 max=${3:-30}
     info "Waiting for $name (port $port)..."
@@ -65,7 +46,6 @@ wait_port() {
     return 1
 }
 
-# ── Launch a process in the background, record its PID ────────
 start_bg() {
     local name="$1"; shift
     local logfile="$LOG_DIR/$name.log"
@@ -75,7 +55,6 @@ start_bg() {
     ok "Started $name (pid=$pid, log=logs/$name.log)"
 }
 
-# ── Stop all services ─────────────────────────────────────────
 stop_all() {
     step "Stopping all services"
     local found=0
@@ -95,7 +74,6 @@ stop_all() {
     [[ $found -eq 0 ]] && info "No running services found in $PID_DIR"
 }
 
-# ── Docker mode ───────────────────────────────────────────────
 docker_start() {
     step "Starting via Docker Compose"
     if [[ ! -f "$ROOT/.env.docker" ]]; then
@@ -110,7 +88,6 @@ docker_start() {
     echo ""
     echo "  Frontend : http://localhost:3000"
     echo "  Backend  : http://localhost:8080"
-    echo "  Agent    : http://localhost:8000"
     echo ""
     echo "  Profiles : --profile local   (+ Ollama)"
     echo "             --profile https   (+ Nginx TLS)"
@@ -118,55 +95,45 @@ docker_start() {
     echo "  Stop     : docker compose down"
 }
 
-# ── Native start ──────────────────────────────────────────────
 native_start() {
     echo ""
     echo "============================================="
     echo " Intelligent Agent — Starting All Services"
     echo "============================================="
 
-    [[ -n "$PYTHON" ]] || { err "Python 3.9+ not found. Install Anaconda/Miniconda or set PYTHON_EXE."; exit 1; }
-    [[ -x "$MVN" ]]    || { err "Maven wrapper not found at $MVN"; exit 1; }
     command -v npm &>/dev/null || { err "npm not found. Install Node.js."; exit 1; }
+    [[ -x "$MVN" ]] || { err "Maven wrapper not found at $MVN"; exit 1; }
 
-    step "[1/4] Agent (port 8000)"
-    start_bg agent bash -c "cd '$ROOT/agent' && '$PYTHON' -m uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000 --reload"
+    step "[1/3] Backend (port 8080, java mode)"
+    start_bg backend bash -c "cd '$ROOT/backend/web' && AI_RUNTIME_MODE='${AI_RUNTIME_MODE:-java}' '$JAVA' -jar target/web-1.0-SNAPSHOT.jar"
 
-    step "[2/4] Backend (port 8080)"
-    start_bg backend bash -c "cd '$ROOT/backend/web' && '$MVN' spring-boot:run"
-
-    step "[3/4] Frontend (port 5173)"
+    step "[2/3] Frontend (port 5173)"
     start_bg frontend bash -c "cd '$ROOT/frontend' && npm run dev"
 
     step "Waiting for services to come up"
-    wait_port 8000 "Agent"
     wait_port 8080 "Backend"
     wait_port 5173 "Frontend"
 
     echo ""
     ok "All services running!"
     echo ""
-    echo "  Agent    : http://localhost:8000"
     echo "  Backend  : http://localhost:8080"
     echo "  Frontend : http://localhost:5173"
     echo ""
     echo "  Logs : logs/  |  Stop : ./start_all.sh stop"
 
-    step "[4/4] Client (CLI)"
-    info "Connecting to http://localhost:8000 ..."
+    step "[3/3] Client (Java CLI REPL)"
+    info "Connecting to http://localhost:8080 ..."
     echo ""
     cd "$ROOT/client"
-    exec "$PYTHON" main.py
+    exec "$JAVA" -jar target/client-1.0-SNAPSHOT.jar repl --url http://localhost:8080
 }
 
-# ── Client only ───────────────────────────────────────────────
 client_only() {
-    [[ -n "$PYTHON" ]] || { err "Python 3.9+ not found."; exit 1; }
     cd "$ROOT/client"
-    exec "$PYTHON" main.py "${@:2}"
+    exec "$JAVA" -jar target/client-1.0-SNAPSHOT.jar repl --url "${2:-http://localhost:8080}"
 }
 
-# ── Dispatch ──────────────────────────────────────────────────
 case "$ACTION" in
     stop)   stop_all ;;
     docker) docker_start "$@" ;;

@@ -71,7 +71,9 @@ public class LegacyDataImporter {
         int copied = 0;
         try (var stream = Files.walk(sourceDir)) {
             for (Path source : stream.filter(Files::isRegularFile).toList()) {
-                if (!source.getFileName().toString().endsWith(".json")) {
+                String name = source.getFileName().toString();
+                if (!(name.endsWith(".json") || name.endsWith(".jsonl")
+                        || name.endsWith(".md"))) {
                     continue;
                 }
                 Path relative = sourceDir.relativize(source);
