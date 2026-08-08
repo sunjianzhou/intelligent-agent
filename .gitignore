@@ -58,3 +58,6 @@ agent/data/tool_calls/
 # 灵魂私密档案（不入版本控制）
 soul/whisper.md
 .superpowers/
+# Java-only runtime data (migrated from retired Python agent; archived in docs/migration)
+backend/web/data/
+datas/

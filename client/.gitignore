@@ -1,2 +1,3 @@
 target/
 datas/session_*.json
+dependency-reduced-pom.xml
