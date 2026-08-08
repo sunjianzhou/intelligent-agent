@@ -1277,15 +1277,15 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 - [ ] /api/image/* 与 /api/images（图片生成：ComfyUiClient 已具备基础，补 generate/列表/删除/provider-status）
 - [x] /api/memory/*（记忆管理：stats/list/search/delete/importance/clear 本地化，`GapFillContractTest` 覆盖）
 - [x] /api/tools/list（工具列表：ToolExecutor/McpToolRegistry 聚合，java 模式本地返回）
-- [ ] /api/config/*（运行时配置读写：接 application.yml + 领域服务）
-- [ ] /api/cloud/*（云端服务商 CRUD + API KEY 绑定：接 LlmProviderRouter 配置）
+- [x] /api/config/*（`ConfigRuntimeService`：GET/PATCH /api/config/runtime，边界 clamp + data/runtime_config.json 持久化）
+- [x] /api/cloud/*（`CloudService`：服务商 CRUD + 激活/停用 + API KEY 掩码，激活联动 `ModelService.activateCloud`）
 - [x] /api/models 与 /api/model/switch（本地：`ModelService` Ollama /api/tags + per-user 偏好持久化）
 - [x] /api/notifications/poll（`TaskSchedulerService` 通知队列，log action 入队）
 - [ ] /api/feishu/oauth/*（authorize/callback/status 本地 OAuth 流程 + FeishuChannelClient token 持久化）
 - [x] /api/python/health（java 模式返回 `java-only` 自包含状态）
 
-> **2026-08-08 进度**：tools/memory/models/switch/python-health/notifications 已本地化（commit 待填），
-> `GapFillContractTest` 7 用例 + 全量 183 绿。剩余 image/config/cloud/feishu-oauth 继续。
+> **2026-08-08 进度**：tools/memory/models/switch/python-health/notifications/config/cloud 已本地化，
+> `GapFillContractTest` 9 用例 + 全量 185 绿。剩余 image / feishu-oauth 继续。
 
 ### Task 3: persona / prompt / soul 系统
 

@@ -6,6 +6,7 @@ import com.intelligent.agent.web.service.AgentService;
 import com.intelligent.agent.web.service.ModelService;
 import com.intelligent.agent.web.service.PythonProxyService;
 import com.intelligent.agent.web.infrastructure.scheduler.TaskSchedulerService;
+import com.intelligent.agent.web.service.ConfigRuntimeService;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,6 +33,7 @@ public class HealthController {
     @Autowired private ObjectMapper objectMapper;
     @Autowired private ModelService modelService;
     @Autowired(required = false) private TaskSchedulerService taskSchedulerService;
+    @Autowired(required = false) private ConfigRuntimeService configRuntimeService;
     @Value("${ai.runtime.mode:python}")
     private String runtimeMode;
 
@@ -111,6 +113,10 @@ public class HealthController {
 
     @GetMapping("/config/runtime")
     public ResponseEntity<Map<String, Object>> getRuntimeConfig() {
+        if (configRuntimeService != null
+                && ("java".equals(runtimeMode) || "shadow".equals(runtimeMode))) {
+            return ResponseEntity.ok(configRuntimeService.get());
+        }
         try {
             ResponseEntity<String> res = proxy.get("/api/config/runtime");
             if (res.getStatusCode().is2xxSuccessful())
@@ -123,6 +129,10 @@ public class HealthController {
 
     @PatchMapping("/config/runtime")
     public ResponseEntity<Map<String, Object>> patchRuntimeConfig(@RequestBody Map<String, Object> body) {
+        if (configRuntimeService != null
+                && ("java".equals(runtimeMode) || "shadow".equals(runtimeMode))) {
+            return ResponseEntity.ok(configRuntimeService.patch(body));
+        }
         try {
             String json = objectMapper.writeValueAsString(body);
             ResponseEntity<String> res = proxy.patch("/api/config/runtime", json);

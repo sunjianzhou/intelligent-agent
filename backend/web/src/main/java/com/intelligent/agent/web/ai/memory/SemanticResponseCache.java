@@ -95,6 +95,16 @@ public class SemanticResponseCache {
                 .map(Scored::answer);
     }
 
+    /** 当前缓存条目数（/api/config/runtime usage 用）。 */
+    public int entries() {
+        evictExpired();
+        return entries.size();
+    }
+
+    private void evictExpired() {
+        entries.entrySet().removeIf(e -> expired(e.getValue()));
+    }
+
     private boolean expired(CacheEntry entry) {
         return entry.createdAt().plus(ttl).isBefore(Instant.now());
     }

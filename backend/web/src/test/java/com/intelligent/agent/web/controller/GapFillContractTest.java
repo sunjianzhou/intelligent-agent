@@ -12,6 +12,8 @@ import com.intelligent.agent.web.infrastructure.scheduler.TaskSchedulerService;
 import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
 import com.intelligent.agent.web.integration.mcp.McpToolRegistry;
 import com.intelligent.agent.web.service.AgentService;
+import com.intelligent.agent.web.service.CloudService;
+import com.intelligent.agent.web.service.ConfigRuntimeService;
 import com.intelligent.agent.web.service.ModelService;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -46,6 +48,7 @@ class GapFillContractTest {
     private Path dataDir;
     private MemoryRepository memoryRepository;
     private ConversationMemoryService conversationMemoryService;
+    private SemanticResponseCache semanticResponseCache;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -54,8 +57,9 @@ class GapFillContractTest {
         dataDir = Files.createTempDirectory("gapfill");
 
         memoryRepository = new VectorMemoryRepository();
+        semanticResponseCache = new SemanticResponseCache();
         conversationMemoryService = new ConversationMemoryService(
-                memoryRepository, new SemanticResponseCache(), new MemoryDistillationService());
+                memoryRepository, semanticResponseCache, new MemoryDistillationService());
 
         ModelService modelService = new ModelService();
         ReflectionTestUtils.setField(modelService, "ollamaBaseUrl", ollamaServer.url("/").toString());
@@ -65,6 +69,11 @@ class GapFillContractTest {
         ToolExecutor toolExecutor = new ToolExecutor(List.of(new CalculatorTool(), new TimeTool()));
         TaskSchedulerService scheduler = new TaskSchedulerService(
                 new com.intelligent.agent.web.domain.task.TaskService(), dataDir);
+        ConfigRuntimeService configRuntimeService = new ConfigRuntimeService(
+                memoryRepository, conversationMemoryService, semanticResponseCache);
+        CloudService cloudService = new CloudService(modelService);
+        ReflectionTestUtils.setField(configRuntimeService, "dataDir", dataDir.toString());
+        ReflectionTestUtils.setField(cloudService, "dataDir", dataDir.toString());
 
         ToolProxyController toolController =
                 new ToolProxyController(toolExecutor, new McpToolRegistry(), "java");
@@ -75,10 +84,12 @@ class GapFillContractTest {
         ReflectionTestUtils.setField(healthController, "modelService", modelService);
         ReflectionTestUtils.setField(healthController, "agentService", mock(AgentService.class));
         ReflectionTestUtils.setField(healthController, "taskSchedulerService", scheduler);
+        ReflectionTestUtils.setField(healthController, "configRuntimeService", configRuntimeService);
         ReflectionTestUtils.setField(healthController, "runtimeMode", "java");
 
         mockMvc = MockMvcBuilders.standaloneSetup(
-                toolController, memoryController, healthController).build();
+                toolController, memoryController, healthController,
+                new CloudProxyController(cloudService, "java")).build();
     }
 
     @AfterEach
@@ -173,5 +184,53 @@ class GapFillContractTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.notifications").isArray())
                 .andExpect(jsonPath("$.count").value(0));
+    }
+
+    @Test
+    void configRuntimeGetAndPatch() throws Exception {
+        mockMvc.perform(get("/api/config/runtime"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.config.ollama_num_ctx").value(4096))
+                .andExpect(jsonPath("$.usage.long_term_entries").value(0));
+
+        mockMvc.perform(patch("/api/config/runtime")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"ollama_temperature\":99}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.updated.ollama_temperature").value(2.0));
+    }
+
+    @Test
+    void cloudProvidersCrudAndActivate() throws Exception {
+        mockMvc.perform(get("/api/cloud/providers"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.providers").isArray());
+
+        mockMvc.perform(post("/api/cloud/providers")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"name\":\"DeepSeek\",\"provider\":\"deepseek\","
+                                + "\"model\":\"deepseek-chat\",\"api_key\":\"sk-test-1234567890\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.provider.id").isString());
+
+        mockMvc.perform(get("/api/cloud/providers"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.providers[0].api_key").value("sk-t****7890"));
+
+        String providerId = "p_test";
+        mockMvc.perform(post("/api/cloud/providers")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"name\":\"T\",\"provider\":\"custom\",\"model\":\"m\","
+                                + "\"api_key\":\"k\",\"id\":\"p_test\"}"))
+                .andExpect(jsonPath("$.provider.id").value(providerId));
+
+        mockMvc.perform(post("/api/cloud/providers/" + providerId + "/activate"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(post("/api/cloud/deactivate"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
     }
 }

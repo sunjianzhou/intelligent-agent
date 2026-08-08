@@ -53,11 +53,33 @@ public class ModelService {
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, String> runtimeModels = new ConcurrentHashMap<>();
+    private volatile Map<String, String> cloudOverride;
+
+    /** 云端服务商激活（CloudService 调用）：运行时覆盖 @Value 静态配置。 */
+    public void activateCloud(String provider, String baseUrl, String apiKey, String model) {
+        Map<String, String> override = new java.util.concurrent.ConcurrentHashMap<>();
+        override.put("provider", provider);
+        override.put("base_url", baseUrl);
+        override.put("api_key", apiKey);
+        override.put("model", model);
+        this.cloudOverride = override;
+    }
+
+    public void deactivateCloud() {
+        this.cloudOverride = null;
+    }
 
     public Map<String, Object> getModels(String userId) {
         List<String> localModels = ollamaTags();
-        boolean configuredCloud = notBlank(cloudProvider) && notBlank(cloudApiKey) && notBlank(cloudModel);
-        String cloudModelName = configuredCloud ? cloudModel : "";
+        Map<String, String> cloud = cloudOverride != null ? cloudOverride
+                : Map.of(
+                "provider", cloudProvider == null ? "" : cloudProvider,
+                "base_url", cloudBaseUrl == null ? "" : cloudBaseUrl,
+                "api_key", cloudApiKey == null ? "" : cloudApiKey,
+                "model", cloudModel == null ? "" : cloudModel);
+        boolean configuredCloud = notBlank(cloud.get("provider"))
+                && notBlank(cloud.get("api_key")) && notBlank(cloud.get("model"));
+        String cloudModelName = configuredCloud ? cloud.get("model") : "";
 
         Set<String> all = new LinkedHashSet<>(localModels);
         if (notBlank(cloudModelName)) {
@@ -72,7 +94,7 @@ public class ModelService {
         result.put("ollama_available", !localModels.isEmpty());
         result.put("cloud_mode", userIsCloud);
         result.put("cloud_model", userIsCloud ? cloudModelName : "");
-        result.put("cloud_provider", configuredCloud ? cloudProvider : "");
+        result.put("cloud_provider", configuredCloud ? cloud.get("provider") : "");
         result.put("known_cloud_providers", KNOWN_CLOUD_PROVIDERS);
         return result;
     }
