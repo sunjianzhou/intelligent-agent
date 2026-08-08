@@ -111,3 +111,11 @@ wecom:
   secret: ${WECOM_SECRET:}
   token: ${WECOM_TOKEN:}
   aes-key: ${WECOM_AES_KEY:}
+
+telegram:
+  enabled: ${TELEGRAM_ENABLED:false}
+  bot-token: ${TELEGRAM_BOT_TOKEN:}
+
+comfyui:
+  enabled: ${COMFYUI_ENABLED:false}
+  base-url: ${COMFYUI_BASE_URL:http://localhost:8188}

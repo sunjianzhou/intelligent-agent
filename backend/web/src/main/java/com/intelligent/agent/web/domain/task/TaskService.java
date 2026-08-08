@@ -187,6 +187,18 @@ public class TaskService {
         return response;
     }
 
+    /** 调度器访问入口：返回所有任务（共享引用，供调度器原地更新）。 */
+    public List<Map<String, Object>> allTasks() {
+        return new ArrayList<>(tasks.values());
+    }
+
+    /** 调度器写回任务状态。 */
+    public void saveTask(Map<String, Object> task) {
+        if (task != null && task.get("id") != null) {
+            tasks.put((String) task.get("id"), task);
+        }
+    }
+
     private static String str(Object value) {
         return value == null ? null : String.valueOf(value);
     }
