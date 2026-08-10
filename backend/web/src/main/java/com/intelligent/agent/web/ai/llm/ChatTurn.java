@@ -10,18 +10,27 @@ import java.util.Map;
  * @param model    请求的模型名
  * @param messages 对话消息
  * @param options  模型参数（temperature / num_ctx 等）
+ * @param images   多模态图片（base64 列表，不含 data URL 前缀；非多模态模型时忽略）
  */
 public record ChatTurn(
         String userId,
         String model,
         List<ChatMessage> messages,
-        Map<String, Object> options) {
+        Map<String, Object> options,
+        List<String> images) {
 
     public ChatTurn {
         userId = userId == null ? "" : userId;
         model = model == null ? "" : model;
         messages = messages == null ? List.of() : List.copyOf(messages);
         options = options == null ? Map.of() : Map.copyOf(options);
+        images = images == null ? List.of() : List.copyOf(images);
+    }
+
+    /** 无图片的便捷构造（保持旧调用点兼容）。 */
+    public ChatTurn(String userId, String model, List<ChatMessage> messages,
+                    Map<String, Object> options) {
+        this(userId, model, messages, options, List.of());
     }
 
     public static ChatTurn of(String model, List<ChatMessage> messages) {

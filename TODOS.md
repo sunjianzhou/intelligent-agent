@@ -1317,11 +1317,27 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 
 ### Task 4: chat 高级行为
 
-- [ ] 多模态 image_base64 透传（ChatRequest → AgentOrchestrator → LLM）
-- [ ] 群聊场景静默（scene_chat_type / scene_mentioned + NO_REPLY 规则）
-- [ ] [TASK_DONE]/[TASK_BLOCKED] 任务标记 → task_update/task_blocked WS 事件
-- [ ] 分支失败检测（对齐 _detect_branch_failure 信号）+ 铁律违反扫描
-- [ ] 撤回级联清理记忆（retract 时 delete_by_ids 短期 + 长期排除检索）
+- [x] 多模态 image_base64 透传（ChatRequest → AgentOrchestrator → LLM）
+- [x] 群聊场景静默（scene_chat_type / scene_mentioned + NO_REPLY 规则）
+- [x] [TASK_DONE]/[TASK_BLOCKED] 任务标记 → task_update/task_blocked WS 事件
+- [x] 分支失败检测（对齐 _detect_branch_failure 信号）+ 铁律违反扫描
+- [x] 撤回级联清理记忆（retract 时 delete_by_ids 短期 + 长期排除检索）
+
+> **2026-08-10 完成（commit 待填）**：Task 4 全部 5 项落地，全量 254 用例绿（0 失败）。
+> - image_base64：`ChatTurn` 新增 images 字段 → `AgentOrchestrator.buildTurn` 透传 →
+>   Ollama `/api/chat` 消息挂 images 数组 / OpenAI 兼容 content 转多段 image_url（data URL）。
+> - 群聊静默：`AgentRequestContext` 新增 sceneChatType/sceneMentioned（ChatRequest 已有字段），
+>   PromptService 在 group 场景注入 [GROUP SCENE] 规则，未 @ 时回复唯一一行 NO_REPLY
+>   （FeishuEventController 既有 NO_REPLY_SENTINEL 静默丢弃逻辑直接生效）。
+> - 任务标记：`TaskSentinelUtils`（DONE/BLOCKED 正则 + 剥除 + 事件生成，支持多条/无 id）、
+>   ModelEvent 新增 task_update/task_blocked 类型；orchestrator 全结束后扫描并发出事件
+>   （与 Python D1=B 一致），WS/SSE 两层既有映射直接透传。
+> - 分支失败：`BranchFailureDetector` 对齐 6 信号（同工具同错误≥3 / 连续重复 Jaccard>0.8 /
+>   错误+空响应 / 铁律违反扫描：14 条硬编码危险模式 + rules.md 禁止性关键词），
+>   命中即终止本轮并给出失败说明，不再调用模型。
+> - 撤回级联：`ConversationService.retract` 返回 removed_contents →
+>   `ConversationMemoryService.purgeMessages`（短期 deque 按内容删除）+
+>   `excludeFromLongTerm`（长期 RAG 召回排除集），`memory_purged` 计数回填。
 
 ### Task 5: 降级项提升（可选，标注依赖）
 

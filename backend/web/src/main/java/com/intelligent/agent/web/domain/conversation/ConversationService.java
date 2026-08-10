@@ -185,12 +185,17 @@ public class ConversationService {
         Set<String> targets = new LinkedHashSet<>(dedup);
         List<Object> kept = new ArrayList<>();
         List<String> removedIds = new ArrayList<>();
+        List<String> removedContents = new ArrayList<>();
         for (Object messageObj : list(session.get("messages"))) {
             @SuppressWarnings("unchecked")
             Map<String, Object> message = (Map<String, Object>) messageObj;
             String id = String.valueOf(message.get("id"));
             if (targets.contains(id)) {
                 removedIds.add(id);
+                Object content = message.get("content");
+                if (content != null && !String.valueOf(content).isBlank()) {
+                    removedContents.add(String.valueOf(content));
+                }
             } else {
                 kept.add(message);
             }
@@ -201,6 +206,8 @@ public class ConversationService {
 
         result.put("deleted", removedIds.size());
         result.put("deleted_ids", removedIds);
+        // 级联清理记忆用：被撤回消息的内容列表
+        result.put("removed_contents", removedContents);
         return result;
     }
 

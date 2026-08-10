@@ -31,6 +31,8 @@ public class ConversationMemoryService {
 
     private final Map<String, Deque<StampedMessage>> shortTerm = new ConcurrentHashMap<>();
     private final Map<String, Integer> turnCounts = new ConcurrentHashMap<>();
+    /** 撤回后从长期检索中排除的内容（按用户隔离）。 */
+    private final Map<String, java.util.Set<String>> excludedLongTerm = new ConcurrentHashMap<>();
 
     public ConversationMemoryService(MemoryRepository memoryRepository,
                                      SemanticResponseCache semanticCache,
@@ -50,7 +52,7 @@ public class ConversationMemoryService {
 
         List<MemoryRecord> recall = ctx.message() == null || ctx.message().isBlank()
                 ? List.of()
-                : memoryRepository.search(userId, ctx.message(), RAG_TOP_K);
+                : filterExcluded(userId, memoryRepository.search(userId, ctx.message(), RAG_TOP_K));
 
         String projectContext = projectContext(ctx);
 
@@ -98,6 +100,53 @@ public class ConversationMemoryService {
     public void clearShortTerm(String userId) {
         shortTerm.remove(effectiveUserId(userId));
         turnCounts.remove(effectiveUserId(userId));
+        excludedLongTerm.remove(effectiveUserId(userId));
+    }
+
+    /**
+     * 撤回级联（对齐 Python retract）：按内容从短期记忆 deque 中删除消息，
+     * 并加入长期检索排除集，使后续 RAG 召回不再命中被撤回的内容。
+     *
+     * @return 实际从短期记忆中删除的消息条数
+     */
+    public int purgeMessages(String userId, java.util.List<String> contents) {
+        if (contents == null || contents.isEmpty()) {
+            return 0;
+        }
+        String key = effectiveUserId(userId);
+        java.util.Set<String> targets = contents.stream()
+                .filter(c -> c != null && !c.isBlank())
+                .map(String::strip)
+                .collect(java.util.stream.Collectors.toSet());
+        if (targets.isEmpty()) {
+            return 0;
+        }
+        Deque<StampedMessage> deque = shortTerm.get(key);
+        int removed = 0;
+        if (deque != null) {
+            Iterator<StampedMessage> it = deque.iterator();
+            while (it.hasNext()) {
+                if (targets.contains(it.next().content().strip())) {
+                    it.remove();
+                    removed++;
+                }
+            }
+        }
+        excludeFromLongTerm(userId, contents);
+        return removed;
+    }
+
+    /** 将内容加入长期检索排除集（撤回后不再被语义召回）。 */
+    public void excludeFromLongTerm(String userId, java.util.List<String> contents) {
+        if (contents == null || contents.isEmpty()) {
+            return;
+        }
+        excludedLongTerm.computeIfAbsent(effectiveUserId(userId), k ->
+                java.util.concurrent.ConcurrentHashMap.newKeySet())
+                .addAll(contents.stream()
+                        .filter(c -> c != null && !c.isBlank())
+                        .map(String::strip)
+                        .toList());
     }
 
     // ── 短期历史 ──────────────────────────────────────────────
@@ -137,6 +186,16 @@ public class ConversationMemoryService {
                 .collect(Collectors.toCollection(ArrayList::new));
     }
 
+    private List<MemoryRecord> filterExcluded(String userId, List<MemoryRecord> records) {
+        java.util.Set<String> excluded = excludedLongTerm.get(userId);
+        if (excluded == null || excluded.isEmpty() || records == null || records.isEmpty()) {
+            return records;
+        }
+        return records.stream()
+                .filter(record -> !excluded.contains(record.content().strip()))
+                .toList();
+    }
+
     // ── 长期检索 ──────────────────────────────────────────────
 
     private String projectContext(AgentRequestContext ctx) {
@@ -148,7 +207,7 @@ public class ConversationMemoryService {
                 MemorySearchQuery.builder(userId, ctx.message() == null ? "" : ctx.message(), 5)
                         .projectId(ctx.projectId())
                         .build());
-        return projectRecords.stream()
+        return filterExcluded(userId, projectRecords).stream()
                 .map(MemoryRecord::content)
                 .collect(Collectors.joining("\n"));
     }

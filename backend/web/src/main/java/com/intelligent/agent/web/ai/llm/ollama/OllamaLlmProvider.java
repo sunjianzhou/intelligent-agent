@@ -107,6 +107,15 @@ public class OllamaLlmProvider extends AbstractHttpLlmProvider {
             msg.put("content", m.content());
             messages.add(msg);
         }
+        // 多模态图片：挂到最近一条 user 消息上（Ollama /api/chat 协议 images 字段）
+        if (turn.images() != null && !turn.images().isEmpty()) {
+            for (int i = messages.size() - 1; i >= 0; i--) {
+                if ("user".equals(messages.get(i).get("role"))) {
+                    messages.get(i).put("images", turn.images());
+                    break;
+                }
+            }
+        }
         return messages;
     }
 

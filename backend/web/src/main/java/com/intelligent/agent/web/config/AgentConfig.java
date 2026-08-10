@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.config;
 
 import com.intelligent.agent.web.ai.agent.AgentOrchestrator;
+import com.intelligent.agent.web.ai.agent.BranchFailureDetector;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
 import com.intelligent.agent.web.ai.memory.MemoryDistillationService;
@@ -99,9 +100,17 @@ public class AgentConfig {
     public AgentOrchestrator agentOrchestrator(LlmProviderRouter llmProviderRouter,
                                                ToolExecutor toolExecutor,
                                                ConversationMemoryService conversationMemoryService,
-                                               PromptService promptService) {
+                                               PromptService promptService,
+                                               BranchFailureDetector branchFailureDetector) {
         return new AgentOrchestrator(llmProviderRouter, toolExecutor, conversationMemoryService,
-                promptService, AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS);
+                promptService, branchFailureDetector, AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS);
+    }
+
+    /** TODO-110 Task 4.4：分支失败检测 + 铁律违反扫描（模式来自 rules.md + 硬编码清单）。 */
+    @Bean
+    public BranchFailureDetector branchFailureDetector(SoulLoader soulLoader) {
+        String rules = soulLoader.data() == null ? "" : soulLoader.data().rules();
+        return new BranchFailureDetector(rules);
     }
 
     /** TODO-110 Task 3：灵魂层加载（soul/ 目录，SOUL_DIR 可覆盖）。 */

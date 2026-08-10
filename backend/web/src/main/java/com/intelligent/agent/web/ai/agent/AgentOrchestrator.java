@@ -42,6 +42,7 @@ public class AgentOrchestrator {
     private final TextToolCallParser toolCallParser;
     private final ConversationMemoryService memoryService;
     private final PromptService promptService;
+    private final BranchFailureDetector branchFailureDetector;
     private final int maxToolRounds;
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor) {
@@ -49,22 +50,31 @@ public class AgentOrchestrator {
     }
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor, int maxToolRounds) {
-        this(router, toolExecutor, null, null, maxToolRounds);
+        this(router, toolExecutor, null, null, null, maxToolRounds);
     }
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
                              ConversationMemoryService memoryService, int maxToolRounds) {
-        this(router, toolExecutor, memoryService, null, maxToolRounds);
+        this(router, toolExecutor, memoryService, null, null, maxToolRounds);
     }
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
                              ConversationMemoryService memoryService,
                              PromptService promptService, int maxToolRounds) {
+        this(router, toolExecutor, memoryService, promptService, null, maxToolRounds);
+    }
+
+    public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
+                             ConversationMemoryService memoryService,
+                             PromptService promptService,
+                             BranchFailureDetector branchFailureDetector, int maxToolRounds) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.toolExecutor = Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
         this.toolCallParser = new TextToolCallParser();
         this.memoryService = memoryService;
         this.promptService = promptService;
+        this.branchFailureDetector = branchFailureDetector == null
+                ? new BranchFailureDetector() : branchFailureDetector;
         this.maxToolRounds = maxToolRounds;
     }
 
@@ -86,7 +96,7 @@ public class AgentOrchestrator {
                         tokens.append(event.data());
                     }
                 })
-                .doOnComplete(() -> recordTurn(context, tokens.toString()));
+                .doOnComplete(() -> recordTurn(context, TaskSentinelUtils.strip(tokens.toString())));
     }
 
     public Mono<String> complete(AgentRequestContext context) {
@@ -94,7 +104,8 @@ public class AgentOrchestrator {
         AgentContext memory = loadMemory(context);
         if (memory.cachedAnswer().isPresent()) {
             String cached = memory.cachedAnswer().get();
-            return Mono.just(cached).doOnSuccess(answer -> recordTurn(context, answer));
+            return Mono.just(cached).doOnSuccess(answer ->
+                    recordTurn(context, TaskSentinelUtils.strip(answer)));
         }
         return Mono.defer(() -> runToolRounds(context, initialMessages(context, memory), 0, List.of())
                         .flatMap(state -> completeFinal(context, state)))
@@ -138,19 +149,38 @@ public class AgentOrchestrator {
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
                                            int round, List<ToolCall> executedCalls) {
+        return runToolRounds(ctx, messages, round, executedCalls,
+                new ArrayList<>(), new ArrayList<>());
+    }
+
+    private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
+                                           int round, List<ToolCall> executedCalls,
+                                           List<ToolResult> failures,
+                                           List<String> assistantTexts) {
         if (round >= maxToolRounds) {
             return Mono.just(new ReActState(messages, "", true, executedCalls, false));
         }
         LlmProvider provider = router.forUser(ctx.userId(), ctx.model());
         return provider.complete(buildTurn(ctx, messages))
-                .flatMap(content -> handleRound(ctx, messages, content, executedCalls))
+                .flatMap(content -> {
+                    // 信号 4（近似）：窗口内同时存在工具错误与空响应
+                    if ((content == null || content.isBlank()) && !failures.isEmpty()) {
+                        return Mono.just(new ReActState(messages,
+                                "⚠️ 分支失败：runtime_error_and_empty（窗口内同时存在工具错误与空响应）。已停止执行。",
+                                true, executedCalls, false));
+                    }
+                    return handleRound(ctx, messages, content, executedCalls, failures, assistantTexts);
+                })
                 .flatMap(state -> state.continueLoop()
-                        ? runToolRounds(ctx, state.messages(), round + 1, state.executedCalls())
+                        ? runToolRounds(ctx, state.messages(), round + 1,
+                        state.executedCalls(), failures, assistantTexts)
                         : Mono.just(state));
     }
 
     private Mono<ReActState> handleRound(AgentRequestContext ctx, List<ChatMessage> messages,
-                                         String content, List<ToolCall> executedCalls) {
+                                         String content, List<ToolCall> executedCalls,
+                                         List<ToolResult> failures,
+                                         List<String> assistantTexts) {
         // toolsRan 是粘性的：只要本轮或之前任一工具轮执行过工具，后续轮次不得再复用
         // 首轮内容跳过 tool_calls_done / 最终流式回答。
         boolean toolsRan = !executedCalls.isEmpty();
@@ -160,6 +190,15 @@ public class AgentOrchestrator {
         }
         List<ToolCall> calls = toolCallParser.parse(content);
         if (calls.isEmpty()) {
+            assistantTexts.add(content);
+            // 信号 6：铁律违反扫描（仅扫描自然语言回复，避免工具调用语法误报）
+            List<String> violations = branchFailureDetector.checkRuleViolations(content);
+            if (!violations.isEmpty()) {
+                return Mono.just(new ReActState(appendAssistant(messages, content),
+                        "⚠️ 检测到铁律违反（" + String.join("; ", violations)
+                                + "），已停止本轮执行。",
+                        toolsRan, executedCalls, false));
+            }
             return Mono.just(new ReActState(
                     appendAssistant(messages, content), content, toolsRan, executedCalls, false));
         }
@@ -170,39 +209,92 @@ public class AgentOrchestrator {
             for (ToolCall call : calls) {
                 ToolResult result = toolExecutor.execute(call, execCtx);
                 executed.add(call);
+                if (!ToolResult.SUCCESS.equals(result.status())) {
+                    failures.add(result);
+                }
                 String text = result.data() != null ? String.valueOf(result.data())
                         : (result.error() != null ? result.error() : result.status());
                 next.add(ChatMessage.user(
                         "[工具执行结果]\n" + text + "\n\n请基于以上结果继续。"));
+            }
+            // 信号 1：同工具同错误 ≥3 次
+            String sameError = BranchFailureDetector.detectSameToolError(failures);
+            if (sameError != null) {
+                return new ReActState(next, "⚠️ 分支失败：" + sameError
+                        + "。已停止执行，请换个方式重试。", true, executed, false);
+            }
+            // 信号 2：连续 2 轮重复（仅自然语言文本参与判定）
+            String duplicate = BranchFailureDetector.detectConsecutiveDuplicate(assistantTexts);
+            if (duplicate != null) {
+                return new ReActState(next, "⚠️ 分支失败：" + duplicate
+                        + "。已停止执行，请换个说法重试。", true, executed, false);
             }
             return new ReActState(next, "", true, executed, true);
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
     private Flux<ModelEvent> streamFinal(AgentRequestContext ctx, ReActState state) {
-        if (!state.toolsRan() && state.content() != null && !state.content().isBlank()) {
-            return Flux.just(ModelEvent.token(state.content()), ModelEvent.done(Map.of()));
+        // content 非空 = 已有最终答复（无工具路径或分支失败终止态），不再调用模型
+        if (state.content() != null && !state.content().isBlank()) {
+            Flux<ModelEvent> finalFlux = finalizeAnswer(ctx, state.content());
+            if (!state.executedCalls().isEmpty()) {
+                return Flux.concat(
+                        Flux.just(ModelEvent.toolCallsDone(state.executedCalls())),
+                        finalFlux);
+            }
+            return finalFlux;
         }
         List<ChatMessage> finalMessages = finalizeMessages(state.messages(), state.toolsRan());
         Flux<ModelEvent> answer = router.forUser(ctx.userId(), ctx.model())
                 .stream(buildTurn(ctx, finalMessages))
                 .onErrorResume(e -> Flux.just(ModelEvent.error(safeMessage(e))));
         if (state.executedCalls().isEmpty()) {
-            return answer;
+            return answer.map(event -> "token".equals(event.type())
+                    ? ModelEvent.token(TaskSentinelUtils.strip(String.valueOf(event.data())))
+                    : event);
         }
         return Flux.concat(
                 Flux.just(ModelEvent.toolCallsDone(state.executedCalls())),
-                answer);
+                bufferFinalAnswer(ctx, answer));
     }
 
     private Mono<String> completeFinal(AgentRequestContext ctx, ReActState state) {
-        if (!state.toolsRan() && state.content() != null && !state.content().isBlank()) {
-            return Mono.just(state.content());
+        if (state.content() != null && !state.content().isBlank()) {
+            return Mono.just(TaskSentinelUtils.strip(state.content()));
         }
         List<ChatMessage> finalMessages = finalizeMessages(state.messages(), state.toolsRan());
         return router.forUser(ctx.userId(), ctx.model())
                 .complete(buildTurn(ctx, finalMessages))
+                .map(TaskSentinelUtils::strip)
                 .onErrorResume(e -> Mono.just(safeMessage(e)));
+    }
+
+    /** 缓冲流式回答 → 剥除任务标记 → 发出事件与 done（与 Python 全结束后扫描一致）。 */
+    private Flux<ModelEvent> bufferFinalAnswer(AgentRequestContext ctx, Flux<ModelEvent> source) {
+        return source.collectList().flatMapMany(events -> {
+            boolean hasError = events.stream().anyMatch(e -> "error".equals(e.type()));
+            if (hasError) {
+                return Flux.fromIterable(events);
+            }
+            StringBuilder sb = new StringBuilder();
+            for (ModelEvent event : events) {
+                if ("token".equals(event.type())) {
+                    sb.append(event.data());
+                }
+            }
+            return finalizeAnswer(ctx, sb.toString());
+        });
+    }
+
+    private Flux<ModelEvent> finalizeAnswer(AgentRequestContext ctx, String fullText) {
+        List<ModelEvent> events = new ArrayList<>();
+        String cleaned = TaskSentinelUtils.strip(fullText);
+        if (!cleaned.isBlank()) {
+            events.add(ModelEvent.token(cleaned));
+        }
+        events.addAll(TaskSentinelUtils.events(fullText, ctx.projectId()));
+        events.add(ModelEvent.done(Map.of()));
+        return Flux.fromIterable(events);
     }
 
     private List<ChatMessage> finalizeMessages(List<ChatMessage> messages, boolean toolsRan) {
@@ -216,7 +308,9 @@ public class AgentOrchestrator {
     }
 
     private ChatTurn buildTurn(AgentRequestContext ctx, List<ChatMessage> messages) {
-        return new ChatTurn(ctx.userId(), ctx.model(), messages, ctx.options());
+        return new ChatTurn(ctx.userId(), ctx.model(), messages, ctx.options(),
+                ctx.imageBase64() == null || ctx.imageBase64().isBlank()
+                        ? List.of() : List.of(ctx.imageBase64()));
     }
 
     private static List<ChatMessage> appendAssistant(List<ChatMessage> messages, String content) {

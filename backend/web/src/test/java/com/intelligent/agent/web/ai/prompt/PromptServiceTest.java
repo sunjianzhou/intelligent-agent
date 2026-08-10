@@ -70,4 +70,27 @@ class PromptServiceTest {
         assertThat(service.isTextToolModel("ollama/dolphin:7b")).isTrue();
         assertThat(service.isTextToolModel("qwen2.5:7b")).isFalse();
     }
+
+    @Test
+    void groupSceneRuleInjectedWhenGroupChat() {
+        AgentRequestContext groupNotMentioned = new AgentRequestContext(
+                "u1", "hi", null, null, null, null, true, true, "feishu_im", Map.of(),
+                null, "group", false);
+        AgentRequestContext groupMentioned = new AgentRequestContext(
+                "u1", "hi", null, null, null, null, true, true, "feishu_im", Map.of(),
+                null, "group", true);
+
+        String notMentioned = service.buildSystemPrompt(groupNotMentioned);
+        String mentioned = service.buildSystemPrompt(groupMentioned);
+
+        assertThat(notMentioned).contains("[GROUP SCENE]").contains("没有被 @ 提及")
+                .contains("NO_REPLY");
+        assertThat(mentioned).contains("被直接 @ 提及");
+    }
+
+    @Test
+    void noGroupSceneForP2pOrWeb() {
+        assertThat(service.buildSystemPrompt(AgentRequestContext.of("u1", "hi")))
+                .doesNotContain("[GROUP SCENE]");
+    }
 }

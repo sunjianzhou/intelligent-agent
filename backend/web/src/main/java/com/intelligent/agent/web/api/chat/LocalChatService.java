@@ -42,6 +42,9 @@ public class LocalChatService {
                 Boolean.TRUE.equals(request.getUseTools()),
                 Boolean.TRUE.equals(request.getUseMemory()),
                 request.getChannel(),
-                Map.of());
+                Map.of(),
+                request.getImageBase64(),
+                request.getSceneChatType(),
+                Boolean.TRUE.equals(request.getSceneMentioned()));
     }
 }

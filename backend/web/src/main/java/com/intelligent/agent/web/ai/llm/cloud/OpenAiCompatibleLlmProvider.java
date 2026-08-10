@@ -119,6 +119,22 @@ public class OpenAiCompatibleLlmProvider extends AbstractHttpLlmProvider {
             msg.put("content", m.content());
             messages.add(msg);
         }
+        // 多模态图片：OpenAI 兼容协议 content 改为多段数组，image_url 使用 data URL
+        if (turn.images() != null && !turn.images().isEmpty()) {
+            for (int i = messages.size() - 1; i >= 0; i--) {
+                if ("user".equals(messages.get(i).get("role"))) {
+                    List<Map<String, Object>> parts = new ArrayList<>();
+                    parts.add(Map.of("type", "text", "text",
+                            String.valueOf(messages.get(i).get("content"))));
+                    for (String image : turn.images()) {
+                        parts.add(Map.of("type", "image_url", "image_url",
+                                Map.of("url", "data:image/jpeg;base64," + image)));
+                    }
+                    messages.get(i).put("content", parts);
+                    break;
+                }
+            }
+        }
         return messages;
     }
 }

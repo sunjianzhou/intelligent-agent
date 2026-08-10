@@ -91,6 +91,31 @@ class ConversationMemoryServiceTest {
         assertThat(loaded.longTermRecall().get(0).content()).contains("tea");
     }
 
+    // ── 撤回级联（Task 4.5） ──────────────────────────────────
+
+    @Test
+    void purgeRemovesMatchingShortTermMessages() {
+        service.recordTurn(ctx("u1", "这是要撤回的消息"), "撤回的回答");
+
+        int purged = service.purgeMessages("u1", List.of("这是要撤回的消息"));
+
+        assertThat(purged).isEqualTo(1);
+        AgentContext loaded = service.loadContext(ctx("u1", "第二轮"));
+        assertThat(loaded.history()).extracting(ChatMessage::content)
+                .doesNotContain("这是要撤回的消息");
+    }
+
+    @Test
+    void excludeFiltersLongTermRecall() {
+        repository.upsert(new MemoryRecord(
+                "m1", "u1", "用户住在上海，养了一只猫", Map.of("type", "preference"), 0.9));
+        assertThat(service.loadContext(ctx("u1", "用户住在哪里")).longTermRecall()).isNotEmpty();
+
+        service.excludeFromLongTerm("u1", List.of("用户住在上海，养了一只猫"));
+
+        assertThat(service.loadContext(ctx("u1", "用户住在哪里")).longTermRecall()).isEmpty();
+    }
+
     @Test
     void loadContextIncludesProjectContext() {
         repository.upsert(new MemoryRecord(

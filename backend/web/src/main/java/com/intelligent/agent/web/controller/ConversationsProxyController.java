@@ -4,10 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.intelligent.agent.web.domain.InvalidRequestException;
 import com.intelligent.agent.web.domain.NotFoundException;
 import com.intelligent.agent.web.domain.conversation.ConversationService;
+import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
 import com.intelligent.agent.web.feishu.FeishuRecallBridge;
 import com.intelligent.agent.web.service.PythonProxyService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -32,17 +34,30 @@ public class ConversationsProxyController {
     private final ConversationService conversationService;
     private final String runtimeMode;
     private final FeishuRecallBridge feishuRecallBridge;
+    private final ConversationMemoryService memoryService;
 
+    /** 旧签名便捷构造（无记忆级联；测试与兼容用）。 */
     public ConversationsProxyController(PythonProxyService proxy,
                                         ObjectMapper objectMapper,
                                         ConversationService conversationService,
                                         @Value("${ai.runtime.mode:python}") String runtimeMode,
                                         FeishuRecallBridge feishuRecallBridge) {
+        this(proxy, objectMapper, conversationService, runtimeMode, feishuRecallBridge, null);
+    }
+
+    @Autowired
+    public ConversationsProxyController(PythonProxyService proxy,
+                                        ObjectMapper objectMapper,
+                                        ConversationService conversationService,
+                                        @Value("${ai.runtime.mode:python}") String runtimeMode,
+                                        FeishuRecallBridge feishuRecallBridge,
+                                        ConversationMemoryService memoryService) {
         this.proxy = proxy;
         this.objectMapper = objectMapper;
         this.conversationService = conversationService;
         this.runtimeMode = runtimeMode;
         this.feishuRecallBridge = feishuRecallBridge;
+        this.memoryService = memoryService;
     }
 
     @GetMapping("/api/conversations")
@@ -104,8 +119,12 @@ public class ConversationsProxyController {
             HttpServletRequest req) {
         ResponseEntity<Map<String, Object>> resp;
         if (localRuntime()) {
-            resp = guarded(() -> conversationService.retract(userId(req), sessionId,
-                    stringList(body == null ? null : body.get("message_ids"))));
+            resp = guarded(() -> {
+                Map<String, Object> result = conversationService.retract(userId(req), sessionId,
+                        stringList(body == null ? null : body.get("message_ids")));
+                cascadePurge(userId(req), result);
+                return result;
+            });
         } else {
             resp = proxyPost("/api/conversations/" + sessionId + "/retract", body, req);
         }
@@ -113,6 +132,25 @@ public class ConversationsProxyController {
             feishuRecallBridge.onMessagesRetracted(resp.getBody());  // 失败不影响本次响应
         }
         return resp;
+    }
+
+    /** 撤回级联：短期记忆按内容删除 + 长期检索排除（Task 4.5）。 */
+    @SuppressWarnings("unchecked")
+    private void cascadePurge(String userId, Map<String, Object> result) {
+        if (memoryService == null) {
+            return;
+        }
+        Object contentsObj = result.get("removed_contents");
+        if (!(contentsObj instanceof List)) {
+            return;
+        }
+        List<String> contents = ((List<Object>) contentsObj).stream()
+                .map(String::valueOf)
+                .toList();
+        int purged = memoryService.purgeMessages(userId, contents);
+        if (purged > 0) {
+            result.put("memory_purged", purged);
+        }
     }
 
     // ── 辅助 ──────────────────────────────────────────────────

@@ -19,6 +19,8 @@ public record ModelEvent(String type, Object data) {
     public static final String TYPE_TOOL_CALLS_DONE = "tool_calls_done";
     public static final String TYPE_DONE = "done";
     public static final String TYPE_ERROR = "error";
+    public static final String TYPE_TASK_UPDATE = "task_update";
+    public static final String TYPE_TASK_BLOCKED = "task_blocked";
 
     public ModelEvent {
         Objects.requireNonNull(type, "type must not be null");
@@ -46,5 +48,13 @@ public record ModelEvent(String type, Object data) {
 
     public static ModelEvent error(String message) {
         return new ModelEvent(TYPE_ERROR, message);
+    }
+
+    public static ModelEvent taskUpdate(Object data) {
+        return new ModelEvent(TYPE_TASK_UPDATE, data);
+    }
+
+    public static ModelEvent taskBlocked(Object data) {
+        return new ModelEvent(TYPE_TASK_BLOCKED, data);
     }
 }

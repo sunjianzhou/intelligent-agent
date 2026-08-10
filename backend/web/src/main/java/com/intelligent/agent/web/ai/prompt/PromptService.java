@@ -66,7 +66,24 @@ public class PromptService {
             prompt = prompt + DOLPHIN_ANCHOR;
             log.debug("model override anchor applied for text-tool model: {}", model);
         }
+        // 群聊场景规则（对齐 Python conversation_flow）：未被 @ 时默认沉默，避免刷屏
+        if ("group".equals(ctx.sceneChatType())) {
+            prompt = prompt + "\n\n" + buildGroupSceneRule(ctx.sceneMentioned());
+        }
         return prompt;
+    }
+
+    static String buildGroupSceneRule(boolean mentioned) {
+        StringBuilder sb = new StringBuilder("[GROUP SCENE] 当前消息来自一个多人群聊，你是参与者之一，不是代言人。\n");
+        if (mentioned) {
+            sb.append("你被直接 @ 提及或被问了问题。");
+        } else {
+            sb.append("你没有被 @ 提及。除非消息中有需要你纠正的明显错误、"
+                    + "明确向你提的问题，或被要求做总结，否则不要主动发言。");
+        }
+        sb.append("\n若判断当前不需要你发言，将完整回复内容替换为唯一一行 NO_REPLY"
+                + "（不要附加任何其他文字、标点或解释）；其余情况按正常风格作答。");
+        return sb.toString();
     }
 
     /** 当前请求生效的模型名（请求指定优先，否则默认模型）。 */

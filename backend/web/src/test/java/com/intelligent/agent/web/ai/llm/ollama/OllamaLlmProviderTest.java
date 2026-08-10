@@ -14,6 +14,7 @@ import reactor.test.StepVerifier;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -84,5 +85,20 @@ class OllamaLlmProviderTest {
                 .contains("\"model\":\"qwen2.5:7b\"")
                 .contains("\"stream\":false")
                 .contains("\"role\":\"user\"");
+    }
+
+    @Test
+    void attachesImagesToUserMessage() throws Exception {
+        server.enqueue(new MockResponse()
+                .setBody("{\"message\":{\"content\":\"ok\"},\"done\":true}")
+                .setHeader("Content-Type", "application/json"));
+        ChatTurn turn = new ChatTurn("u1", "qwen2.5:7b",
+                List.of(ChatMessage.system("sys"), ChatMessage.user("看图")),
+                Map.of(), List.of("aGVsbG8="));
+        provider.complete(turn).block();
+
+        RecordedRequest request = server.takeRequest();
+        String body = request.getBody().readUtf8();
+        assertThat(body).contains("\"images\":[\"aGVsbG8=\"]");
     }
 }
