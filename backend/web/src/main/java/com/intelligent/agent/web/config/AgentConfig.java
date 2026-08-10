@@ -5,6 +5,9 @@ import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
 import com.intelligent.agent.web.ai.memory.MemoryDistillationService;
 import com.intelligent.agent.web.ai.memory.SemanticResponseCache;
+import com.intelligent.agent.web.ai.prompt.PromptService;
+import com.intelligent.agent.web.ai.prompt.SoulLoader;
+import com.intelligent.agent.web.ai.prompt.SystemPromptBuilder;
 import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
 import com.intelligent.agent.web.ai.tool.AgentTool;
 import com.intelligent.agent.web.ai.tool.ToolExecutor;
@@ -16,12 +19,15 @@ import com.intelligent.agent.web.ai.tool.builtin.web.WebSearchTool;
 import com.intelligent.agent.web.ai.tool.builtin.database.DatabaseTool;
 import com.intelligent.agent.web.ai.tool.builtin.feishu.FeishuCalendarTool;
 import com.intelligent.agent.web.ai.tool.builtin.feishu.FeishuTaskTool;
+import com.intelligent.agent.web.ai.tool.builtin.HeartRecordTool;
+import com.intelligent.agent.web.domain.role.RoleService;
 import com.intelligent.agent.web.integration.feishu.FeishuChannelClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.nio.file.Path;
 import java.util.List;
 
 /**
@@ -92,9 +98,40 @@ public class AgentConfig {
     @Bean
     public AgentOrchestrator agentOrchestrator(LlmProviderRouter llmProviderRouter,
                                                ToolExecutor toolExecutor,
-                                               ConversationMemoryService conversationMemoryService) {
+                                               ConversationMemoryService conversationMemoryService,
+                                               PromptService promptService) {
         return new AgentOrchestrator(llmProviderRouter, toolExecutor, conversationMemoryService,
-                AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS);
+                promptService, AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS);
+    }
+
+    /** TODO-110 Task 3：灵魂层加载（soul/ 目录，SOUL_DIR 可覆盖）。 */
+    @Bean
+    public SoulLoader soulLoader(@Value("${ai.soul.dir:../../soul}") String soulDir) {
+        return new SoulLoader(Path.of(soulDir));
+    }
+
+    @Bean
+    public SystemPromptBuilder systemPromptBuilder() {
+        return new SystemPromptBuilder();
+    }
+
+    /** TODO-110 Task 3：提示词编排（soul + persona + 工具指令 + 模型覆盖层）。 */
+    @Bean
+    public PromptService promptService(SoulLoader soulLoader,
+                                       SystemPromptBuilder systemPromptBuilder,
+                                       ToolExecutor toolExecutor,
+                                       RoleService roleService,
+                                       @Value("${ai.llm.text-tool-patterns:dolphin,phi2,orca-mini,orca2}") List<String> textToolPatterns,
+                                       @Value("${ai.llm.ollama.model:qwen2.5:7b}") String defaultModel,
+                                       @Value("${ai.llm.max-context-tokens:8000}") int maxContextTokens) {
+        return new PromptService(soulLoader, systemPromptBuilder, toolExecutor, roleService,
+                textToolPatterns, defaultModel, maxContextTokens);
+    }
+
+    /** TODO-110 Task 3.4：heart_record 工具（心证铁卷 + 主人铁律管理）。 */
+    @Bean
+    public HeartRecordTool heartRecordTool(@Value("${ai.soul.dir:../../soul}") String soulDir) {
+        return new HeartRecordTool(Path.of(soulDir));
     }
 
     @Bean

@@ -64,12 +64,16 @@ services:
     container_name: ia-backend
     ports:
       - "8080:8080"
+    volumes:
+      # 灵魂层（soul/）：PromptService 读取 + heart_record 工具写入 rules/heart
+      - ${SOUL_DIR:-../../soul}:/app/soul
     env_file:
       - .env.docker
     environment:
       # Python Agent 已于 2026-08-08 退役；Java 后端为唯一服务端（默认 java 模式）
       - AI_RUNTIME_MODE=${AI_RUNTIME_MODE:-java}
       - AI_SHADOW_ALLOWLIST=${AI_SHADOW_ALLOWLIST:-}
+      - SOUL_DIR=/app/soul
       - SPRING_PROFILES_ACTIVE=docker
       - LOG_LEVEL=INFO
       # 临时诊断飞书长连接是否真的收到帧（含心跳），排查完移除

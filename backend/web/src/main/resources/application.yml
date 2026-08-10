@@ -5,6 +5,9 @@ ai:
       enabled: ${AI_SHADOW_ENABLED:false}
       # 逗号分隔的 user id allowlist；shadow 模式下命中列表的用户路由到 Java
       allowlist: ${AI_SHADOW_ALLOWLIST:}
+  # 灵魂层目录（SOUL/USER/MEMORY/IDENTITY/HEARTBEAT + 可选 whisper/heart/rules）
+  soul:
+    dir: ${SOUL_DIR:../../soul}
   llm:
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
@@ -25,6 +28,11 @@ ai:
       model: ${CLOUD_MODEL:}
       models: ${CLOUD_MODELS:}
       timeout: ${CLOUD_TIMEOUT:120s}
+    # 不支持 Ollama 原生 Function Calling 的模型前缀（逗号分隔）：
+    # 命中后走文本工具解析模式，并在 system prompt 末尾追加防退化锚定
+    text-tool-patterns: ${TEXT_TOOL_CALLING_PATTERNS:dolphin,phi2,orca-mini,orca2}
+    # 上下文 token 预算（与 OLLAMA_NUM_CTX 配合，rules 段在 <4096 时退化为仅 critical）
+    max-context-tokens: ${MAX_CONTEXT_TOKENS:8000}
 
 server:
   port: 8080

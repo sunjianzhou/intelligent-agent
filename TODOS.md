@@ -1295,10 +1295,25 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 
 ### Task 3: persona / prompt / soul 系统
 
-- [ ] SystemPromptBuilder：persona 描述 → 模型覆盖层 → 工具指令（对齐 Python PromptBuilder）
-- [ ] channel-aware 系统提示（web/CLI 与 IM 隐私分层）
-- [ ] rules.md / heart.md 铁律注入 + 隐私分级（对齐 TODO-96~98 W7-W9）
-- [ ] heart_record 工具（rule_add/list/delete，随 Task 1 工具系统落地）
+- [x] SystemPromptBuilder：persona 描述 → 模型覆盖层 → 工具指令（对齐 Python PromptBuilder）
+- [x] channel-aware 系统提示（web/CLI 与 IM 隐私分层）
+- [x] rules.md / heart.md 铁律注入 + 隐私分级（对齐 TODO-96~98 W7-W9）
+- [x] heart_record 工具（rule_add/list/delete，随 Task 1 工具系统落地）
+
+> **2026-08-10 完成（commit 待填）**：Task 3 全部 4 项落地，全量 235 用例绿（0 失败）。
+> - `ai/prompt/{SoulData,SoulLoader,RulesSection,SystemPromptBuilder,PromptService}`：
+>   SoulLoader 加载 soul/ 目录（必选 5 文件 + 可选 whisper/heart/rules，大小告警不阻断）；
+>   SystemPromptBuilder 按 ①SOUL→⑦tool_overlay 固定段序组装；rules 段隐私分层
+>   （web/CLI=public+private，feishu_im/wecom=仅 public）+ token<4096 退化为仅 critical +
+>   内容 hash 缓存；heart/whisper 段在 IM 渠道排除；persona 段从角色 JSON 组装
+>   （redlines→core identity→user profile→commitments→signature）；dolphin/phi2/orca-*
+>   等 text-tool 模型在 system 末尾追加防退化锚定（`TEXT_TOOL_CALLING_PATTERNS` 可配）。
+> - `ai/tool/builtin/HeartRecordTool`：append/list/delete（heart.md）+ rule_add/rule_list/
+>   rule_delete/rule_validate/rule_rollback（rules.md），轮转备份 .bak.1~.bak.5 +
+>   原子写入 + 写后读回校验 + 规则冲突检测 + 版本升级自动废止旧版 + 写入后失效 rules 缓存。
+> - `AgentOrchestrator` 装配 PromptService 后系统提示由统一 builder 生成（旧裸拼「你是 X。」
+>   路径保留为无 PromptService 时的降级）；`application.yml` 新增 `ai.soul.dir` /
+>   `ai.llm.text-tool-patterns` / `ai.llm.max-context-tokens`；docker-compose 挂载 soul/ 目录。
 
 ### Task 4: chat 高级行为
 

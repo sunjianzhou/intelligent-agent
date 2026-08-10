@@ -9,6 +9,7 @@ import com.intelligent.agent.web.ai.llm.ModelEvent;
 import com.intelligent.agent.web.ai.memory.AgentContext;
 import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
 import com.intelligent.agent.web.ai.memory.MemoryRecord;
+import com.intelligent.agent.web.ai.prompt.PromptService;
 import com.intelligent.agent.web.ai.tool.TextToolCallParser;
 import com.intelligent.agent.web.ai.tool.ToolCall;
 import com.intelligent.agent.web.ai.tool.ToolExecutionContext;
@@ -40,6 +41,7 @@ public class AgentOrchestrator {
     private final ToolExecutor toolExecutor;
     private final TextToolCallParser toolCallParser;
     private final ConversationMemoryService memoryService;
+    private final PromptService promptService;
     private final int maxToolRounds;
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor) {
@@ -47,15 +49,22 @@ public class AgentOrchestrator {
     }
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor, int maxToolRounds) {
-        this(router, toolExecutor, null, maxToolRounds);
+        this(router, toolExecutor, null, null, maxToolRounds);
     }
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
                              ConversationMemoryService memoryService, int maxToolRounds) {
+        this(router, toolExecutor, memoryService, null, maxToolRounds);
+    }
+
+    public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
+                             ConversationMemoryService memoryService,
+                             PromptService promptService, int maxToolRounds) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.toolExecutor = Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
         this.toolCallParser = new TextToolCallParser();
         this.memoryService = memoryService;
+        this.promptService = promptService;
         this.maxToolRounds = maxToolRounds;
     }
 
@@ -104,7 +113,10 @@ public class AgentOrchestrator {
 
     private List<ChatMessage> initialMessages(AgentRequestContext ctx, AgentContext memory) {
         List<ChatMessage> messages = new ArrayList<>();
-        if (ctx.persona() != null && !ctx.persona().isBlank()) {
+        if (promptService != null) {
+            messages.add(ChatMessage.system(promptService.buildSystemPrompt(ctx)));
+        } else if (ctx.persona() != null && !ctx.persona().isBlank()) {
+            // 旧路径（未装配 PromptService 时）：保持原行为
             messages.add(ChatMessage.system("你是 " + ctx.persona() + "。"));
         }
         if (ctx.useMemory()) {
