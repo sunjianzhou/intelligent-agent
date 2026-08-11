@@ -101,4 +101,33 @@ class OllamaLlmProviderTest {
         String body = request.getBody().readUtf8();
         assertThat(body).contains("\"images\":[\"aGVsbG8=\"]");
     }
+
+    @Test
+    void sendsNumericKeepAliveAsNumberNotString() throws Exception {
+        server.enqueue(new MockResponse()
+                .setBody("{\"message\":{\"content\":\"ok\"},\"done\":true}")
+                .setHeader("Content-Type", "application/json"));
+        provider.complete(ChatTurn.of("qwen2.5:7b", List.of(ChatMessage.user("hi")))).block();
+
+        RecordedRequest request = server.takeRequest();
+        String body = request.getBody().readUtf8();
+        assertThat(body).contains("\"keep_alive\":-1");
+        assertThat(body).doesNotContain("\"keep_alive\":\"-1\"");
+    }
+
+    @Test
+    void sendsDurationKeepAliveAsString() throws Exception {
+        server.enqueue(new MockResponse()
+                .setBody("{\"message\":{\"content\":\"ok\"},\"done\":true}")
+                .setHeader("Content-Type", "application/json"));
+        OllamaLlmProvider hourProvider = new OllamaLlmProvider(
+                server.url("/").toString(), "qwen2.5:7b",
+                new OllamaOptions(0.7, 2048, 0.9, 40, 1.1, 4096, -1, "1h"),
+                Duration.ofSeconds(10));
+        hourProvider.complete(ChatTurn.of("qwen2.5:7b", List.of(ChatMessage.user("hi")))).block();
+
+        RecordedRequest request = server.takeRequest();
+        String body = request.getBody().readUtf8();
+        assertThat(body).contains("\"keep_alive\":\"1h\"");
+    }
 }

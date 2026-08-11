@@ -161,7 +161,7 @@ class BuiltinToolTest {
 
         ToolResult result = executor.execute(
                 ToolCall.of("calculator", Map.of("expression", "2 + 2")),
-                ToolExecutionContext.of("u1", "user", false));
+                ToolExecutionContext.of("u1", "user"));
 
         assertThat(result.status()).isEqualTo("success");
         assertThat(String.valueOf(result.data())).isEqualTo("4");

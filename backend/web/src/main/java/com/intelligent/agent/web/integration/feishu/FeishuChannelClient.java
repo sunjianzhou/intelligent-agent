@@ -5,6 +5,7 @@ import com.intelligent.agent.web.im.ChannelMessage;
 import com.intelligent.agent.web.im.RetryConfig;
 import com.intelligent.agent.web.im.TokenBucket;
 import com.intelligent.agent.web.infrastructure.filesystem.JsonFileStore;
+import com.intelligent.agent.web.infrastructure.security.SecretCrypto;
 import com.intelligent.agent.web.integration.ChannelClient;
 import com.intelligent.agent.web.integration.DeliveryResult;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +27,7 @@ public class FeishuChannelClient implements ChannelClient {
     private final boolean enabled;
     private final TokenBucket rateLimiter = new TokenBucket(50, 10);
     private final RetryConfig retryConfig;
+    private final SecretCrypto crypto;
 
     public FeishuChannelClient(FeishuMessageSender sender, Path dataDir, boolean enabled) {
         this(sender, dataDir, enabled, RetryConfig.DEFAULT);
@@ -33,10 +35,16 @@ public class FeishuChannelClient implements ChannelClient {
 
     public FeishuChannelClient(FeishuMessageSender sender, Path dataDir, boolean enabled,
                                RetryConfig retryConfig) {
+        this(sender, dataDir, enabled, retryConfig, SecretCrypto.disabled());
+    }
+
+    public FeishuChannelClient(FeishuMessageSender sender, Path dataDir, boolean enabled,
+                               RetryConfig retryConfig, SecretCrypto crypto) {
         this.sender = sender;
         this.store = new JsonFileStore(dataDir);
         this.enabled = enabled;
         this.retryConfig = retryConfig;
+        this.crypto = crypto == null ? SecretCrypto.disabled() : crypto;
     }
 
     @Override
@@ -90,8 +98,8 @@ public class FeishuChannelClient implements ChannelClient {
     public void saveUserToken(String userId, String accessToken, String refreshToken, long refreshExpiresAt) {
         Map<String, Object> tokens = tokens();
         Map<String, Object> entry = new LinkedHashMap<>();
-        entry.put("access_token", accessToken);
-        entry.put("refresh_token", refreshToken);
+        entry.put("access_token", crypto.encrypt(accessToken));
+        entry.put("refresh_token", crypto.encrypt(refreshToken));
         entry.put("refresh_expires_at", refreshExpiresAt);
         tokens.put(userId, entry);
         store.write(new String[]{"feishu_tokens.json"}, tokens);
@@ -101,7 +109,14 @@ public class FeishuChannelClient implements ChannelClient {
         Object entry = tokens().get(userId);
         @SuppressWarnings("unchecked")
         Map<String, Object> token = entry instanceof Map ? (Map<String, Object>) entry : Map.of();
-        return token;
+        Map<String, Object> decrypted = new LinkedHashMap<>(token);
+        if (decrypted.get("access_token") != null) {
+            decrypted.put("access_token", crypto.decrypt(String.valueOf(decrypted.get("access_token"))));
+        }
+        if (decrypted.get("refresh_token") != null) {
+            decrypted.put("refresh_token", crypto.decrypt(String.valueOf(decrypted.get("refresh_token"))));
+        }
+        return decrypted;
     }
 
     private Map<String, Object> tokens() {

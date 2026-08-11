@@ -1,64 +1,7 @@
 <template>
   <div class="mcp-view">
     <div class="toolbar">
-      <span class="page-desc">工具扩展配置（API Key / MCP 接入）</span>
-    </div>
-
-    <!-- API Key 配置 -->
-    <div class="config-card">
-      <div class="config-title"><i class="fas fa-key" /> 工具 API Key 配置</div>
-      <div class="config-hint">配置后写入 .env 文件，重启服务后生效</div>
-      <div class="config-grid">
-        <div class="config-item" v-for="cfg in apiKeyConfigs" :key="cfg.key">
-          <label class="cfg-label">{{ cfg.label }}</label>
-          <div class="cfg-input-row">
-            <input
-              :type="cfg.show ? 'text' : 'password'"
-              v-model="cfg.value"
-              :placeholder="cfg.placeholder"
-              class="cfg-input"
-            />
-            <button class="cfg-eye" @click="cfg.show = !cfg.show">
-              <i :class="cfg.show ? 'fas fa-eye-slash' : 'fas fa-eye'" />
-            </button>
-          </div>
-          <span class="cfg-desc">{{ cfg.desc }}</span>
-        </div>
-      </div>
-      <div class="config-footer">
-        <button class="cfg-save-btn" :disabled="saving" @click="saveApiKeys">
-          <i v-if="saving" class="fas fa-circle-notch fa-spin" />
-          <i v-else class="fas fa-save" />
-          {{ saving ? '保存中...' : '保存配置' }}
-        </button>
-        <span class="cfg-tip">保存后需重启 Python Agent 生效</span>
-      </div>
-    </div>
-
-    <!-- 推理参数调节 -->
-    <div class="config-card">
-      <div class="config-title"><i class="fas fa-sliders-h" /> 推理参数调节</div>
-      <div class="config-hint">调节 LLM 生成行为，即时生效（不需要重启）</div>
-      <div class="param-grid">
-        <div class="param-item">
-          <label>Temperature（温度）<span class="param-val">{{ temperature }}</span></label>
-          <input type="range" v-model.number="temperature" min="0" max="2" step="0.05"
-                 class="param-slider" @change="saveParams" />
-          <div class="param-range"><span>0 精确</span><span>2 创意</span></div>
-        </div>
-        <div class="param-item">
-          <label>Max Tokens（最大长度）<span class="param-val">{{ maxTokens }}</span></label>
-          <input type="range" v-model.number="maxTokens" min="256" max="8192" step="256"
-                 class="param-slider" @change="saveParams" />
-          <div class="param-range"><span>256</span><span>8192</span></div>
-        </div>
-        <div class="param-item">
-          <label>Top-P（核采样）<span class="param-val">{{ topP }}</span></label>
-          <input type="range" v-model.number="topP" min="0.1" max="1" step="0.05"
-                 class="param-slider" @change="saveParams" />
-          <div class="param-range"><span>0.1</span><span>1.0</span></div>
-        </div>
-      </div>
+      <span class="page-desc">系统资源配置（并发 / 缓存 / 记忆上限）</span>
     </div>
 
     <!-- 系统资源配置 -->
@@ -192,72 +135,6 @@
       </div>
     </div>
 
-    <!-- 数据库工具配置 -->
-    <div class="config-card">
-      <div class="config-title">
-        <i class="fas fa-database" /> 数据库工具配置
-        <span class="db-status" :class="dbConnected ? 'db-status--on' : 'db-status--off'">
-          {{ dbConnected ? '已连接' : '未连接' }}
-        </span>
-      </div>
-      <div class="config-hint">配置 DatabaseTool 使用的 MySQL 连接（留空 db_type 则禁用数据库工具）</div>
-      <div class="db-form">
-        <div class="db-row">
-          <div class="db-field">
-            <label>数据库类型</label>
-            <select v-model="dbEdit.db_type" class="db-select">
-              <option value="">不启用</option>
-              <option value="mysql">MySQL / OceanBase</option>
-            </select>
-          </div>
-          <div class="db-field">
-            <label>字符集</label>
-            <input v-model="dbEdit.db_charset" placeholder="utf8mb4" class="db-input" />
-          </div>
-        </div>
-        <div class="db-row">
-          <div class="db-field db-field--wide">
-            <label>主机地址</label>
-            <input v-model="dbEdit.db_host" placeholder="127.0.0.1" class="db-input" />
-          </div>
-          <div class="db-field">
-            <label>端口</label>
-            <input v-model.number="dbEdit.db_port" type="number" placeholder="3306" class="db-input db-input--port" />
-          </div>
-        </div>
-        <div class="db-row">
-          <div class="db-field db-field--wide">
-            <label>数据库名</label>
-            <input v-model="dbEdit.db_database" placeholder="mydb" class="db-input" />
-          </div>
-          <div class="db-field">
-            <label>用户名</label>
-            <input v-model="dbEdit.db_user" placeholder="root" class="db-input" />
-          </div>
-        </div>
-        <div class="db-field">
-          <label>密码</label>
-          <div class="cfg-input-row">
-            <input
-              :type="dbShowPwd ? 'text' : 'password'"
-              v-model="dbEdit.db_password"
-              placeholder="留空则保持原密码不变"
-              class="cfg-input"
-            />
-            <button class="cfg-eye" @click="dbShowPwd = !dbShowPwd">
-              <i :class="dbShowPwd ? 'fas fa-eye-slash' : 'fas fa-eye'" />
-            </button>
-          </div>
-        </div>
-      </div>
-      <div class="config-footer">
-        <button class="cfg-save-btn" :disabled="dbSaving" @click="saveDatabaseConfig">
-          <i v-if="dbSaving" class="fas fa-circle-notch fa-spin" /><i v-else class="fas fa-plug" />
-          {{ dbSaving ? '连接中...' : '保存并测试连接' }}
-        </button>
-        <span class="cfg-tip">即时生效；密码留空保持原值；db_type 留空禁用工具</span>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -265,78 +142,6 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getRuntimeConfig, updateRuntimeConfig } from '@/services/api'
-
-const saving = ref(false)
-const apiKeyConfigs = ref([
-  {
-    key: 'GITHUB_TOKEN',
-    label: 'GitHub Token',
-    placeholder: 'ghp_xxxxxxx 或 github_pat_xxxxxx',
-    desc: '用于 GitHub 工具：搜索仓库、查看代码、PR/Issue 等',
-    value: '',
-    show: false,
-  },
-  {
-    key: 'WEB_SEARCH_API_KEY',
-    label: 'WebSearch API Key',
-    placeholder: '搜索引擎 API Key',
-    desc: '用于 WebSearchTool：联网搜索最新信息',
-    value: '',
-    show: false,
-  },
-])
-
-const saveApiKeys = async () => {
-  saving.value = true
-  try {
-    const updates = {}
-    apiKeyConfigs.value.forEach(c => { if (c.value) updates[c.key] = c.value })
-    if (!Object.keys(updates).length) {
-      ElMessage({ message: '未填写任何 Key', type: 'warning', duration: 2000 })
-      return
-    }
-    const res = await fetch('/api/config/env', {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('agent_token') || ''}`,
-      },
-      body: JSON.stringify(updates),
-    })
-    if (res.ok) {
-      ElMessage({ message: '配置已保存，重启服务后生效', type: 'success', duration: 3000 })
-      apiKeyConfigs.value.forEach(c => { c.value = '' })
-    } else {
-      ElMessage({ message: '保存失败，请检查服务状态', type: 'error', duration: 3000 })
-    }
-  } finally {
-    saving.value = false
-  }
-}
-
-const temperature = ref(0.7)
-const maxTokens   = ref(2048)
-const topP        = ref(0.9)
-
-const saveParams = async () => {
-  try {
-    await fetch('/api/config/params', {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('agent_token') || ''}`,
-      },
-      body: JSON.stringify({
-        temperature: temperature.value,
-        max_tokens:  maxTokens.value,
-        top_p:       topP.value,
-      }),
-    })
-    ElMessage({ message: '参数已更新', type: 'success', duration: 1500 })
-  } catch {
-    ElMessage({ message: '参数保存失败', type: 'error', duration: 2000 })
-  }
-}
 
 // ── 系统资源配置 ──────────────────────────────────────────
 const rcEdit   = ref({})
@@ -366,68 +171,8 @@ const saveRuntimeConfig = async () => {
   }
 }
 
-// ── 数据库工具配置 ──────────────────────────────────────────
-const dbEdit    = ref({ db_type: '', db_host: '', db_port: 3306, db_database: '', db_user: '', db_charset: 'utf8mb4', db_password: '' })
-const dbSaving  = ref(false)
-const dbShowPwd = ref(false)
-const dbConnected = ref(false)
-
-const loadDatabaseConfig = async () => {
-  try {
-    const res = await fetch('/api/config/database', {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('agent_token') || ''}` }
-    })
-    if (res.ok) {
-      const data = await res.json()
-      const cfg = data.config || {}
-      dbEdit.value = {
-        db_type:     cfg.db_type     || '',
-        db_host:     cfg.db_host     || '',
-        db_port:     cfg.db_port     || 3306,
-        db_database: cfg.db_database || '',
-        db_user:     cfg.db_user     || '',
-        db_charset:  cfg.db_charset  || 'utf8mb4',
-        db_password: '',
-      }
-      dbConnected.value = data.connected || false
-    }
-  } catch {}
-}
-
-const saveDatabaseConfig = async () => {
-  dbSaving.value = true
-  try {
-    const payload = { ...dbEdit.value }
-    if (!payload.db_password) delete payload.db_password
-    const res = await fetch('/api/config/database', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('agent_token') || ''}`,
-      },
-      body: JSON.stringify(payload),
-    })
-    if (res.ok) {
-      const data = await res.json()
-      dbConnected.value = data.connected || false
-      if (data.connected) {
-        ElMessage({ message: '数据库连接成功', type: 'success', duration: 2000 })
-      } else if (!dbEdit.value.db_type) {
-        ElMessage({ message: '已禁用 DatabaseTool', type: 'info', duration: 2000 })
-      } else {
-        ElMessage({ message: '配置已保存，但连接失败，请检查参数', type: 'warning', duration: 3000 })
-      }
-    } else {
-      ElMessage({ message: '保存失败，请检查服务状态', type: 'error', duration: 3000 })
-    }
-  } finally {
-    dbSaving.value = false
-  }
-}
-
 onMounted(() => {
   loadRcConfig()
-  loadDatabaseConfig()
 })
 </script>
 

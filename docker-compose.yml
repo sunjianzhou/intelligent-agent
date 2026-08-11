@@ -34,7 +34,7 @@ services:
   # ── ComfyUI（本地图片生成，需 GPU，按需启动）──────────────────
   # 启动方式：docker-compose --profile local up -d --build
   # 复用宿主机已有的 ComfyUI 安装目录（含 models/checkpoints、custom_nodes），
-  # 首次启动会在容器内安装 python 依赖（与宿主机 conda 环境版本对齐），耗时较久，之后会跳过。
+  # 首次启动会在容器内安装 python 依赖，耗时较久，之后会跳过。
   comfyui:
     profiles: [local]
     build:
@@ -70,11 +70,8 @@ services:
     env_file:
       - .env.docker
     environment:
-      # Python Agent 已于 2026-08-08 退役；Java 后端为唯一服务端（默认 java 模式）
-      - AI_RUNTIME_MODE=${AI_RUNTIME_MODE:-java}
-      - AI_SHADOW_ALLOWLIST=${AI_SHADOW_ALLOWLIST:-}
+      # Python Agent 已于 2026-08-08 退役；Java 后端为唯一服务端
       - SOUL_DIR=/app/soul
-      - SPRING_PROFILES_ACTIVE=docker
       - LOG_LEVEL=INFO
       # 临时诊断飞书长连接是否真的收到帧（含心跳），排查完移除
       - LOGGING_LEVEL_COM_LARK_OAPI=DEBUG
@@ -184,11 +181,7 @@ services:
       - ia_net
 
 volumes:
-  agent_data:
-  agent_cache:
   ollama_models:
-  agent_chroma_data:
-  agent_chroma_data_longterm:
 
 networks:
   ia_net:

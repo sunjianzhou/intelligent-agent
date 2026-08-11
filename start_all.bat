@@ -4,7 +4,7 @@ setlocal enabledelayedexpansion
 REM ============================================================================
 REM  Intelligent Agent -- Java-only startup (Python Agent retired 2026-08-08)
 REM   Usage: start_all.bat [start ^| docker ^| client]
-REM   Backend runs in java mode by default (AI_RUNTIME_MODE override supported)
+REM   Backend is Java-only (Python Agent retired 2026-08-08)
 REM ============================================================================
 
 set "ROOT=%~dp0"

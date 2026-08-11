@@ -4,12 +4,16 @@ import com.intelligent.agent.web.ai.agent.AgentOrchestrator;
 import com.intelligent.agent.web.ai.agent.BranchFailureDetector;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
+import com.intelligent.agent.web.ai.memory.LlmExtractionService;
 import com.intelligent.agent.web.ai.memory.MemoryDistillationService;
 import com.intelligent.agent.web.ai.memory.SemanticResponseCache;
 import com.intelligent.agent.web.ai.prompt.PromptService;
 import com.intelligent.agent.web.ai.prompt.SoulLoader;
 import com.intelligent.agent.web.ai.prompt.SystemPromptBuilder;
 import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
+import com.intelligent.agent.web.infrastructure.vectorstore.EmbeddingService;
+import com.intelligent.agent.web.infrastructure.monitoring.SystemResourceService;
+import com.intelligent.agent.web.infrastructure.security.SecretCrypto;
 import com.intelligent.agent.web.ai.tool.AgentTool;
 import com.intelligent.agent.web.ai.tool.ToolExecutor;
 import com.intelligent.agent.web.ai.tool.builtin.CalculatorTool;
@@ -29,6 +33,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -143,19 +148,60 @@ public class AgentConfig {
         return new HeartRecordTool(Path.of(soulDir));
     }
 
+    /** TODO-110 Task 5：真实 embedding（Ollama /api/embed），失败时 n-gram 兜底。*/
     @Bean
-    public VectorMemoryRepository vectorMemoryRepository() {
-        return new VectorMemoryRepository();
+    public EmbeddingService embeddingService(
+            @Value("${ai.llm.ollama.base-url:http://localhost:11434}") String baseUrl,
+            @Value("${ai.embedding.model:nomic-embed-text}") String model,
+            @Value("${ai.embedding.timeout:10s}") Duration timeout,
+            @Value("${ai.embedding.enabled:true}") boolean enabled) {
+        return new EmbeddingService(baseUrl, model, timeout, enabled);
+    }
+
+    /** TODO-110 Task 5：LLM 提取（记忆蒸馏 / 项目上下文）。*/
+    @Bean
+    public LlmExtractionService llmExtractionService(
+            LlmProviderRouter llmProviderRouter,
+            @Value("${ai.llm.ollama.model:qwen2.5:7b}") String defaultModel,
+            @Value("${ai.llm.extraction.timeout:30s}") Duration timeout,
+            @Value("${ai.llm.extraction.enabled:true}") boolean enabled) {
+        return new LlmExtractionService(llmProviderRouter, defaultModel, timeout, enabled);
+    }
+
+    /** 本地系统资源监控（java 模式 /api/system/resources）。 */
+    @Bean
+    public SystemResourceService systemResourceService(
+            @Value("${ai.llm.ollama.base-url:http://localhost:11434}") String ollamaBaseUrl) {
+        return new SystemResourceService(ollamaBaseUrl);
+    }
+
+    /** 敏感字段落盘加密（密钥由 JWT_SECRET 派生）。 */
+    @Bean
+    public SecretCrypto secretCrypto(@Value("${JWT_SECRET:}") String jwtSecret) {
+        return new SecretCrypto(jwtSecret);
     }
 
     @Bean
-    public SemanticResponseCache semanticResponseCache() {
-        return new SemanticResponseCache();
+    public VectorMemoryRepository vectorMemoryRepository(
+            EmbeddingService embeddingService,
+            @Value("${intelligent-agent.data-dir:data}") String dataDir) {
+        return new VectorMemoryRepository(embeddingService, Path.of(dataDir),
+                VectorMemoryRepository.DEFAULT_MAX_RECORDS);
     }
 
     @Bean
-    public MemoryDistillationService memoryDistillationService() {
-        return new MemoryDistillationService();
+    public SemanticResponseCache semanticResponseCache(EmbeddingService embeddingService) {
+        return new SemanticResponseCache(SemanticResponseCache.DEFAULT_TTL, embeddingService);
+    }
+
+    @Bean
+    public MemoryDistillationService memoryDistillationService(
+            LlmExtractionService llmExtractionService,
+            @Value("${ai.memory.project-extraction-interval:8}") int projectInterval) {
+        return new MemoryDistillationService(
+                MemoryDistillationService.DEFAULT_INTERVAL,
+                MemoryDistillationService.DEFAULT_SUMMARY_INTERVAL,
+                projectInterval, llmExtractionService);
     }
 
     @Bean

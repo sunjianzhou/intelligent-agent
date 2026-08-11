@@ -32,17 +32,8 @@
         </div>
         <div class="card-sub">Spring Boot · localhost:8080</div>
       </div>
-      <div class="status-card">
-        <div class="card-label">Python Agent</div>
-        <div class="status-badge" :class="pythonOk === null ? 'checking' : pythonOk === 'timeout' ? 'timeout' : pythonOk ? 'ok' : 'err'">
-          <i :class="pythonOk === null ? 'fas fa-spinner fa-spin' : pythonOk === 'timeout' ? 'fas fa-clock' : pythonOk ? 'fas fa-check-circle' : 'fas fa-times-circle'" />
-          {{ pythonOk === null ? '检测中' : pythonOk === 'timeout' ? '检测超时' : pythonOk ? '运行中' : '未连接' }}
-          <button v-if="pythonOk === 'timeout'" class="retry-btn" @click="refresh"><i class="fas fa-redo" /> 重试</button>
-        </div>
-        <div class="card-sub">FastAPI · localhost:8000</div>
-      </div>
 
-      <!-- 第四张卡：云端模型 or Ollama -->
+      <!-- 云端模型 or Ollama -->
       <div class="status-card" :class="{ 'cloud-card': cloudMode }">
         <div class="card-label">
           <i v-if="cloudMode" class="fas fa-cloud" style="color:#667eea;margin-right:4px" />
@@ -289,14 +280,14 @@
           <span class="ru-val">已用 {{ rcCfg.inference_queue_size - (rcUsage.queue_slots ?? rcCfg.inference_queue_size) }} / {{ rcCfg.inference_queue_size }}</span>
         </div>
         <div class="rc-usage-item">
-          <span class="ru-label">L1 精确缓存</span>
+          <span class="ru-label">精确缓存</span>
           <div class="ru-bar-wrap">
             <div class="ru-bar ru-bar-cache" :style="{ width: usagePct(rcUsage.l1_cache_entries, rcCfg.response_cache_max_size) + '%' }" />
           </div>
           <span class="ru-val">{{ rcUsage.l1_cache_entries ?? 0 }} / {{ rcCfg.response_cache_max_size }}</span>
         </div>
         <div class="rc-usage-item">
-          <span class="ru-label">L2 语义缓存</span>
+          <span class="ru-label">语义缓存</span>
           <div class="ru-bar-wrap">
             <div class="ru-bar ru-bar-cache" :style="{ width: usagePct(rcUsage.l2_cache_entries, rcCfg.semantic_cache_max_entries) + '%' }" />
           </div>
@@ -319,55 +310,6 @@
       </div>
     </div>
 
-    <!-- 内存优化建议已移除（功能冗余） -->
-    <div v-if="false" class="detail-card mem-tips-card">
-      <div class="tips-grid">
-
-        <div class="tip-group">
-          <div class="tip-group-title"><i class="fab fa-node-js" style="color:#68a063"/> 前端 (当前 ~{{ frontendMemMb }} MB)</div>
-          <div class="tip-item tip-high">
-            <span class="tip-tag high">最有效</span>
-            <span>改用生产构建 <code>npm run build</code>，Nginx/Java 提供静态文件，Node.js 进程彻底退出。可释放 <b>~1.8 GB</b></span>
-          </div>
-          <div class="tip-item">
-            <span class="tip-tag mid">开发期</span>
-            <span>仅 1 个标签调试时关闭其他浏览器标签，Vite HMR 不额外占用</span>
-          </div>
-        </div>
-
-        <div class="tip-group">
-          <div class="tip-group-title"><i class="fab fa-python" style="color:#3572a5"/> Python Agent (当前 ~{{ pythonMemMb }} MB)</div>
-          <div class="tip-item tip-high">
-            <span class="tip-tag high">最有效</span>
-            <span>环境变量 <code>USE_LIGHTWEIGHT_EMBEDDING=true</code>，跳过 PyTorch 加载 sentence-transformers，改用轻量 BM25，可节省 <b>~200 MB</b></span>
-          </div>
-          <div class="tip-item">
-            <span class="tip-tag mid">推荐</span>
-            <span>缩小短期记忆上限 <code>SHORT_TERM_MAX_SIZE=50</code>（在「资源配置」面板调整）</span>
-          </div>
-          <div class="tip-item">
-            <span class="tip-tag low">可选</span>
-            <span>缩减 L1/L2 缓存条目上限，减少 OrderedDict / ChromaDB 内存占用</span>
-          </div>
-        </div>
-
-        <div class="tip-group">
-          <div class="tip-group-title"><i class="fab fa-java" style="color:#b07219"/> Java 后端 (当前 ~{{ javaMemMb }} MB)</div>
-          <div class="tip-item tip-high">
-            <span class="tip-tag high">最有效</span>
-            <span>限制 JVM 堆大小。在 <code>start.ps1</code> 的 <code>mvn</code> 行加上：<br/>
-              <code>-Dspring-boot.run.jvmArguments="-Xms64m -Xmx256m"</code><br/>
-              可将 JVM 从 ~830 MB 降至 <b>~300 MB</b></span>
-          </div>
-          <div class="tip-item">
-            <span class="tip-tag mid">推荐</span>
-            <span>打包成 JAR 后用 <code>java -Xmx256m -jar app.jar</code> 运行，比 Maven 运行省 ~100 MB</span>
-          </div>
-        </div>
-
-      </div>
-    </div>
-
     <!-- 模型管理与云端服务商已迁移至模型管理页 -->
     <div class="redirect-hint">
       <i class="fas fa-robot" />
@@ -383,7 +325,7 @@
 import { ref, computed, onMounted, onUnmounted, defineComponent, h } from 'vue'
 import { useWebSocketStore } from '@/stores/websocket'
 import {
-  getJavaHealth, getPythonHealth, getSystemInfo, getModels, getSystemResources,
+  getJavaHealth, getSystemInfo, getModels, getSystemResources,
   getRuntimeConfig,
 } from '@/services/api'
 
@@ -433,7 +375,6 @@ const showOthers   = ref(false)
 const showMemTips  = ref(false)
 const topOthers    = ref([])
 const javaOk       = ref(null)   // null=检测中, true=ok, false=失败, 'timeout'=超时
-const pythonOk     = ref(null)
 const ollamaOk     = ref(false)
 const currentModel = ref('')
 const cloudModel   = ref('')
@@ -498,13 +439,6 @@ const agentTotalMb    = computed(() =>
 )
 const totalMemMb      = computed(() => (resources.value.memory_total_gb || 1) * 1024)
 
-// 各端内存（供优化建议卡片显示）
-const frontendMemMb = computed(() => {
-  const p = processes.value
-  return Math.round((p['前端(Node)']?.mem_mb || 0) + (p['前端(Vite)']?.mem_mb || 0))
-})
-const pythonMemMb = computed(() => Math.round(processes.value['Python Agent']?.mem_mb || 0))
-const javaMemMb   = computed(() => Math.round(processes.value['Java 后端']?.mem_mb || 0))
 const processBarWidth = (mb) => Math.min(100, Math.round(mb / totalMemMb.value * 100))
 const processBarColor = (mb, name) => {
   if (name === '其他进程') return 'bar-other'
@@ -513,7 +447,6 @@ const processBarColor = (mb, name) => {
 }
 const processIcon = (name) => ({
   'Ollama':       'fas fa-robot',
-  'Python Agent': 'fab fa-python',
   'Java 后端':    'fab fa-java',
   '前端(Node)':   'fab fa-node-js',
   '前端(Vite)':   'fas fa-bolt',
@@ -555,20 +488,15 @@ const refresh = async () => {
   loading.value   = true
   countdown.value = 10
   try {
-    const [javaRes, pythonRes, sys, modelData, res] = await Promise.allSettled([
+    const [javaRes, sys, modelData, res] = await Promise.allSettled([
       withTimeout(getJavaHealth()),
-      withTimeout(getPythonHealth()),
       getSystemInfo(), getModels(), getSystemResources()
     ])
 
     const java   = javaRes.status   === 'fulfilled' ? javaRes.value   : null
-    const python = pythonRes.status === 'fulfilled' ? pythonRes.value : null
 
     if (javaRes.status === 'rejected' && javaRes.reason?.timedOut)     javaOk.value = 'timeout'
     else javaOk.value   = java != null ? java.status === 'UP' : false
-
-    if (pythonRes.status === 'rejected' && pythonRes.reason?.timedOut) pythonOk.value = 'timeout'
-    else pythonOk.value = python != null ? python.status === 'connected' : false
 
     const sysd       = sys.status      === 'fulfilled' ? sys.value       : null
     const modelData2 = modelData.status === 'fulfilled' ? modelData.value : null

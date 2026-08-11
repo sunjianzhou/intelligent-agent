@@ -4,16 +4,54 @@
 
 ---
 
-## 当前待办总览（2026-08-10 更新）
+## 当前待办总览（2026-08-11 更新）
 
-> **迁移队列状态**：TODO-110 Task 1~4、Task 6 已全部落地，Task 5 仅剩环境依赖项；
-> 全量测试 254 用例绿（0 失败）。以下为当前全部未完成项，按可推进性分组。
+> **迁移队列状态**：TODO-110 Task 1~6 已全部落地（Task 5 三项环境依赖项已于 2026-08-11 Ollama 就绪后完成）；
+> 全量测试 284 用例绿（0 失败）。
+>
+> **2026-08-11 P0 修复（后端架构体检）**：
+> - 模型切换贯通：`ChatRequest.model` + `LocalChatService` 按用户偏好解析（`ModelService.resolveModel`）；
+>   云端激活（`CloudService.activate`）真实联动 `OpenAiCompatibleLlmProvider.configure` + `LlmProviderRouter.registerCloudModel`，
+>   不再只是更新展示状态。
+> - WS 通知：`WebSocketController` java 模式改消费本地 `TaskSchedulerService` 通知队列（原打死 Python 服务，通知到不了前端）。
+> - 系统信息/资源 java 模式本地化：`getRealSystemInfo` 走本地组件；新增 `SystemResourceService`
+>   （CPU/内存/磁盘/Ollama 已加载模型，JDK 实现无新依赖）。
+> - 长期记忆持久化：`VectorMemoryRepository` 支持 dataDir 落盘（启动加载/变更写回 JSON）+ 默认 5000 条容量上限淘汰。
+>
+> **2026-08-11 推进（P1/P2 逐项）**：
+> - 调度器异步化：`TaskSchedulerService` 单飞行锁 + 专用线程池，`llm_generate` 不再阻塞共享 Spring 调度线程（对应 TODO-12 部分落地）。
+> - 语义缓存容量上限（默认 2000 条 LRU）+ 召回质量修正（零相似度仅高重要度≥0.9 记录可召回）。
+> - **彻底移除 Python 回滚代码路径**：删除 `PythonProxyService` / `AbstractProxyController` / `ShadowComparison*`；
+>   全部控制器改为纯本地（userId 改由 `JwtAuthFilter` request attribute + `UserContext` 提供）；
+>   `AgentService` 从 565 行双模式精简为纯本地；`ToolExecutionContext` 移除 shadow 模式；
+>   删除 python-service / runtime-mode / shadow 配置；前端 MCPView 移除已删除端点的死 UI。
+>   全量 275 用例绿（0 失败）+ 前端 14 用例绿。
+>
+> **2026-08-11 推进（收尾）**：
+> - REST 错误码：随 Python 代理移除，真实错误路径统一返回 4xx/5xx（`guarded()` 404/400、上传 413、
+>   图片 prompt 400 等）；200+success:false 仅保留在业务结果语义处（如删除不存在资源）。
+> - 云端 API Key 落盘加密：新增 `SecretCrypto`（AES-128-GCM，密钥由 JWT_SECRET 派生），
+>   `CloudService` 保存时加密、读取时解密，存量明文自动兼容；新增 4 个加密/兼容测试。
+> - `HeartRecordTool` 拆分：Markdown 解析/重建 + 原子写/备份/读回校验抽到 `HeartMarkdownSupport`
+>   （~810 行 → ~600 行），行为与 11 个既有测试完全一致。
+> 全量 279 用例绿（0 失败）。
+>
+> **2026-08-11 推进（可选收尾三项）**：
+> - 飞书 OAuth token 落盘加密：`FeishuChannelClient.saveUserToken` 用同一 `SecretCrypto`
+>   （AES-GCM，JWT_SECRET 派生密钥）加密 access/refresh token，读取时解密，存量明文兼容。
+> - GPU 监控：`SystemResourceService` 接入 nvidia-smi（name/利用率/温度/显存），2s 缓存，
+>   无 GPU 或失败时保持 null 降级；前端无需改动。
+> - 调度器事件驱动化：`TaskSchedulerService.refresh()` 按最近到期时刻安排一次性唤醒
+>   （immediate/delay/interval/datetime/cron 精确计算），任务增删改由 `TaskProxyController`
+>   触发刷新，60s 兜底扫描自愈漂移，替代每秒全量盲扫；`tick()` 同步语义保留供测试。
+> 全量 284 用例绿（0 失败）。
+> 以下为当前全部未完成项，按可推进性分组。
 
 ### A. 环境依赖待办（需 Ollama / 嵌入模型，可用后恢复）
 
-- [ ] 记忆蒸馏升级为 LLM 提取（TODO-110 Task 5，当前规则式）
-- [ ] 语义缓存真实 embedding（TODO-110 Task 5，当前 n-gram 哈希近似）
-- [ ] 项目上下文提取 LLM 化（TODO-110 Task 5，当前简化版）
+- [x] 记忆蒸馏升级为 LLM 提取（TODO-110 Task 5，已完成：LlmExtractionService + 规则式兜底）
+- [x] 语义缓存真实 embedding（TODO-110 Task 5，已完成：EmbeddingService 接 Ollama nomic-embed-text）
+- [x] 项目上下文提取 LLM 化（TODO-110 Task 5，已完成：每 8 轮 LLM 提取项目 nuggets）
 
 ### B. 验收遗留（需真实服务运行 + IM 凭证）
 
@@ -1371,9 +1409,9 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 
 ### Task 5: 降级项提升（可选，标注依赖）
 
-- [ ] 记忆蒸馏升级为 LLM 提取（当前规则式）⏭️ 已跳过（2026-08-10 owner 指示：本机无 Ollama，待模型环境可用后恢复）
-- [ ] 语义缓存真实 embedding（当前 n-gram 哈希近似，需嵌入模型/向量库）⏭️ 已跳过（2026-08-10 owner 指示：本机无嵌入模型，待环境可用后恢复）
-- [ ] 项目上下文提取 LLM 化（当前简化版）⏭️ 已跳过（2026-08-10 owner 指示：本机无 Ollama，待模型环境可用后恢复）
+- [x] 记忆蒸馏升级为 LLM 提取（当前规则式）✅ 已完成（2026-08-11：LlmExtractionService + 规则式兜底）
+- [x] 语义缓存真实 embedding（当前 n-gram 哈希近似）✅ 已完成（2026-08-11：EmbeddingService 接 Ollama nomic-embed-text，768 维）
+- [x] 项目上下文提取 LLM 化（当前简化版）✅ 已完成（2026-08-11：每 8 轮 LLM 提取项目 nuggets 入 project 记录）
 - [x] 调度器 llm_generate action（`TaskSchedulerService` 注入 `LlmProviderRouter`，
       生成结果入通知队列；mock 路由测试通过）
 
@@ -1383,6 +1421,12 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 > **2026-08-10 更新（owner 指示）**：实测 `localhost:11434` 不可达，三项 LLM/embedding
 > 依赖项按 owner 指示跳过（标注 ⏭️），保留为环境依赖待办——Ollama / 嵌入模型可用后恢复。
 > 至此 TODO-110 全部非环境依赖项已落地，全量 254 用例绿（0 失败）。
+>
+> **2026-08-11 更新**：本机 Ollama v0.5.7 已就绪（已拉取 `qwen2.5:7b` + `nomic-embed-text`），
+> 三项环境依赖项全部落地，全量 268 用例绿（0 失败）。新增 `EmbeddingService`（Ollama /api/embed，
+> n-gram 兜底）、`LlmExtractionService`（记忆蒸馏/项目上下文提取，失败回退规则式）；
+> 项目上下文每 8 轮 LLM 提取为 project 记录。顺带修复 Ollama 0.5.x 拒绝字符串
+> `keep_alive="-1"`（HTTP 400）的问题——纯数字改为按数字发送。
 
 ### Task 6: CLI 补齐
 

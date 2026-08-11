@@ -1,8 +1,12 @@
 package com.intelligent.agent.web.service;
 
+import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
+import com.intelligent.agent.web.ai.llm.cloud.OpenAiCompatibleLlmProvider;
 import com.intelligent.agent.web.infrastructure.filesystem.JsonFileStore;
+import com.intelligent.agent.web.infrastructure.security.SecretCrypto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Path;
@@ -33,9 +37,29 @@ public class CloudService {
     private String dataDir;
 
     private final ModelService modelService;
+    private final OpenAiCompatibleLlmProvider cloudProvider;
+    private final LlmProviderRouter router;
+    private final SecretCrypto crypto;
 
     public CloudService(ModelService modelService) {
+        this(modelService, null, null, SecretCrypto.disabled());
+    }
+
+    public CloudService(ModelService modelService,
+                        OpenAiCompatibleLlmProvider cloudProvider,
+                        LlmProviderRouter router) {
+        this(modelService, cloudProvider, router, SecretCrypto.disabled());
+    }
+
+    @Autowired
+    public CloudService(ModelService modelService,
+                        OpenAiCompatibleLlmProvider cloudProvider,
+                        LlmProviderRouter router,
+                        SecretCrypto crypto) {
         this.modelService = modelService;
+        this.cloudProvider = cloudProvider;
+        this.router = router;
+        this.crypto = crypto == null ? SecretCrypto.disabled() : crypto;
     }
 
     public Map<String, Object> listProviders() {
@@ -104,11 +128,18 @@ public class CloudService {
                 }
                 provider.put("active", true);
                 save(all());
+                String providerName = String.valueOf(provider.getOrDefault("provider", "custom"));
+                String baseUrl = String.valueOf(provider.getOrDefault("base_url", ""));
+                String apiKey = String.valueOf(provider.getOrDefault("api_key", ""));
+                String model = String.valueOf(provider.getOrDefault("model", ""));
                 modelService.activateCloud(
-                        String.valueOf(provider.getOrDefault("provider", "custom")),
-                        String.valueOf(provider.getOrDefault("base_url", "")),
-                        String.valueOf(provider.getOrDefault("api_key", "")),
-                        String.valueOf(provider.getOrDefault("model", "")));
+                        providerName, baseUrl, apiKey, model);
+                if (cloudProvider != null) {
+                    cloudProvider.configure(baseUrl, apiKey, model);
+                }
+                if (router != null) {
+                    router.registerCloudModel(model);
+                }
                 return Map.of("success", true, "provider_id", providerId);
             }
         }
@@ -121,6 +152,12 @@ public class CloudService {
         }
         save(all());
         modelService.deactivateCloud();
+        if (cloudProvider != null) {
+            cloudProvider.clearConfig();
+        }
+        if (router != null) {
+            router.clearCloudModels();
+        }
         return Map.of("success", true);
     }
 
@@ -129,12 +166,28 @@ public class CloudService {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> providers = data == null ? new ArrayList<>()
                 : (List<Map<String, Object>>) data.getOrDefault("providers", new ArrayList<>());
-        return new ArrayList<>(providers);
+        List<Map<String, Object>> decrypted = new ArrayList<>(providers.size());
+        for (Map<String, Object> provider : providers) {
+            Map<String, Object> copy = new LinkedHashMap<>(provider);
+            if (copy.get("api_key") != null) {
+                copy.put("api_key", crypto.decrypt(String.valueOf(copy.get("api_key"))));
+            }
+            decrypted.add(copy);
+        }
+        return decrypted;
     }
 
     private void save(List<Map<String, Object>> providers) {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("providers", providers);
+        List<Map<String, Object>> encrypted = new ArrayList<>(providers.size());
+        for (Map<String, Object> provider : providers) {
+            Map<String, Object> copy = new LinkedHashMap<>(provider);
+            if (copy.get("api_key") != null) {
+                copy.put("api_key", crypto.encrypt(String.valueOf(copy.get("api_key"))));
+            }
+            encrypted.add(copy);
+        }
+        data.put("providers", encrypted);
         new JsonFileStore(Path.of(dataDir)).write(new String[]{"cloud_providers.json"}, data);
     }
 

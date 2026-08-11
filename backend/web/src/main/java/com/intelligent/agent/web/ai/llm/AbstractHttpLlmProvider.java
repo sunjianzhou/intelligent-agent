@@ -27,7 +27,7 @@ public abstract class AbstractHttpLlmProvider implements LlmProvider {
 
     protected final HttpClient httpClient;
     private final Duration requestTimeout;
-    private final List<String> redactionSecrets;
+    private volatile List<String> redactionSecrets;
 
     protected AbstractHttpLlmProvider(Duration requestTimeout, String... secretsToRedact) {
         this.requestTimeout = requestTimeout;
@@ -35,6 +35,20 @@ public abstract class AbstractHttpLlmProvider implements LlmProvider {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
                 .build();
+    }
+
+    /** 运行期追加脱敏密钥（如云端 provider 热切换后的新 API Key）。 */
+    protected void addRedactionSecret(String secret) {
+        if (secret == null || secret.isBlank()) {
+            return;
+        }
+        List<String> current = redactionSecrets;
+        if (current.contains(secret)) {
+            return;
+        }
+        List<String> updated = new java.util.ArrayList<>(current);
+        updated.add(secret);
+        redactionSecrets = List.copyOf(updated);
     }
 
     protected HttpRequest.Builder jsonRequest(String url) {

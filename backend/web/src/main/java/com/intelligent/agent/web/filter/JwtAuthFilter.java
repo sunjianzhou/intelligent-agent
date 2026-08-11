@@ -85,6 +85,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             sendUnauthorized(response, "token 无效或已过期");
             return;
         }
+        // 供下游控制器直接读取真实用户 ID（替代已退役 Python 代理的 X-User-Id 解析）
+        request.setAttribute("userId", claims.getSubject());
 
         // 滑动续期：快过期时在响应头带新 token
         if (jwtUtil.shouldRefresh(claims)) {

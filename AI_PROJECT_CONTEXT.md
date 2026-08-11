@@ -1,7 +1,8 @@
 # 智能体项目 — AI 上下文速查文档
 
 > **本文档专为大模型阅读设计**。新对话开始时先读此文件，5 分钟内建立完整项目认知，无需再反复询问基础背景。
-> 最后更新：2026-08-08（W13 Java 统一迁移完成：Python Agent 已退役，全部 AI 逻辑并入 Java 单后端）
+> 最后更新：2026-08-11（W13 Java 统一迁移完成：Python Agent 已退役，全部 AI 逻辑并入 Java 单后端；
+> 涉及 Python 的章节均已标注为历史，仅作对照参考，不再代表当前实现）
 
 ---
 
@@ -31,7 +32,7 @@ Java 后端 (Spring Boot, port 8080)   ← 唯一服务端：JWT/WS 网关 + 全
     ├── integration.*                 ← Feishu/WeCom/Telegram 通道 + ComfyUI/MCP（Task 5）
     ├── ai.agent / ai.llm / ai.tool   ← ReAct 编排 + Ollama/云端 LLM + 工具内核（Plan 1）
     │
-    ├── Ollama (port 11434)           ← 本地 LLM 推理（--profile local，默认模型 dolphin:latest）
+    ├── Ollama (port 11434)           ← 本地 LLM 推理 + embedding（--profile local，默认模型 qwen2.5:7b）
     └── 云端 LLM（按需在 /admin/models 激活，不作全局默认）
 ```
 
@@ -47,8 +48,7 @@ Java 后端 (Spring Boot, port 8080)   ← 唯一服务端：JWT/WS 网关 + 全
 | `docker compose --profile local up -d` | + ollama + comfyui（本地推理 + 图片生成） |
 | `docker compose --profile local --profile tunnel up -d` | 全量 |
 
-**运行时模式**：`AI_RUNTIME_MODE` 环境变量 —— `java`（默认，全部走本地 Java 服务）/
-`shadow`（allowlist 用户走 Java，其余回退）/ `python`（仅回滚窗口使用，需旧 Python 服务）。
+**运行时**：Java-only 单后端（Python 服务与 shadow/python 回滚路径已移除，无运行时模式开关）。
 
 **前端热更新命令**（不需要重建镜像，~10秒）：
 ```bash
@@ -57,22 +57,16 @@ docker cp frontend/dist ia-frontend:/usr/share/nginx/html_new
 docker exec ia-frontend sh -c "rm -rf /usr/share/nginx/html_old && mv /usr/share/nginx/html /usr/share/nginx/html_old && mv /usr/share/nginx/html_new /usr/share/nginx/html && nginx -s reload"
 ```
 
-**Python Agent 重建**（修改 .py 文件时）：
-```bash
-docker compose build agent && docker compose up -d agent
-```
-
 ---
 
 ## 二、模块目录
 
 ```
 intelligent_agent/
-├── agent/          Python FastAPI 服务（AI 核心）
 ├── backend/web/    Spring Boot 网关
 ├── frontend/       Vue 3 SPA
-├── client/         Python CLI 客户端（直连 agent，不经 Java）
-├── tests/e2e/      端到端测试（63 个用例，pytest + httpx）
+├── client/         Java CLI 客户端（Java 21 + Picocli，连接 backend:8080）
+├── tests/e2e/      端到端测试（pytest + httpx，仅测 Java 后端；Python Agent 已退役）
 ├── docker-compose.yml
 ├── CLAUDE.md       Claude Code 项目指令
 ├── TODOS.md        待办事项（含已完成标记）
@@ -81,7 +75,7 @@ intelligent_agent/
 
 ---
 
-## 三、Python Agent 详解（`agent/`）
+## 三、历史：Python Agent 详解（已退役 2026-08-08，仅供对照参考）
 
 ### 3.1 入口与启动
 
@@ -142,9 +136,7 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 | Persona（角色） | `_request_persona_ctx` ContextVar，per-asyncio-Task |
 | ToolManager | per-IntelligentAgent 独立实例 |
 | 项目上下文 | turn counter 键为 `{user_id}:{project_id}` |
-| 用户 ID 透传 | Java 从请求 JWT 提取 `user_id`，通过 `X-User-Id` 头透传到 Python |
-
-> ✅ 真实用户 ID 透传已完成（2026-06-02），Python `jwt_auth_middleware` 优先读 `X-User-Id`（当 JWT sub 是 java-service 时）。
+| 用户 ID 提取 | `JwtAuthFilter` 写入 request attribute `userId`，控制器经 `UserContext.userId(req)` 读取（Java-only） |
 
 ### 3.5 内置工具（`tools/builtin_tools/`）
 
@@ -248,7 +240,7 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 **Java 侧对应**（`backend/web/im/`，10 个文件）：
 - `ChannelAdapter`（interface）+ `FeishuChannelAdapter`（委托 `FeishuMessageSender`）
 - `ChannelAdapterManager` — Spring Bean，管理 adapter 注册 + `broadcast()` 并行广播
-- 数据模型与 Python 侧一一对应
+- 数据模型：`ChannelType` / `ChannelMessage` / `SendResult` / `UserInfo` / `RetryConfig` / `TokenBucket` / `ChannelMetric`
 
 **可观测性**：`GET /health/channels` 返回各 channel 的 `ChannelMetric`（成功率/平均延迟/限流拒绝次数），用于生产监控。
 
@@ -290,7 +282,7 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 - `WeComConfig`：读取 `WECOM_*` 环境变量（corpId / agentId / secret / token / aesKey）
 - `WeComCrypto`：SHA1 签名验证 + AES-CBC 消息解密 + 加密（PKCS#7 block=32）
 - `WeComMessageSender`：调用微信 API 发送消息（维护 access_token，自动刷新）
-- `AgentService.chatFull()`：通过 `X-User-Id` 头将真实用户 ID（`wecom:SunJianZhou`、`feishu:ou_xxx`）透传到 Python Agent；2026-06-28 修复前此头缺失，导致 IM 消息以 `java-service` 身份处理（影响模型选择、记忆隔离）
+- `AgentService.chatFull()`：走本地 `LocalChatService`，用户 ID（`wecom:SunJianZhou`、`feishu:ou_xxx`）直接进入 `AgentRequestContext`（Java-only）
 
 ### 4.3 WebSocket 消息类型
 
@@ -300,12 +292,12 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 
 ### 4.4 通知推送
 
-Java `AgentService` 中有 `@Scheduled(fixedDelay=5000)` 方法，每 5 秒轮询 Python `/api/notifications/poll`，有内容时主动广播 `notification` WS 事件到所有在线前端连接。
+`WebSocketController` 每 5 秒消费本地 `TaskSchedulerService` 通知队列，有内容时广播 `notification` WS 事件到所有在线前端连接。
 
 ### 4.5 JWT
 
 - 前端用户 token：有效期 24h，活跃用户通过 `X-New-Token` 响应头自动滑动续期
-- 服务间 token：Java → Python 用 `sub="java-service"` 的固定 token（临近过期自动刷新）
+- 无服务间 token（Python 服务与代理已移除）
 - WS 握手：`JwtHandshakeInterceptor` 在握手阶段验证 query string token，无效直接 401
 - `JwtAuthFilter` 白名单精确化（2026-06-27）：从宽泛 `/feishu/` 改为三条精确路径：`/feishu/event`、`/feishu/callback/interactive`、`/feishu/oauth/callback`
 
@@ -372,23 +364,25 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 
 ## 六、CLI 客户端（`client/`）
 
-直连 Python Agent（port 8000），不经 Java 后端，无 WebSocket。
+Java 命令行客户端（Java 21 + Picocli），连接 Java 后端（默认 http://localhost:8080）。
+Python CLI 已于 2026-08-08 随 Agent 一起退役。
 
 | 文件 | 说明 |
 |------|------|
-| `main.py` | CLI 入口（argparse，单次问答 / REPL 两种模式；`--model`/`--persona` 启动时直接指定） |
-| `api.py` | AgentClient（HTTP + SSE + JWT 自动续签；含 `get_personas()`/`switch_persona()` 角色 API） |
-| `session.py` | ChatSession（内存 + JSON 持久化到 `datas/`，记录当前 model/persona） |
-| `repl.py` | 交互式 REPL（Rich 可选，支持 `!models`/`!model`/`!personas`/`!persona`/`!history`/`!sessions`/`!clear` 命令） |
-| `config.yaml` | 服务器地址、jwt_secret、用户名、超时 |
+| `Main.java` | Picocli 入口（login / chat / repl / model / persona / retract 子命令） |
+| `BackendClient.java` | Java 后端 HTTP + SSE 客户端 |
+| `SseEventParser.java` | SSE 流式事件解析（token/done/error/task_update 等） |
+| `SessionStore.java` | ChatSession 兼容存储（JSON 持久化到 `datas/`） |
+| `TokenStore.java` | CLI scoped token 持久化（`~/.intelligent-agent/token`，权限收紧） |
+| `ReplCommand.java` | 交互式 REPL（`!models`/`!model`/`!personas`/`!persona`/`!history`/`!sessions`/`!clear`/`!exit`） |
 
-**角色支持**：CLI 完整支持角色切换，`!personas` 列出所有可用角色（当前激活角色标星号），`!persona <name>` 立即切换，等价于 Web 端角色选择器。`main.py --persona <name>` 可在进入 REPL 前预设角色。
+**角色/模型支持**：`persona list/activate`、`model list/switch` 子命令，REPL 内 `!personas`/`!persona`/`!models`/`!model` 等价于 Web 端选择器。
 
 ---
 
 ## 七、已知问题 & 技术债
 
-### Python Agent
+### 历史：Python Agent（已退役 2026-08-08）
 
 | 编号 | 问题 | 优先级 |
 |------|------|--------|
@@ -412,7 +406,7 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 | 编号 | 问题 | 优先级 |
 |------|------|--------|
 | J-01 | ✅ 用户 ID 透传已实现（2026-06-02） | — |
-| J-02 | `PythonProxyService` 和 `AgentService` 各维护独立 serviceToken，重复逻辑 | 低 |
+| J-02 | `PythonProxyService` 和 `AgentService` 各维护独立 serviceToken，重复逻辑 | ✅ 已随 Python 回滚路径移除（2026-08-11） |
 | J-03 | `CloseableHttpClient.createDefault()` 无连接池配置，高并发下可能连接耗尽 | 低 |
 | J-04 | ✅ WS 握手 JWT 验证已实现（`JwtHandshakeInterceptor`） | — |
 | TODO-85 | ✅ 飞书个人日历/任务 OAuth 授权全栈（2026-06-27）：`feishu_oauth.py` + `feishu_oauth_router.py` + `FeishuOAuthController.java` | — |
@@ -475,9 +469,9 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 ## 九、当前运行状态（2026-07-09）
 
 - **已提交到 GitHub**：所有修改均已推送 master 分支
-- **测试覆盖**：350 个 Agent 单元测试 + 63 个 E2E 测试，348 通过（4 预存失败，sentence_transformers 未安装）
-- **全局默认模型**：`dolphin:latest`（所有渠道统一，云端配置已注释，按需在 `/admin/models` 激活）
-- **Python 环境**：conda `python310`（Python 3.10）
+- **测试覆盖**：Java 后端全量 268 用例绿（0 失败）；E2E 为 pytest + httpx（仅测 Java 后端）
+- **全局默认模型**：`qwen2.5:7b`（所有渠道统一；embedding 用 `nomic-embed-text`；云端配置按需在 `/admin/models` 激活）
+- **Python 环境**：Python Agent/CLI 已于 2026-08-08 退役，无 Python 运行时依赖
 - **Ollama keep_alive**：`-1`（永久常驻显存，避免冷启动延迟）
 - **公网接入**：Cloudflare Tunnel（`ia-cloudflared`）→ `intelligent.eu.cc` → `ia-frontend:80`
   - PWA 已可从手机公网安装（iOS Safari：分享 → 添加到主屏幕）
@@ -486,14 +480,13 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
   - 企业微信（WeCom）：HTTP 回调 `https://intelligent.eu.cc/wecom/callback`，已验证端到端收发
   - Telegram：adapter 已实现（限流 30/s + Inline Keyboard），待配置 Bot Token 后接通
 - **Channel Adapter 抽象层**（2026-07-08，TODO-99~106）：
-  - Python 侧：`ChannelAdapter` ABC + 4 adapter（飞书/企微/Web/Telegram）+ `ChannelRouter`（多通道并行广播 + fallback）+ `ChannelMessageTool`（LLM 统一 IM 工具）+ `ChannelNotifier`（整合通知系统）
-  - Java 侧：`ChannelAdapter` interface + `FeishuChannelAdapter` + `ChannelAdapterManager`（Spring Bean，broadcast 并行）
+  - Java 侧（历史 Python 侧实现已退役）：`ChannelAdapter` interface + `FeishuChannelAdapter` + `ChannelAdapterManager`（Spring Bean，broadcast 并行）+ `ChannelRouter`（多通道并行广播 + 去重）
   - 可观测性：`GET /health/channels` 各 channel 指标端点（成功率/延迟/限流拒绝）
   - 测试：`test_channel_adapter.py`（28 用例）+ `test_channel_router.py`（14 用例）+ `test_channel_phase3.py`（7 用例）全通过
 - **2026-07-02 新增能力（heart-record plan W1-W3）**：
   - 心证层：`soul/heart.md` + SoulLoader + SystemPromptBuilder heart 段 + heart_record 工具
   - 分支保护：6 信号 `_detect_branch_failure` + 自动撤回 + 错误分级重试
-  - 缓存层：L1 精确缓存（5min TTL/LRU）+ L2 语义缓存（ChromaDB 24h TTL）
+  - 缓存层：响应缓存（精确 + 语义，24h TTL，真实 embedding / n-gram 兜底）
   - 可观测性：L3 长期记忆检索命中率 + L4 蒸馏源覆盖率监控埋点
   - 移动端：BottomTabBar / MorePanel 导航从 `routes.config.js` 单源派生
   - 失职自查：飞书推送前后 verify + scheduler 任务执行后 verify + heart_record 写入后读回确认（TODO-93）
@@ -513,42 +506,31 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 ## 十、开发者常用命令速查
 
 ```bash
-# 本地启动顺序
-ollama serve
-conda activate python310
-cd agent && python -m uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000 --reload
-cd backend/web && ./mvnw spring-boot:run
-cd frontend && npm run dev
+# 本地启动顺序（Java-only，Python Agent 已退役）
+ollama serve                                        # 本地 LLM + embedding
+start_java_mode.bat                                 # 或 cd backend/web && mvnw spring-boot:run（需 JWT_SECRET/ADMIN_PASSWORD）
+cd frontend && npm run dev                          # 前端 dev server
 
 # 测试
-cd agent && pytest tests/ -v                      # 单元测试（~370个）
-cd tests/e2e && pytest -v                         # E2E 测试（63个，需服务运行）
+cd backend/web && mvnw test                         # Java 后端全量单元/契约测试（~270 个）
+cd tests/e2e && pytest -v                           # E2E 测试（需 backend + frontend + Ollama 运行）
 
 # Docker 全栈（按需选 profile）
-docker compose up -d                                            # 核心三件套
+docker compose up -d                                            # backend + frontend
 docker compose --profile tunnel up -d --build                  # + 公网隧道（IM 回调）
 docker compose --profile local up -d --build                   # + ollama + comfyui（本地 GPU）
 docker compose --profile local --profile tunnel up -d --build  # 全量
 
-# 强杀 Windows 上卡住的 Python agent
-wmic process where "commandline like '%uvicorn%'" delete
-
-# 知识库迁移（ChromaDB schema 问题时）
-cd agent && python tools/migrate_chromadb.py --dry-run
-cd agent && python tools/migrate_chromadb.py
-
-# CLI 客户端角色切换
-cd client && python main.py --persona "技术专家"  # 启动时指定角色
-# 进入 REPL 后：!personas 列出角色，!persona 创意写手 切换
+# CLI 客户端（Java）
+cd client && ../backend/web/mvnw.cmd package -DskipTests
+java -jar target/client-1.0-SNAPSHOT.jar login --username admin --password <pw>
+java -jar target/client-1.0-SNAPSHOT.jar repl      # 进入 REPL：!personas/!persona/!models/!model/!history/!sessions
 
 # 前端构建 + 热更新容器
 cd frontend && npm run build
 docker cp frontend/dist ia-frontend:/usr/share/nginx/html_new
 docker exec ia-frontend sh -c "rm -rf /usr/share/nginx/html_old && mv /usr/share/nginx/html /usr/share/nginx/html_old && mv /usr/share/nginx/html_new /usr/share/nginx/html && nginx -s reload"
 
-# 查看 agent 日志
-docker logs ia-agent -f --tail 50
-
-# 重建 agent（Python 代码改动）
-docker compose build agent && docker compose up -d agent
+# 查看后端日志
+docker logs ia-backend -f --tail 50
 ```

@@ -13,7 +13,6 @@ import java.util.stream.Collectors;
 /**
  * 有界工具执行内核：
  * <ul>
- *   <li>shadow 模式拒绝一切非只读工具；</li>
  *   <li>requiredRole 角色校验；</li>
  *   <li>单请求最多 {@code maxRounds} 轮工具调用；</li>
  *   <li>按 ToolDefinition.timeout 限制单次执行时长。</li>
@@ -52,9 +51,6 @@ public class ToolExecutor {
         }
 
         ToolDefinition definition = tool.definition();
-        if (context.shadowMode() && !definition.readOnly()) {
-            return ToolResult.denied("shadow mode denies side-effecting tool: " + call.name());
-        }
         if (definition.requiredRole() != null && !definition.requiredRole().isBlank()
                 && !definition.requiredRole().equals(context.role())) {
             return ToolResult.denied("tool requires role: " + definition.requiredRole());

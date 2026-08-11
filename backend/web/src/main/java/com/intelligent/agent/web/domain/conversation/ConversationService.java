@@ -141,16 +141,20 @@ public class ConversationService {
             session.put("updated_at", now);
             session.put("messages", new ArrayList<Object>());
         }
+        // 防御性拷贝：不修改调用方传入的 message（REST 反序列化/测试可能为不可变 map）
+        List<Map<String, Object>> enriched = new ArrayList<>(messages.size());
         for (Map<String, Object> message : messages) {
-            if (message.get("id") == null || String.valueOf(message.get("id")).isBlank()) {
-                message.put("id", UUID.randomUUID().toString());
+            Map<String, Object> copy = new LinkedHashMap<>(message);
+            if (copy.get("id") == null || String.valueOf(copy.get("id")).isBlank()) {
+                copy.put("id", UUID.randomUUID().toString());
             }
-            if (message.get("timestamp") == null) {
-                message.put("timestamp", Instant.now().toString());
+            if (copy.get("timestamp") == null) {
+                copy.put("timestamp", Instant.now().toString());
             }
+            enriched.add(copy);
         }
         List<Object> existing = list(session.get("messages"));
-        existing.addAll(messages);
+        existing.addAll(enriched);
         session.put("messages", trimMessages(existing));
         session.put("updated_at", Instant.now().toString());
         store.write(new String[]{"conversations", userId, effectiveSessionId + ".json"}, session);

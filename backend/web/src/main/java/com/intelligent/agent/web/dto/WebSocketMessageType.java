@@ -1,7 +1,7 @@
 package com.intelligent.agent.web.dto;
 
 /**
- * WebSocket 消息类型常量（前端 / Java / Python 三端共享协议）。
+ * WebSocket 消息类型常量（前端 / Java 共享协议）。
  * 新增消息类型只改这里，switch-case 和前端常量文件同步更新。
  *
  * 协议版本: 1
@@ -37,9 +37,9 @@ public final class WebSocketMessageType {
     public static final String CHAT_RESPONSE   = "chat_response";
     /** 错误 */
     public static final String ERROR           = "error";
-    /** 任务状态更新（Python [TASK_DONE] 触发） */
+    /** 任务状态更新（LLM 回复 [TASK_DONE] 触发） */
     public static final String TASK_UPDATE     = "task_update";
-    /** 任务被阻塞通知（Python [TASK_BLOCKED] 触发） */
+    /** 任务被阻塞通知（LLM 回复 [TASK_BLOCKED] 触发） */
     public static final String TASK_BLOCKED    = "task_blocked";
     /** 定时任务通知推送（Java 主动 push，取代前端 30s 轮询） */
     public static final String NOTIFICATION    = "notification";

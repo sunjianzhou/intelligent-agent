@@ -9,7 +9,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 工具内核测试：shadow 模式拒绝写工具、requiredRole 校验、5 轮上限、
+ * 工具内核测试：requiredRole 校验、5 轮上限、
  * timeout 元数据执行，以及四种遗留文本解析（JSON / tag / fenced JSON / 纯文本）。
  */
 class ToolExecutorTest {
@@ -70,26 +70,14 @@ class ToolExecutorTest {
     private final ToolExecutor executor =
             new ToolExecutor(List.of(READ_TOOL, WRITE_TOOL, ADMIN_TOOL, SLOW_TOOL));
     private final ToolCall writeCall = ToolCall.of("write_file", Map.of());
-    private final ToolExecutionContext shadowContext = ToolExecutionContext.shadow("u1");
     private final TextToolCallParser parser = new TextToolCallParser();
 
     // ── 执行策略 ──────────────────────────────────────────────
 
     @Test
-    void deniesWriteToolInShadowMode() {
-        assertThat(executor.execute(writeCall, shadowContext).status()).isEqualTo("denied");
-    }
-
-    @Test
-    void allowsReadOnlyToolInShadowMode() {
-        assertThat(executor.execute(ToolCall.of("read_file", Map.of()), shadowContext).status())
-                .isEqualTo("success");
-    }
-
-    @Test
     void enforcesRequiredRole() {
-        ToolExecutionContext normal = ToolExecutionContext.of("u1", "user", false);
-        ToolExecutionContext admin = ToolExecutionContext.of("u1", "admin", false);
+        ToolExecutionContext normal = ToolExecutionContext.of("u1", "user");
+        ToolExecutionContext admin = ToolExecutionContext.of("u1", "admin");
 
         assertThat(executor.execute(ToolCall.of("admin_op", Map.of()), normal).status())
                 .isEqualTo("denied");
@@ -99,7 +87,7 @@ class ToolExecutorTest {
 
     @Test
     void enforcesFiveRoundLimit() {
-        ToolExecutionContext ctx = ToolExecutionContext.of("u1", "user", false);
+        ToolExecutionContext ctx = ToolExecutionContext.of("u1", "user");
         for (int i = 0; i < 5; i++) {
             assertThat(executor.execute(ToolCall.of("read_file", Map.of()), ctx).status())
                     .isEqualTo("success");
@@ -110,14 +98,14 @@ class ToolExecutorTest {
 
     @Test
     void enforcesTimeoutMetadata() {
-        ToolExecutionContext ctx = ToolExecutionContext.of("u1", "user", false);
+        ToolExecutionContext ctx = ToolExecutionContext.of("u1", "user");
         assertThat(executor.execute(ToolCall.of("slow_tool", Map.of()), ctx).status())
                 .isEqualTo("timeout");
     }
 
     @Test
     void returnsNotFoundForUnknownTool() {
-        ToolExecutionContext ctx = ToolExecutionContext.of("u1", "user", false);
+        ToolExecutionContext ctx = ToolExecutionContext.of("u1", "user");
         assertThat(executor.execute(ToolCall.of("nope", Map.of()), ctx).status())
                 .isEqualTo("not_found");
     }

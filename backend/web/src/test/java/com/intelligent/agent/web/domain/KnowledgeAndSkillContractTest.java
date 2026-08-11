@@ -51,10 +51,10 @@ class KnowledgeAndSkillContractTest {
         TeachingService teachingService = new TeachingService(dataDir);
 
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new KnowledgeProxyController(null, MAPPER, knowledgeService, "java"),
-                new SkillProxyController(null, MAPPER, skillService, "java"),
-                new AnalyticsProxyController(null, MAPPER, analyticsService, "java"),
-                new TeachingController(null, MAPPER, teachingService, "java"))
+                new KnowledgeProxyController(knowledgeService),
+                new SkillProxyController(skillService),
+                new AnalyticsProxyController(analyticsService),
+                new TeachingController(teachingService))
                 .build();
     }
 

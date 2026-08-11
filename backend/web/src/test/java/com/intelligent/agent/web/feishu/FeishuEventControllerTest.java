@@ -80,7 +80,7 @@ class FeishuEventControllerTest {
         assertThat(cap.getValue().getSceneMentioned()).isFalse();  // 无 mentions 字段 → 未被 @
         // 群聊未被 @：跳过「思考中」占位提示，避免对不相关消息刷屏
         verify(sender, never()).sendText(eq("oc_group1"), contains("思考中"));
-        // 仍会把结果回传（[GROUP SCENE] 规则在 Python 端决定是否真正回复；这里 mock 返回非 NO_REPLY 内容）
+        // 仍会把结果回传（[GROUP SCENE] 规则在本地 PromptService 决定是否真正回复；这里 mock 返回非 NO_REPLY 内容）
         verify(sender, timeout(1000)).sendInteractive(eq("oc_group1"), any());
     }
 

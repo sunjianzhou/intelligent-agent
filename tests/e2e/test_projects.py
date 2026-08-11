@@ -1,8 +1,4 @@
-"""E2E: 项目管理 — CRUD + Spec + 上下文。
-
-注意：Python projects_router 使用 title 字段（不是 name）。
-      Java /tasks?project_id=... 当前存在 500 bug，用 py_client 绕过测。
-"""
+"""E2E: 项目管理 — CRUD + Spec + 上下文（Java-only）。"""
 import pytest
 
 
@@ -70,18 +66,18 @@ def test_project_spec_put_and_get(client):
         client.delete(f"/api/projects/{project_id}")
 
 
-def test_project_tasks_list(py_client):
-    """Java GET /tasks?project_id=... 有 500 bug，直连 Python 验证此功能。"""
-    r = py_client.post("/api/projects", json={"title": "E2E Tasks项目"})
+def test_project_tasks_list(client):
+    """项目任务树：Java 本地模式 /api/project/tasks?project_id=...。"""
+    r = client.post("/api/projects", json={"title": "E2E Tasks项目"})
     assert r.status_code == 200
     data = r.json()
     project_id = _extract_project_id(data)
     assert project_id
 
     try:
-        r2 = py_client.get(f"/api/project/tasks?project_id={project_id}")
+        r2 = client.get(f"/api/project/tasks?project_id={project_id}")
         assert r2.status_code == 200
         d2 = r2.json()
         assert "task_tree" in d2 or "tasks" in d2 or isinstance(d2, dict)
     finally:
-        py_client.delete(f"/api/projects/{project_id}")
+        client.delete(f"/api/projects/{project_id}")

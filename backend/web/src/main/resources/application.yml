@@ -1,10 +1,4 @@
 ai:
-  runtime:
-    mode: ${AI_RUNTIME_MODE:python}
-    shadow:
-      enabled: ${AI_SHADOW_ENABLED:false}
-      # 逗号分隔的 user id allowlist；shadow 模式下命中列表的用户路由到 Java
-      allowlist: ${AI_SHADOW_ALLOWLIST:}
   # 灵魂层目录（SOUL/USER/MEMORY/IDENTITY/HEARTBEAT + 可选 whisper/heart/rules）
   soul:
     dir: ${SOUL_DIR:../../soul}
@@ -33,6 +27,18 @@ ai:
     text-tool-patterns: ${TEXT_TOOL_CALLING_PATTERNS:dolphin,phi2,orca-mini,orca2}
     # 上下文 token 预算（与 OLLAMA_NUM_CTX 配合，rules 段在 <4096 时退化为仅 critical）
     max-context-tokens: ${MAX_CONTEXT_TOKENS:8000}
+    # LLM 提取（记忆蒸馏 / 项目上下文，TODO-110 Task 5）
+    extraction:
+      enabled: ${LLM_EXTRACTION_ENABLED:true}
+      timeout: ${LLM_EXTRACTION_TIMEOUT:30s}
+  # 真实 embedding（Ollama /api/embed，TODO-110 Task 5）
+  embedding:
+    enabled: ${EMBEDDING_ENABLED:true}
+    model: ${EMBEDDING_MODEL:nomic-embed-text}
+    timeout: ${EMBEDDING_TIMEOUT:10s}
+  memory:
+    # 项目上下文 LLM 提取轮次间隔（与 Python ContextExtractor 每 8 轮一致）
+    project-extraction-interval: ${PROJECT_EXTRACTION_INTERVAL:8}
 
 server:
   port: 8080
@@ -76,9 +82,6 @@ spring:
 intelligent-agent:
   # Java 领域服务数据目录（角色/会话/项目/任务等 JSON 持久化）
   data-dir: ${INTELLIGENT_AGENT_DATA_DIR:data}
-  python-service:
-    base-url: ${PYTHON_SERVICE_BASE_URL:http://localhost:8000}
-    timeout: ${PYTHON_SERVICE_TIMEOUT:600s}
 
 logging:
   level:

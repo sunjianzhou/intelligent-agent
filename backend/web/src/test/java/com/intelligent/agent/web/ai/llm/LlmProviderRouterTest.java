@@ -45,6 +45,24 @@ class LlmProviderRouterTest {
     }
 
     @Test
+    void registersRuntimeCloudModelAndRoutesToCloud() {
+        router.clearCloudModels();
+        assertThat(router.forUser("u1", "deepseek-chat")).isSameAs(ollama);
+
+        router.registerCloudModel("deepseek-chat");
+
+        assertThat(router.forUser("u1", "deepseek-chat")).isSameAs(cloud);
+    }
+
+    @Test
+    void clearCloudModelsFallsBackToLocal() {
+        router.clearCloudModels();
+
+        assertThat(router.forUser("u1", "deepseek-chat")).isSameAs(ollama);
+        assertThat(router.forUser("u1", "deepseek-reasoner")).isSameAs(ollama);
+    }
+
+    @Test
     void emptyModelUsesCloudWhenConfigured() {
         assertThat(router.forUser("u1", "")).isSameAs(cloud);
     }

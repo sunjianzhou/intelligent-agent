@@ -49,7 +49,8 @@ class ChatContractTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new ChatController(agentService)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                new ChatController(agentService, null, mapper)).build();
     }
 
     @Test

@@ -26,7 +26,7 @@ public class FeishuEventController {
     private final ExecutorService executor;
     private final FeishuRecallBridge recallBridge;
 
-    /** group 场景下、模型判定无需发言时输出的静默约定 sentinel（见 conversation_flow.py [GROUP SCENE] 规则）。*/
+    /** group 场景下、模型判定无需发言时输出的静默约定 sentinel（见 PromptService [GROUP SCENE] 规则）。*/
     private static final String NO_REPLY_SENTINEL = "NO_REPLY";
 
     @Autowired

@@ -204,7 +204,7 @@ public class AgentOrchestrator {
         }
         List<ChatMessage> next = appendAssistant(messages, content);
         return Mono.fromCallable(() -> {
-            ToolExecutionContext execCtx = ToolExecutionContext.of(ctx.userId(), "user", false);
+            ToolExecutionContext execCtx = ToolExecutionContext.of(ctx.userId(), "user");
             List<ToolCall> executed = new ArrayList<>(executedCalls);
             for (ToolCall call : calls) {
                 ToolResult result = toolExecutor.execute(call, execCtx);

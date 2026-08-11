@@ -31,6 +31,8 @@ public class ConversationMemoryService {
 
     private final Map<String, Deque<StampedMessage>> shortTerm = new ConcurrentHashMap<>();
     private final Map<String, Integer> turnCounts = new ConcurrentHashMap<>();
+    /** 项目级提取轮次（按 userId|projectId 计数）。*/
+    private final Map<String, Integer> projectTurnCounts = new ConcurrentHashMap<>();
     /** 撤回后从长期检索中排除的内容（按用户隔离）。 */
     private final Map<String, java.util.Set<String>> excludedLongTerm = new ConcurrentHashMap<>();
 
@@ -75,10 +77,17 @@ public class ConversationMemoryService {
         int turns = turnCounts.merge(userId, 1, Integer::sum);
         List<ChatMessage> history = historyMessages(userId);
         if (turns % distiller.interval() == 0) {
-            distiller.distill(userId, history, memoryRepository);
+            distiller.distill(userId, ctx.model(), history, memoryRepository);
         }
         if (turns % distiller.summaryInterval() == 0) {
             distiller.summarize(userId, history, memoryRepository);
+        }
+        if (ctx.projectId() != null && !ctx.projectId().isBlank()) {
+            String projectKey = userId + "|" + ctx.projectId();
+            int projectTurns = projectTurnCounts.merge(projectKey, 1, Integer::sum);
+            if (projectTurns % distiller.projectInterval() == 0) {
+                distiller.extractProjectContext(userId, ctx.projectId(), history, memoryRepository);
+            }
         }
 
         if (answer != null && !answer.isBlank() && ctx.message() != null && !ctx.message().isBlank()) {
@@ -101,6 +110,7 @@ public class ConversationMemoryService {
         shortTerm.remove(effectiveUserId(userId));
         turnCounts.remove(effectiveUserId(userId));
         excludedLongTerm.remove(effectiveUserId(userId));
+        projectTurnCounts.keySet().removeIf(key -> key.startsWith(effectiveUserId(userId) + "|"));
     }
 
     /**

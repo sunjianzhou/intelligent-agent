@@ -6,15 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.intelligent.agent.web.filter.JwtAuthFilter;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
-import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -30,11 +25,8 @@ import java.time.Duration;
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
-    @Value("${intelligent-agent.python-service.timeout:600s}")
-    private Duration pythonServiceTimeout;
-
     /** 允许的 CORS 来源，多个用逗号分隔。生产环境通过 CORS_ALLOWED_ORIGINS 注入具体域名。 */
-    @Value("${cors.allowed-origins:*}")
+    @org.springframework.beans.factory.annotation.Value("${cors.allowed-origins:*}")
     private String corsAllowedOrigins;
 
     @Bean
@@ -58,20 +50,12 @@ public class WebConfig implements WebMvcConfigurer {
         return mapper;
     }
 
+    /** 通用 HTTP 客户端（飞书/微信/Telegram 通道、Ollama 等外部调用共用）。 */
     @Bean
     public RestTemplate restTemplate() {
-        // HttpClient 5 工厂完整支持 PATCH 方法（SimpleClientHttpRequestFactory 不支持）
-        PoolingHttpClientConnectionManager connectionManager =
-                PoolingHttpClientConnectionManagerBuilder.create()
-                        .setMaxConnTotal(200)
-                        .setMaxConnPerRoute(50)
-                        .build();
-        CloseableHttpClient httpClient =
-                HttpClientBuilder.create().setConnectionManager(connectionManager).build();
-        HttpComponentsClientHttpRequestFactory factory =
-                new HttpComponentsClientHttpRequestFactory(httpClient);
-        factory.setConnectTimeout(pythonServiceTimeout);
-        factory.setReadTimeout(pythonServiceTimeout);
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(30));
+        factory.setReadTimeout(Duration.ofSeconds(30));
         return new RestTemplate(factory);
     }
 

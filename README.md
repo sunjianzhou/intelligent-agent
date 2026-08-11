@@ -82,61 +82,54 @@ cp .env.docker.example .env.docker    # 容器运行时变量（含 IM 集成、
 
 ### Java 后端（`backend/web/`，唯一服务端）
 
-> Python Agent 已于 2026-08-08 退役（commit `acf1f6b` 验收记录 + `git rm` 退役提交）。
+> Python Agent 已于 2026-08-08 退役（commit `354bf33`）。
 > 全部 AI 逻辑并入 Java 单后端：记忆/蒸馏/摘要/语义缓存、角色/会话/项目/任务领域服务、
 > 知识/技能/分析/教学、任务调度、Channel 集成（飞书/企微/Telegram）、ComfyUI/MCP 集成。
-> 运行时模式 `AI_RUNTIME_MODE`：`java`（默认，全本地）/ `shadow`（allowlist 渐进切换）/
-> `python`（仅回滚用，需旧 Python 服务）。
 
-**技术栈**：Python 3.10 · FastAPI · Uvicorn · ChromaDB · sentence-transformers · Ollama SDK
+**技术栈**：Java 21 · Spring Boot 3.5 · WebSocket · SSE · Reactor · JJWT · JDK HttpClient · Picocli（CLI）
 
-**定位**：系统的 AI 大脑，所有智能逻辑的唯一执行地，Java 后端不含任何 AI 代码。
+**定位**：系统唯一服务端——JWT/WS 网关 + 全部 AI 逻辑（ReAct 编排、记忆、工具、角色/提示词、调度、IM 集成）。
 
 **核心能力**：
 
 | 能力 | 说明 |
 |------|------|
-| ReAct 推理循环 | 构建上下文 → LLM 调用 → 工具执行（最多 5 轮）→ 流式输出 |
-| 双模式工具调用 | 原生 Function Calling（qwen/llama 等）+ Text-tool 文本解析（dolphin/phi2 等） |
-| 短期记忆 | 进程内双端队列，TTL 24h，最近 100 条，对话上下文复用 |
-| 长期记忆 | ChromaDB 向量库（all-MiniLM-L6-v2 嵌入），语义检索 |
-| 自动记忆提炼 | 每 5 轮对话自动提炼事实写入长期记忆，每 10 轮生成阶段摘要 |
-| 语义缓存 | L2 余弦相似度 ≥ 0.92 时直接返回缓存响应，减少 LLM 调用 |
-| 任务调度 | 后台线程，支持 immediate / delay / interval / datetime / cron 五种调度类型 |
-| 角色系统 | `personas/*.md` 热加载，新增角色无需重启 |
-| 项目系统 | 每个项目含规格文档（Spec）+ 任务树，LLM 回复中 `[TASK_DONE]` 自动更新状态 |
-| 云端 Fallback | Ollama 不可用时自动切换到 DashScope / DeepSeek / ZhipuAI / Moonshot 等 |
-| 图片生成 | ComfyUI（默认）/ SD WebUI / diffusers 进程内推理 / SiliconFlow 云端四种 Provider |
-| 知识库 | 上传 .txt/.md/.pdf/.json 文件，段落/句子边界分块，ChromaDB 向量索引，聊天时自动语义检索注入上下文 |
-| 多模态输入 | 聊天输入区支持图片附件/粘贴，base64 全链路透传至 Ollama images 字段（llava / qwen-vl 等） |
-| 消息撤回 | 用户可手动撤回任意历史消息（user/assistant），从对话 JSON + 短期记忆中真正删除，避免错误回复污染后续上下文；蒸馏来源标记排除检索，飞书消息联动官方撤回 API |
-| 心证铁卷 | `soul/heart.md` 用户显式永久记忆，优先级高于自动蒸馏的长期记忆；`heart_record` 工具支持 LLM 在对话中 append/list/delete 心证条目，写入前自动轮转备份 |
-| 分支失败自动撤回 | 5 信号实时检测 ReAct 推理失败螺旋（同工具同错误/连续重复输出/用户纠偏/空响应+异常/重试耗尽），命中即自动撤回最近 2 轮 + 注入 `[BRANCH_RESET]` 重新推理，每会话最多触发 1 次 |
-| 进度恢复协议 | 新会话启动时自动扫描 `memory/work/` 目录下的 `progress_state.md`，检测未完成任务并注入 `[PROGRESS RECOVERY]` 上下文；用户说"继续上次的"即可无缝恢复 |
-| 跨 session 记忆增强 | 蒸馏时自动识别任务进度关键词（`[TASK_DONE]`/`[TASK_BLOCKED]` 等）并打 `task_progress` 标签；进度恢复时额外查询跨 session 的 LTM 进度记忆，注入 `[TASK PROGRESS MEMORY]` |
-| Channel Adapter | 4 channel（飞书/企微/Web/Telegram）统一接口，含 TokenBucket 限流 + 指数退避重试 + ChannelMetric 指标；ChannelRouter 支持多通道并行广播 + fallback 降级；ChannelMessageTool 替代旧 FeishuIMTool |
-| 大文件灵魂层 | SoulLoader v1.1 新增 max_file_size/max_total_chars 告警（不阻断）；SoulData 新增 total_chars/file_sizes 可观测性字段；token 预算上调至 max_context_tokens=8000 + OLLAMA_NUM_CTX=8192 承载 30K+ soul 内容 |
+| ReAct 推理循环 | `AgentOrchestrator` 构建上下文 → LLM 调用 → 工具执行（最多 5 轮）→ 流式输出 |
+| 双模式工具调用 | 原生 Function Calling（qwen 等）+ Text-tool 文本解析（dolphin/phi2 等） |
+| LLM 路由 | `LlmProviderRouter`：本地 Ollama 默认 + 云端 OpenAI 兼容 provider（按需在 `/admin/models` 激活） |
+| 短期记忆 | 进程内双端队列，TTL 24h，最近 100 条 |
+| 长期记忆 | `VectorMemoryRepository`（内存向量库），`EmbeddingService` 走 Ollama 真实 embedding（`nomic-embed-text`），失败回退 n-gram 哈希 |
+| 自动记忆提炼 | 每 5 轮 LLM 提取事实（规则式兜底），每 10 轮阶段摘要 |
+| 项目上下文 | 每 8 轮 LLM 提取项目 nuggets，注入 `[PROJECT CONTEXT]` |
+| 语义缓存 | `SemanticResponseCache` 精确 + 语义相似命中，24h TTL |
+| 任务调度 | `TaskSchedulerService`，支持 immediate / delay / interval / datetime / cron 五种类型，含 `llm_generate` 动作 |
+| 角色/提示词/灵魂层 | `PromptService` + `SystemPromptBuilder` + `SoulLoader`（`soul/` 目录热加载）+ `heart_record` 工具 |
+| 知识/技能/分析/教学 | `KnowledgeService` / `SkillService` / `AnalyticsService` / `TeachingService` 领域服务 |
+| IM 渠道 | Feishu（WS 长连接 + OAuth）/ WeCom / Telegram 通道 + `ChannelRouter` 去重 + 限流重试 |
+| 图片生成 | `ImageService` + ComfyUI（HTTP API，默认 txt2img 工作流）；SD WebUI / diffusers / SiliconFlow 未迁移（需求驱动再做） |
+| 多模态输入 | 聊天图片 base64 全链路透传至 Ollama images 字段 |
+| 消息撤回 | `ConversationService.retract` 级联删除短期记忆 + 长期检索排除 + 飞书官方撤回 |
+| 分支失败检测 | `BranchFailureDetector` 6 信号（同工具同错误/连续重复/错误+空响应/铁律违反扫描等），命中即终止本轮 |
+| CLI | Java CLI（`client/`）：login / chat / repl / model / persona / retract |
 
-**内置工具**：计算器 · 时间查询 · 文件读写 · DuckDuckGo 搜索 · Shell 命令 · MySQL 查询 · 图片生成 · 记忆存储/检索 · 定时提醒创建 · 知识库上传/检索 · 心证管理（heart_record） · 飞书日历查询 · 飞书任务查询 · 飞书日历创建（OAuth）· 飞书任务写入（OAuth）· 多通道消息发送（channel_message）
+**内置工具**：计算器 · 时间查询 · 文件读取（白名单） · Web 搜索 · Shell（命令白名单） · MySQL 只读查询 · 飞书日历/任务 · 心证管理（heart_record）
 
 ---
 
-### Java 后端 (`backend/web/`)
+### Java 后端（补充说明）
 
-**技术栈**：Java 8 · Spring Boot · WebSocket · JJWT · Apache HttpClient
+**定位**：上述能力全部内聚在 Java 单后端。`controller/` 层为薄路由，直接走本地领域服务
+（Python 服务及其回滚路径已全部移除）。
 
-**定位**：纯粹的 WebSocket 网关和 HTTP 反向代理，零 AI 业务逻辑，可替换为任何网关实现。
-
-**核心能力**：
+**关键机制**：
 
 | 能力 | 说明 |
 |------|------|
 | WebSocket 管理 | 维护所有前端 WS 连接，Session 级别隔离，ping/pong 保活 |
-| 流式转发 | 逐行读取 Python SSE 流，实时发送 `thinking / chat_token / tool_calls_done / chat_done` |
-| JWT 鉴权 | 前端 token 24h 有效，滑动续期；WS 握手阶段验证，无效 token 直接 401 |
-| 全量代理路由 | `/api/*` 请求（记忆/任务/工具/角色/项目/统计）透传 Python，附加真实用户 ID |
-| 通知推送 | 每 5s 轮询 Python 通知队列，有内容时广播 `notification` WS 事件到前端 |
-| Channel Adapter 管理 | `ChannelAdapterManager` Spring Bean 管理 IM Channel 适配器注册 + `broadcast()` 并行广播；`FeishuChannelAdapter` 委托 `FeishuMessageSender` |
+| 流式事件 | 本地 `ModelEvent` 流 → `thinking / chat_token / tool_calls_done / chat_done` |
+| JWT 鉴权 | REST `JwtAuthFilter` + WS 握手 `JwtHandshakeInterceptor`，无效 token 直接 401 |
+| 通知推送 | `TaskSchedulerService` 本地通知队列 → `notification` WS 事件广播到前端 |
+| Channel Adapter 管理 | `ChannelAdapterManager` 管理 IM Channel 适配器注册 + `broadcast()` 并行广播；`FeishuChannelAdapter` 委托 `FeishuMessageSender` |
 | 过载保护 | 线程池满时返回 503，不阻塞 Tomcat 线程 |
 
 **WebSocket 消息协议**：
@@ -186,23 +179,22 @@ cp .env.docker.example .env.docker    # 容器运行时变量（含 IM 集成、
 
 ### CLI 客户端 (`client/`)
 
-**技术栈**：Python · requests · Rich · PyJWT · PyYAML
+**技术栈**：Java 21 · Picocli · JDK HttpClient · SSE 解析
 
-**定位**：直连 Python Agent（不经 Java），适合脚本调用、自动化、无浏览器/无 Java 的轻量场景。
+**定位**：连接 Java 后端（默认 `http://localhost:8080`）的命令行客户端；Python CLI 已于
+2026-08-08 随 Agent 一起退役。
 
 ```bash
-python main.py                          # 交互式 REPL
-python main.py "你好，今天天气怎么样？"  # 单次问答
-python main.py "问题" --no-stream       # 等完整响应后输出
-python main.py --model qwen2.5:7b       # 指定模型
-python main.py --url http://host:8000   # 自定义服务地址
+java -jar target/client-1.0-SNAPSHOT.jar login --username admin --password <pw>
+java -jar target/client-1.0-SNAPSHOT.jar chat "你好，今天天气怎么样？"   # 单次问答（SSE 流式）
+java -jar target/client-1.0-SNAPSHOT.jar chat "问题" --no-stream        # 等完整响应后输出
+java -jar target/client-1.0-SNAPSHOT.jar repl                           # 交互式 REPL
 ```
 
-**REPL 内置命令**：`!models` 列出模型 · `!model <name>` 切换模型 · `!personas` 列出角色 · `!persona <name>` 切换角色 · `!history` 查看历史（带编号） · `!retract <编号>` 按编号撤回消息（永久删除，逗号分隔可批量） · `!sessions` 列出已保存会话 · `!clear` 清空会话
+**REPL 内置命令**：`!models` 列出模型 · `!model <name>` 切换模型 · `!personas` 列出角色 · `!persona <name>` 切换角色 · `!history` 查看历史（带编号） · `!retract <编号>` 按编号撤回消息 · `!sessions` 列出已保存会话 · `!clear` 清空会话 · `!exit` 退出
 
-**命令行参数**：`--model <name>` 指定模型 · `--persona <name>` 指定角色 · `--no-stream` 等完整响应后输出
-
-配置文件：`client/config.yaml`（服务器地址、jwt_secret、超时、流式开关）
+**认证**：`login` 通过 `/api/auth/cli-token` 换取 30 天 scoped token，保存到
+`~/.intelligent-agent/token`（不保存 JWT_SECRET）。
 
 ---
 
@@ -214,9 +206,8 @@ python main.py --url http://host:8000   # 自定义服务地址
 |------|------|
 | [Ollama](https://ollama.com) | 本地 LLM 推理引擎（必须） |
 | Docker Desktop ≥ 4.x | 容器化部署（方式一必须） |
-| Python 3.10 + Conda | 本地开发（方式二必须） |
 | Node.js ≥ 18 | 前端本地开发（方式二必须） |
-| Java 8 + Maven | 后端本地开发（方式二必须） |
+| JDK 21 | 后端本地开发（方式二必须） |
 
 **先拉取一个模型**：
 
@@ -261,7 +252,6 @@ docker compose --profile https up -d --build
 | 服务 | 地址 |
 |------|------|
 | Web 界面 | http://localhost:3000 |
-| Python Agent API | http://localhost:8000 |
 | Java 后端 | http://localhost:8080 |
 
 **代码更新后重建**：
@@ -274,7 +264,6 @@ docker compose up -d --build                # 重建自定义镜像并重启
 查看日志：
 
 ```bash
-docker logs ia-agent -f --tail 50           # Python Agent 日志
 docker logs ia-backend -f --tail 50         # Java 后端日志
 ```
 
@@ -282,7 +271,7 @@ docker logs ia-backend -f --tail 50         # Java 后端日志
 
 ### 方式二：本地原生启动
 
-**确保 Ollama 已运行**：`ollama serve`
+**确保 Ollama 已运行**：`ollama serve`（并已拉取 `qwen2.5:7b`，可选 `nomic-embed-text`）
 
 **Windows**（一键启动所有服务）：
 
@@ -290,7 +279,7 @@ docker logs ia-backend -f --tail 50         # Java 后端日志
 start_all.bat
 ```
 
-脚本会分别在独立窗口中启动 Agent / Backend / Frontend，等待 15s 后在当前窗口进入 CLI 客户端。
+脚本会分别在独立窗口中启动 Backend / Frontend（Java-only）。
 
 **Linux / macOS / WSL**：
 
@@ -301,63 +290,56 @@ start_all.bat
 ./start_all.sh client    # 仅启动 CLI（服务已在运行时使用）
 ```
 
-**手动逐步启动**（顺序：Ollama → Agent → Backend → Frontend）：
+**手动逐步启动**（顺序：Ollama → Backend → Frontend）：
 
 ```bash
-# 1. Python Agent（需 conda python310 环境）
-conda activate python310
-cd agent && python -m uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000 --reload
-
-# 2. Java 后端
+# 1. Java 后端（需在环境变量或根目录 .env 中提供 JWT_SECRET / ADMIN_PASSWORD）
 cd backend/web && ./mvnw spring-boot:run        # Linux/macOS
 cd backend\web && mvnw.cmd spring-boot:run      # Windows
 
-# 3. Vue 前端（开发模式）
+# 2. Vue 前端（开发模式）
 cd frontend && npm install && npm run dev       # http://localhost:5173
 ```
 
-> 必须按 **Ollama → Agent → Backend → Frontend** 顺序启动；Backend 启动时会等待 Agent 健康检查通过。
+> 必须按 **Ollama → Backend → Frontend** 顺序启动（Java 后端自包含，不依赖外部 Python 服务）。
 
 ---
 
 ## 配置说明
 
-### 环境变量（`.env.docker` 用于 Docker；`agent/.env` 用于本地）
+### 环境变量（`.env.docker` 用于 Docker；根目录 `.env` 用于本地）
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `JWT_SECRET` | **必填** | ≥32 字符随机串，Agent、Backend、Client 三者保持一致 |
+| `JWT_SECRET` | **必填** | ≥32 字符随机串，Backend 与 Client 使用同一密钥 |
 | `ADMIN_PASSWORD` | **必填** | 管理后台密码 |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama 地址；Docker 内为 `http://ollama:11434` |
 | `OLLAMA_MODEL` | `qwen2.5:7b` | 默认模型（可在 Web 界面运行时切换） |
 | `OLLAMA_NUM_GPU` | `-1`（自动） | GPU 层数；显存不足时手动指定，如 `18` |
-| `INFERENCE_CONCURRENCY` | `3`（Docker 默认 `1`） | 并发推理上限，CPU 跑大模型建议设为 `1` |
-| `MEMORY_DISTILL_INTERVAL` | `5` | 每 N 轮对话触发一次事实提炼 |
-| `MEMORY_SUMMARY_INTERVAL` | `10` | 每 N 轮触发阶段摘要 |
-| `CHAT_TIMEOUT` | `300` | 推理超时（秒），CPU 跑 7B 约需 60-120s |
-| `MAX_CONTEXT_TOKENS` | `7000` | 发送给 LLM 的上下文 token 预算 |
+| `OLLAMA_TIMEOUT` | `600s` | LLM 推理超时（CPU 跑 7B 约需 60-120s） |
+| `MAX_CONTEXT_TOKENS` | `8000` | 发送给 LLM 的上下文 token 预算（配合 `OLLAMA_NUM_CTX`） |
+| `LLM_EXTRACTION_ENABLED` | `true` | 记忆蒸馏 / 项目上下文 LLM 提取开关（TODO-110 Task 5） |
+| `EMBEDDING_ENABLED` | `true` | 真实 embedding 开关（Ollama `/api/embed`，失败回退 n-gram） |
+| `EMBEDDING_MODEL` | `nomic-embed-text` | 嵌入模型名（768 维） |
+| `PROJECT_EXTRACTION_INTERVAL` | `8` | 项目上下文 LLM 提取轮次间隔 |
 | `CLOUD_PROVIDER` | 空 | 云端 LLM fallback（`dashscope` / `deepseek` / `zhipu` / `moonshot` 等） |
 | `CLOUD_API_KEY` | 空 | 云端 LLM API Key |
 | `CORS_ALLOWED_ORIGINS` | `*` | 生产环境应改为具体域名 |
 | `LOG_LEVEL` | `WARNING` | 日志级别（`DEBUG` 用于开发调试） |
-| `CONVERSATION_MAX_MESSAGES` | `200` | 单会话保存的最大消息条数，超出后截断最旧消息 |
 | `FEISHU_OAUTH_REDIRECT_URI` | 空 | 飞书 OAuth 公网 callback URL（Cloudflare Tunnel 等）|
-| `FEISHU_OAUTH_ENCRYPTION_KEY` | 空 | Fernet 密钥，user_access_token 加密存储用（`Fernet.generate_key()`）|
 
-### 客户端配置（`client/config.yaml`）
+> 说明：蒸馏间隔（5 轮）/ 摘要间隔（10 轮）/ 会话消息上限（200）为代码内固定值；
+> 并发上限与缓存大小在 `/admin/mcp` 运行时调节（持久化到 `backend/web/data/runtime_config.json`）；
+> 云端 API Key 与飞书 user_token 落盘加密由 `SecretCrypto` 处理（密钥由 `JWT_SECRET` 派生，无需额外环境变量）。
 
-```yaml
-server:
-  url: "http://localhost:8000"   # 直连 Agent，不经 Java
-  jwt_secret: "与 agent 一致"
-  timeout: 300
-chat:
-  stream: true                   # false = 等完整响应后输出
-```
+### 客户端配置
+
+Java CLI 无需配置文件：`login` 时从后端换取 scoped token 并保存到
+`~/.intelligent-agent/token`；默认后端地址 `http://localhost:8080`。
 
 ### 运行时调节（无需重启）
 
-Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大 Token、Top-P 等推理参数，以及并发上限、缓存条目数、记忆大小等系统资源参数，均写入 `agent/data/runtime_config.json`，重启后自动恢复。
+Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大 Token、Top-P 等推理参数，以及并发上限、缓存条目数、记忆大小等系统资源参数，均写入 `backend/web/data/runtime_config.json`，重启后自动恢复。
 
 ---
 
@@ -368,14 +350,14 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 ```
 用户消息
     │
-    ▼  _build_messages_async()
+    ▼  AgentOrchestrator.initialMessages()
     │  注入：短期记忆 + 长期语义检索 + 项目上下文 + 任务列表 + Spec（每10轮）
     │
-    ▼  _call_model_with_tools()   ← 第一次 LLM 调用
+    ▼  LlmProviderRouter.complete()   ← 第一次 LLM 调用
     │
-    ├── 有工具调用 ──► _execute_tool_round() ──► 追加结果 ──► 循环（最多 5 轮）
+    ├── 有工具调用 ──► ToolExecutor.execute() ──► 追加结果 ──► 循环（最多 5 轮）
     │
-    └── 无工具调用 ──► _stream_tokens_async()  ← SSE 流式输出
+    └── 无工具调用 ──► stream()  ← SSE/WS 流式输出
 ```
 
 对不支持 Function Calling 的模型（dolphin / phi2 等），自动切换到文本解析模式，支持 JSON / `<tool_call>` 标签 / Markdown 代码块 / 纯文本四种格式。
@@ -383,15 +365,15 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 ### 两级记忆系统
 
 ```
-对话 ──每5轮──► MemoryDistiller ──LLM提炼──► LongTermMemory (ChromaDB)
+对话 ──每5轮──► MemoryDistillationService ──LLM提炼──► MemoryRepository（内存向量库）
     │                                         facts / preferences / summaries
     │  每10轮
-    ├──────────► SessionSummarizer ──────────► LongTermMemory (type=session_summary)
+    ├──────────► summarize() ────────────────► MemoryRepository (type=summary)
     │
     │  每次聊天（有 project_id 时）
-    └──每8轮──► ContextExtractor ────────────► ChromaDB project_{id}_context
+    └──每8轮──► 项目上下文提取（LLM）──────► MemoryRepository（type=project）
                       │
-                      └── 每次 _build_messages_async() 语义检索注入 [PROJECT CONTEXT]
+                      └── 每次 loadContext() 语义检索注入 [PROJECT CONTEXT]
 ```
 
 ### 任务调度系统
@@ -418,7 +400,7 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 ### 角色（Persona）系统
 
-`agent/personas/` 目录下放置 `.md` 文件即可添加角色，Docker 模式下目录已挂载为卷，**修改/新增角色无需重建镜像**。
+角色数据由 `RoleService` 管理（`backend/web/data/roles.json`），支持运行时 CRUD，无需重启。
 
 内置角色：默认助手 · 创意写手 · 技术专家
 
@@ -432,9 +414,8 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 | 能力 | 实现方式 |
 |------|----------|
-| L1 精确缓存 | `L1Cache` 类，SHA256(prompt+model+persona) 精确匹配，5min TTL，LRU 淘汰 100 条上限 |
-| 语义缓存 | L2 余弦相似度 ≥ 0.92 时直接返回历史响应，命中即跳过 LLM 调用 |
-| 双信号量并发控制 | `_inference_sem`（实际推理并发上限，`INFERENCE_CONCURRENCY`）+ `_queue_sem`（排队上限），防止 CPU 推理时多请求互相争抢导致全部超时 |
+| 精确语义缓存 | `SemanticResponseCache` persona/model 感知 key 精确命中，24h TTL |
+| 语义相似命中 | 余弦相似度 ≥ 0.8 时直接返回历史响应（`EmbeddingService` 真实 embedding / n-gram 兜底） |
 | 流式输出 | SSE 逐 token 推送，前端 `requestAnimationFrame` 节流渲染，完成后整体重渲染 Markdown，避免逐 token 重排版的性能损耗 |
 | 前端代码分割 | 路由级懒加载（`() => import('@/views/XxxView.vue')`），首屏仅加载聊天页所需代码 |
 | 上下文 token 预算 | `MAX_CONTEXT_TOKENS=8000` 控制发送给 LLM 的上下文长度（配合 `OLLAMA_NUM_CTX=8192`）；`SoulLoader.max_total_chars=14000` 告警阈值，超过时提示 token 预算风险 |
@@ -443,28 +424,26 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 | 能力 | 实现方式 |
 |------|----------|
-| 自动重试 | `_is_retryable_error()` 识别网络抖动 / 超时等可重试异常，对 LLM 调用做有限次数重试 |
-| 云端 Fallback | 本地 Ollama 不可达时自动切换到 DashScope / DeepSeek / ZhipuAI / Moonshot 等云端 Provider，服务不中断 |
+| 超时保护 | LLM / 提取 / embedding 调用均带超时，失败回退规则式逻辑或错误事件，不阻塞主链路 |
+| 云端路由 | `LlmProviderRouter` 按请求模型路由到已配置的云端 provider（非失败自动切换） |
 | 网关过载保护 | Java 网关线程池满时直接返回 503，不阻塞 Tomcat 工作线程，避免雪崩 |
 | WebSocket 自动重连 | 前端检测连接断开后自动重连，并在重连成功且模型/角色列表为空时补拉一次（规避容器重启时序问题） |
-| 分支失败自动撤回 | 5 信号实时检测 ReAct 推理失败螺旋（同工具同错误/连续重复输出/用户纠偏/空响应+RTE/重试耗尽），命中即自动撤回最近 2 轮 + 注入 `[BRANCH_RESET]` 重新推理 |
+| 分支失败检测 | `BranchFailureDetector` 6 信号（同工具同错误/连续重复/错误+空响应/铁律违反扫描等），命中即终止本轮并给出失败说明 |
 | 工具错误分级重试 | 鉴权错（401/403）重试 1 次，系统错（5xx/超时）重试 3 次，避免瞬时故障导致对话中断 |
-| ChromaDB 自愈 | 检测到向量库 schema 不一致时自动迁移/重建，提供 `migrate_chromadb.py --dry-run` 预演模式 |
-| 容器健康探针 | `docker-compose.yml` 为 agent / backend / frontend 三层均配置 `healthcheck`，编排时按依赖顺序等待健康 |
+| 容器健康探针 | `docker-compose.yml` 为 backend / frontend 均配置 `healthcheck`，编排时按依赖顺序等待健康 |
 | 失职自查钩子 | 关键操作前后自动验证：飞书推送前后检查内容非空+message_id 有效、scheduler 任务执行后确认输出文件存在、heart_record 写入后读回确认内容正确（TODO-93） |
-| 进度恢复协议 | 新会话首次消息时自动扫描 `memory/work/` 目录，检测未完成任务（最后更新<24h + 步骤未完成）并注入 `[PROGRESS RECOVERY]` 上下文，用户说"继续上次的"即可无缝恢复（TODO-94） |
-| 跨 session 记忆增强 | 对话蒸馏时自动识别任务进度关键词（`[TASK_DONE]`/`[TASK_BLOCKED]`/`progress_state` 等），为相关 facts 打 `task_progress` 标签；进度恢复时额外查询跨 session 的 LTM 进度记忆（TODO-95） |
+| 长期记忆召回 | 按用户/角色/项目过滤 + 语义相似度排序，撤回内容加入排除集不再命中 |
 
 ### 可观测性
 
 | 能力 | 实现方式 |
 |------|----------|
-| 健康检查 | `GET /health`（Agent）/ `GET /api/health`（Backend 代理），供容器探针和负载均衡器探测 |
-| Prometheus 指标 | `GET /metrics` 暴露 HTTP 请求量/延迟分布、LLM 推理计数与耗时（按 model + outcome 维度）、工具调用统计、L3 长期记忆检索命中率+相似度+延迟（p50/p99）、L4 蒸馏源覆盖率+快照数，可直接接入 Grafana |
+| 健康检查 | `GET /api/health`（Java 后端），供容器探针和负载均衡器探测 |
+| 运营统计 | `/api/analytics/*` + `/admin/stats`（满意度、响应时间分布、工具调用统计） |
 | Channel 健康端点 | `GET /health/channels` 返回各 IM channel 的 ChannelMetric（成功率/平均延迟/限流拒绝次数），用于生产监控 |
 | 实时系统监控面板 | `/admin/system` 页面展示 CPU / 内存 / GPU / 磁盘占用与进程排行 |
 | 运营统计面板 | `/admin/stats` 页面展示满意度、响应时间分布、工具调用排名 |
-| 分级日志 | `LOG_LEVEL` 环境变量控制（`DEBUG`/`INFO`/`WARNING`），Agent / Backend 各自独立配置 |
+| 分级日志 | `LOG_LEVEL` 环境变量控制（`DEBUG`/`INFO`/`WARNING`），Java 后端统一配置 |
 
 ### 安全
 
@@ -480,10 +459,10 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 | 层 | 测试框架 | 覆盖范围 |
 |------|------|------|
-| Agent 单元测试 | pytest（~540 个） | 记忆系统、工具调用、调度器持久化、角色加载、上下文提取、项目接口、消息撤回、飞书 OAuth、心证管理、分支检测、L1/L2/L3/L4 缓存与监控、失职自查、进度恢复、跨 session 记忆增强、铁律违反扫描、Channel Adapter、SoulLoader 大文件 等 |
+| Java 后端测试 | `mvnw test`（~270 个） | ReAct/分支检测、LLM provider 契约、记忆/蒸馏/缓存、角色/会话/项目/任务领域、工具、调度、IM 通道、迁移校验、E2E 契约（MockMvc）等 |
 | Backend 单元测试 | JUnit 5 | WebSocket 消息序列化、JWT 工具类、JSON 工具类 |
 | Frontend 单元测试 | Vitest | JWT 处理逻辑等关键工具函数 |
-| E2E 端到端测试 | pytest + httpx（68 个） | 从客户端发起 HTTP 请求打通 Java:8080 → Python:8000，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知/消息撤回全链路 |
+| E2E 端到端测试 | pytest + httpx | 从客户端发起 HTTP 请求打通 Java:8080 全链路，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知/消息撤回 |
 
 ### 离线与移动端体验
 
@@ -500,37 +479,18 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 ```
 intelligent_agent/
-├── agent/                          Python FastAPI AI 核心服务
-│   ├── api/fastapi_app.py          入口：所有 REST/SSE 端点（启动、健康、模型、聊天）
-│   ├── api/chat_router.py          /api/chat/* 聊天（含多模态 image_base64 透传）
-│   ├── api/roles_router.py         /api/roles/* 角色完整 CRUD
-│   ├── api/conversations_router.py /api/conversations/* 历史会话（JSON 持久化）+ retract 撤回
-│   ├── api/knowledge_router.py     /api/knowledge/* 知识库上传/检索/删除
-│   ├── api/projects_router.py      /api/project/* 规格/任务/上下文
-│   ├── api/cloud_router.py         /api/cloud/* 云端服务商 CRUD + 激活切换
-│   ├── core/agent.py               IntelligentAgent 门面（继承三个 Mixin，~320行）
-│   ├── core/conversation_flow.py   ConversationFlowMixin（消息构建/chat/stream，~460行）
-│   ├── core/tool_dispatcher.py     ToolDispatcherMixin（工具注册/意图/LLM调用，~1130行）
-│   ├── core/memory_writer.py       MemoryWriterMixin（预热/MCP/蒸馏/清理，~310行）
-│   ├── core/_context_vars.py       共享 ContextVar（per-request 隔离，避免循环导入）
-│   ├── memory/                     记忆系统（短期/长期/提炼/缓存/项目上下文）
-│   ├── tools/                      ToolManager + 内置工具（计算/时间/文件/搜索/Shell/图片）
-│   ├── scheduler/                  SimpleTaskScheduler + TaskManager
-│   ├── personas/                   角色系统 Python 模块（role_manager/role_models/prompt_builder）
-│   ├── skills/                     技能意图路由
-│   ├── prompts/                    System prompt YAML（default + dolphin）
-│   ├── services/                   OllamaProvider / OpenAIProvider / MCPClient
-│   ├── config/settings.py          Pydantic 配置（.env 驱动）
-│   └── tests/                      pytest 测试套件（~370 个）
-│
-├── backend/web/                    Java Spring Boot 网关
-│   └── src/main/java/…/
-│       ├── WebSocketController     WS 消息路由
-│       ├── AgentService            SSE 流式代理 + 事件转发（@Scheduled 5s 通知推送）
-│       ├── RoleController          /api/roles/* 代理（角色 CRUD + 激活）
-│       ├── ConversationsProxyController /api/conversations/* 代理（历史会话+撤回，联动 FeishuRecallBridge）
-│       ├── CloudProxyController    /api/cloud/* 代理（云端服务商 CRUD + 激活切换）
-│       └── controller/             其余 HTTP 代理（记忆/工具/项目/分析/图片等）
+├── backend/web/                    Java Spring Boot 单后端（唯一服务端）
+│   └── src/main/java/com/intelligent/agent/web/
+│       ├── ai/agent/               AgentOrchestrator（ReAct）+ 分支失败检测 + 任务标记
+│       ├── ai/llm/                 Ollama / 云端 OpenAI 兼容 provider + 路由
+│       ├── ai/tool/                ToolExecutor + 内置工具（9 个）+ 文本工具解析
+│       ├── ai/memory/              短期记忆 / 蒸馏 / 摘要 / 语义缓存 / 项目上下文
+│       ├── ai/prompt/              灵魂层加载 + SystemPromptBuilder + PromptService
+│       ├── domain/                 角色 / 会话 / 项目 / 任务 / 知识 / 技能 / 分析 / 教学
+│       ├── infrastructure/         向量仓库 / 调度器 / 迁移 / 观测 / 文件存储
+│       ├── integration/            Feishu / WeCom / Telegram 通道 + ComfyUI / MCP
+│       ├── controller/             薄路由（java 模式走本地领域服务）
+│       └── service/                AgentService / ImageService / ConfigRuntimeService 等
 │
 ├── frontend/                       Vue 3 SPA
 │   └── src/
@@ -539,15 +499,14 @@ intelligent_agent/
 │       ├── config/routes.config.js 路由导航单一来源（侧边栏/Header 均从此读取）
 │       └── services/               WebSocket 客户端 + REST 封装（api.js/localDB.js）
 │
-├── client/                         Python CLI 客户端（直连 Agent）
-│   ├── main.py                     CLI 入口（argparse，单次/REPL 两种模式）
-│   ├── api.py                      AgentClient（HTTP + SSE + JWT 自动续签）
-│   ├── repl.py                     交互式 REPL（Rich 增强显示）
-│   ├── session.py                  会话持久化（JSON 文件）
-│   └── config.yaml                 客户端配置
+├── client/                         Java CLI 客户端（Java 21 + Picocli，连接 backend:8080）
+│   ├── Main.java                   Picocli 入口（login / chat / repl / model / persona / retract）
+│   ├── BackendClient.java          HTTP + SSE 客户端
+│   ├── ReplCommand.java            交互式 REPL
+│   └── SessionStore.java           会话持久化（JSON 文件）
 │
-├── tests/e2e/                      端到端测试套件（63 个用例，pytest + httpx）
-│   ├── conftest.py                 公共 fixture：Java/Python 服务探活、JWT 鉴权、slow_client
+├── tests/e2e/                      端到端测试套件（pytest + httpx，仅测 Java 后端）
+│   ├── conftest.py                 公共 fixture：Java 服务探活、JWT 鉴权、slow_client
 │   ├── test_auth.py                认证（登录/登出/无 token 鉴权）
 │   ├── test_health.py              服务健康检测
 │   ├── test_chat.py                3 个聊天维度（云端/本地/dolphin 无限制）
@@ -583,7 +542,7 @@ intelligent_agent/
 
 ## API 参考
 
-所有接口由 Python Agent 提供（port 8000），Java 后端透明代理。
+所有接口由 Java 后端提供（port 8080，Java-only；Python Agent 已于 2026-08-08 退役）。
 
 ### 聊天
 
@@ -624,7 +583,7 @@ intelligent_agent/
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/health` | 健康检查 |
+| GET | `/api/health` | 健康检查 |
 | GET | `/api/models` | 列出可用模型 |
 | POST | `/api/model/switch` | 切换模型（per-user）|
 | GET | `/api/personas` | 列出角色 |
@@ -649,7 +608,7 @@ intelligent_agent/
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/knowledge/upload` | 上传文件（.txt/.md/.pdf/.json，≤10MB），自动段落/句子边界分块写入 ChromaDB |
+| POST | `/api/knowledge/upload` | 上传文件（.txt/.md/.pdf/.json，≤10MB），自动段落/句子边界分块写入向量记忆 |
 | GET | `/api/knowledge/files` | 列出当前用户已入库文件（含文件名/分块数/大小/创建时间）|
 | DELETE | `/api/knowledge/files/{file_id}` | 删除文件及其所有向量块 |
 
@@ -677,9 +636,9 @@ intelligent_agent/
 2. **准备配置**：`cp .env.docker.example .env.docker`，填写 `JWT_SECRET`（≥32 字符随机串）和 `ADMIN_PASSWORD`
    验证：`grep -c "请替换\|your_password" .env.docker` 返回 `0`（即占位符已全部替换）
 3. **启动容器**：`docker compose up -d --build`
-   验证：`docker compose ps` 三个服务（agent/backend/frontend）状态均为 `healthy`
-4. **检查 Agent 健康**：`curl http://localhost:8000/health`
-   验证：返回 JSON 中 `status` 字段为 `ok`/`healthy`
+   验证：`docker compose ps` 两个服务（backend/frontend）状态均为 `healthy`
+4. **检查后端健康**：`curl http://localhost:8080/api/health`
+   验证：返回 JSON 中 `status` 字段为 `UP`
 5. **登录验证**：浏览器打开 `http://localhost:3000`，用 `admin` / 你设置的 `ADMIN_PASSWORD` 登录
    验证：登录后能看到聊天界面，右上角显示模型/角色下拉框且非空（若为空见 [常见问题](#常见问题)）
 6. **端到端对话验证**：发送一条消息，确认能收到流式回复
@@ -710,13 +669,12 @@ intelligent_agent/
 ### 记忆管理
 
 - **定期清理**：Memory 面板删除过时条目，或导出 JSON 后清空重来
-- **跨设备迁移**：Memory 面板导出，包含 ChromaDB 向量数据，新设备导入后完整恢复
-- **记忆查重阈值**：默认 `0.85`，重复条目太多时调高（`MEMORY_DISTILL_DEDUP_THRESHOLD`）
+- **跨设备迁移**：Memory 面板导出/导入（迁移包含长期记忆与业务 JSON，恢复后完整可用）
 
 ### 性能调优
 
-- `INFERENCE_CONCURRENCY=1`：CPU 跑大模型时必须设为 1，防止多请求争抢 CPU
-- `CHAT_TIMEOUT`：CPU 7B 约 60-120s，16B 约 200s，按实际硬件调整
+- 并发上限：`/admin/mcp` 系统资源配置中调 `inference_concurrency`（CPU 跑大模型建议 1）
+- `OLLAMA_TIMEOUT`：CPU 7B 约 60-120s，16B 约 200s，按实际硬件调整
 - `MAX_CONTEXT_TOKENS`：CPU 推理建议 ≤ 8192，显存充足可放到 16384
 
 ### 安全
@@ -732,29 +690,25 @@ intelligent_agent/
 
 ### 新增工具
 
-1. 在 `agent/tools/builtin_tools/` 下新建工具类，继承 `BaseTool` 或 `AsyncBaseTool`
-2. 在 `agent/core/agent.py` 的 `_setup_tools()` 中注册：`self.tool_manager.register_tool(MyTool(), "category")`
-3. 工具自动对 LLM 可见，同时自动注册为调度器可用动作
+1. 在 `backend/web/.../ai/tool/builtin/` 下新建工具类，实现 `AgentTool` 接口
+2. 在 `AgentConfig` 中注册为 Spring Bean（参考 `CalculatorTool` / `WebSearchTool`）
+3. 工具自动进入 `ToolExecutor`，对 LLM 可见，同时自动注册为调度器可用动作
 
 ### 新增角色
 
-在前端 Web 界面 `/roles/editor` 创建角色（推荐，表单化），或直接调用 `POST /api/roles`（JSON body）。角色持久化到 `agent/data/`，无需重建镜像。
+在前端 Web 界面 `/roles/editor` 创建角色（推荐，表单化），或直接调用 `POST /api/roles`（JSON body）。角色持久化到 `backend/web/data/`，无需重启。
 
 ### 开发命令速查
 
 ```bash
-# Python Agent
-cd agent
-pip install -e ".[dev]"
-python -m uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000 --reload
-pytest tests/ -v
-black . && isort .
-
 # Java Backend
 cd backend/web
 ./mvnw spring-boot:run
 ./mvnw test
 ./mvnw package
+
+# E2E（需 backend + frontend + Ollama 运行）
+cd tests/e2e && pytest -v
 
 # Frontend
 cd frontend
@@ -770,11 +724,8 @@ npm run build
 ```bash
 # ── Docker ──────────────────────────────────────────────────────
 docker compose ps                               # 容器状态
-docker logs ia-agent -f --tail 50               # Agent 实时日志
-docker compose restart ia-agent                 # 重启 Agent
-
-# 仅重建 Agent（改了 Python 代码）
-docker compose build agent && docker compose up -d agent
+docker logs ia-backend -f --tail 50             # Java 后端实时日志
+docker compose restart ia-backend               # 重启 Java 后端
 
 # 前端热更新（不重建镜像，约 10s）
 cd frontend && npm run build
@@ -788,11 +739,6 @@ docker compose down -v                          # 同上 + 删除数据卷（慎
 
 # ── 本地原生 ──────────────────────────────────────────────────────
 ./start_all.sh stop                             # 停止所有本地服务
-
-# ── 数据维护 ──────────────────────────────────────────────────────
-# ChromaDB 迁移（schema 问题时）
-cd agent && python tools/migrate_chromadb.py --dry-run
-cd agent && python tools/migrate_chromadb.py
 ```
 
 ---
@@ -813,7 +759,7 @@ Cloudflare 边缘节点（全球 CDN，中国可访问）
 ia-cloudflared 容器
         │  Docker 内网 HTTP
         ▼
-ia-backend:8080（Java 网关）→ ia-agent:8000（Python AI）
+ia-backend:8080（Java 单后端，全部 AI 逻辑）
 ```
 
 `ia-cloudflared` 在启动时主动向 Cloudflare 建立隧道，域名 `intelligent.eu.cc` 的 DNS 指向该隧道，**不绑定宿主机 IP**。启动命令：
@@ -925,11 +871,11 @@ curl https://ipinfo.io/ip
 
 ## 常见问题
 
-**Q: Agent 容器 unhealthy 无法启动**  
-A: `docker logs ia-agent` 查看详情。最常见：`.env.docker` 未配置或 `JWT_SECRET` 为空。
+**Q: Backend 容器 unhealthy 无法启动**  
+A: `docker logs ia-backend` 查看详情。最常见：`.env.docker` 未配置或 `JWT_SECRET` 为空。
 
 **Q: CPU 推理很慢**  
-A: CPU 跑 7B 模型约 60-120s 属正常。设 `INFERENCE_CONCURRENCY=1` 防止多请求争抢 CPU。
+A: CPU 跑 7B 模型约 60-120s 属正常。到 `/admin/mcp` 把 `inference_concurrency` 设为 1，防止多请求争抢 CPU。
 
 **Q: dolphin 模型工具调用不工作**  
 A: dolphin 不支持原生 Function Calling，系统自动切换 Text-tool 解析模式，正常使用即可。

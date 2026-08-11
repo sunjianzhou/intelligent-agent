@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.ai.memory;
 
 import com.intelligent.agent.web.infrastructure.vectorstore.TextEmbedding;
+import com.intelligent.agent.web.infrastructure.vectorstore.EmbeddingService;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -20,16 +21,29 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SemanticResponseCache {
 
     public static final Duration DEFAULT_TTL = Duration.ofHours(24);
+    public static final int DEFAULT_MAX_ENTRIES = 2000;
 
     private final Map<String, CacheEntry> entries = new ConcurrentHashMap<>();
     private final Duration ttl;
+    private final EmbeddingService embeddingService;
+    private final int maxEntries;
 
     public SemanticResponseCache() {
-        this(DEFAULT_TTL);
+        this(DEFAULT_TTL, null, DEFAULT_MAX_ENTRIES);
     }
 
     public SemanticResponseCache(Duration ttl) {
+        this(ttl, null, DEFAULT_MAX_ENTRIES);
+    }
+
+    public SemanticResponseCache(Duration ttl, EmbeddingService embeddingService) {
+        this(ttl, embeddingService, DEFAULT_MAX_ENTRIES);
+    }
+
+    public SemanticResponseCache(Duration ttl, EmbeddingService embeddingService, int maxEntries) {
         this.ttl = ttl;
+        this.embeddingService = embeddingService;
+        this.maxEntries = maxEntries > 0 ? maxEntries : DEFAULT_MAX_ENTRIES;
     }
 
     /** 便捷写入：model 为 null。 */
@@ -47,6 +61,7 @@ public class SemanticResponseCache {
             return;
         }
         entries.put(key(userId, persona, model, question), new CacheEntry(answer, Instant.now()));
+        evictIfNeeded();
     }
 
     public Optional<String> get(String userId, String persona, String model, String question) {
@@ -69,8 +84,9 @@ public class SemanticResponseCache {
         if (question == null || question.isBlank()) {
             return Optional.empty();
         }
-        double[] queryVector = TextEmbedding.embed(question);
         List<Scored> scored = new ArrayList<>();
+        List<String> candidates = new ArrayList<>();
+        List<CacheEntry> candidateEntries = new ArrayList<>();
         for (Map.Entry<String, CacheEntry> e : entries.entrySet()) {
             String[] parts = e.getKey().split("\\|", 4);
             if (parts.length < 4
@@ -84,9 +100,23 @@ public class SemanticResponseCache {
                 entries.remove(e.getKey());
                 continue;
             }
-            double similarity = TextEmbedding.cosine(queryVector, TextEmbedding.embed(parts[3]));
+            candidates.add(parts[3]);
+            candidateEntries.add(entry);
+        }
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+        double[] queryVector = embeddingService == null
+                ? TextEmbedding.embed(question) : embeddingService.embed(question);
+        java.util.List<double[]> vectors = embeddingService == null
+                ? candidates.stream().map(TextEmbedding::embed).toList()
+                : embeddingService.embedAll(candidates);
+        for (int i = 0; i < vectors.size(); i++) {
+            double similarity = embeddingService == null
+                    ? TextEmbedding.cosine(queryVector, vectors.get(i))
+                    : embeddingService.cosine(queryVector, vectors.get(i));
             if (similarity >= minSimilarity) {
-                scored.add(new Scored(entry.answer(), similarity));
+                scored.add(new Scored(candidateEntries.get(i).answer(), similarity));
             }
         }
         return scored.stream()
@@ -103,6 +133,22 @@ public class SemanticResponseCache {
 
     private void evictExpired() {
         entries.entrySet().removeIf(e -> expired(e.getValue()));
+    }
+
+    /** 容量上限：先清过期，仍超限时按创建时间淘汰最旧条目。 */
+    private void evictIfNeeded() {
+        if (entries.size() <= maxEntries) {
+            return;
+        }
+        evictExpired();
+        int excess = entries.size() - maxEntries;
+        if (excess <= 0) {
+            return;
+        }
+        entries.entrySet().stream()
+                .sorted(java.util.Comparator.comparing(e -> e.getValue().createdAt()))
+                .limit(excess)
+                .forEach(e -> entries.remove(e.getKey(), e.getValue()));
     }
 
     private boolean expired(CacheEntry entry) {

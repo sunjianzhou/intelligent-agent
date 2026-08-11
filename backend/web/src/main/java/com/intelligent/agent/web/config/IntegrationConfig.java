@@ -13,6 +13,7 @@ import com.intelligent.agent.web.integration.feishu.FeishuChannelClient;
 import com.intelligent.agent.web.integration.mcp.McpToolRegistry;
 import com.intelligent.agent.web.integration.telegram.TelegramChannelClient;
 import com.intelligent.agent.web.integration.wechat.WeChatChannelClient;
+import com.intelligent.agent.web.infrastructure.security.SecretCrypto;
 import com.intelligent.agent.web.wecom.WeComMessageSender;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -53,8 +54,10 @@ public class IntegrationConfig {
     private String comfyuiBaseUrl;
 
     @Bean
-    public FeishuChannelClient feishuChannelClient(FeishuMessageSender feishuMessageSender) {
-        return new FeishuChannelClient(feishuMessageSender, Path.of(dataDir), feishuEnabled);
+    public FeishuChannelClient feishuChannelClient(FeishuMessageSender feishuMessageSender,
+                                                   SecretCrypto secretCrypto) {
+        return new FeishuChannelClient(feishuMessageSender, Path.of(dataDir),
+                feishuEnabled, RetryConfig.DEFAULT, secretCrypto);
     }
 
     @Bean

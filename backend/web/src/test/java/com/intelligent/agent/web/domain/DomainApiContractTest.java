@@ -32,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 领域 API 契约测试（Plan 2 / Task 3）：
  * 每个垂直切片在替换代理前先写失败测试，实现后转绿。
- * 本地运行时（java/shadow）下走 Java 领域服务，响应形状与 Python 一致。
+ * Java-only 领域服务契约测试。
  */
 class DomainApiContractTest {
 
@@ -51,15 +51,11 @@ class DomainApiContractTest {
         conversationService = new ConversationService(dataDir);
         projectService = new ProjectService(dataDir, new VectorMemoryRepository());
         taskService = new TaskService();
-        RoleController roleController =
-                new RoleController(null, MAPPER, roleService, "java");
+        RoleController roleController = new RoleController(roleService);
         ConversationsProxyController conversationController =
-                new ConversationsProxyController(null, MAPPER, conversationService,
-                        "java", null);
-        ProjectProxyController projectController =
-                new ProjectProxyController(null, MAPPER, projectService, "java");
-        TaskProxyController taskController =
-                new TaskProxyController(null, MAPPER, taskService, "java");
+                new ConversationsProxyController(conversationService, null);
+        ProjectProxyController projectController = new ProjectProxyController(projectService);
+        TaskProxyController taskController = new TaskProxyController(taskService);
         mockMvc = MockMvcBuilders.standaloneSetup(
                 roleController, conversationController, projectController, taskController).build();
     }

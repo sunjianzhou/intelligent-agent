@@ -40,6 +40,22 @@ class OpenAiCompatibleLlmProviderTest {
     }
 
     @Test
+    void configureAndClearToggleProviderAvailability() {
+        OpenAiCompatibleLlmProvider runtime = new OpenAiCompatibleLlmProvider(
+                "", "", "", Duration.ofSeconds(10));
+
+        assertThat(runtime.isConfigured()).isFalse();
+
+        runtime.configure("http://localhost:9000/v1", "sk-runtime", "deepseek-chat");
+
+        assertThat(runtime.isConfigured()).isTrue();
+
+        runtime.clearConfig();
+
+        assertThat(runtime.isConfigured()).isFalse();
+    }
+
+    @Test
     void streamsSseTokensAndDone() {
         server.enqueue(new MockResponse()
                 .setBody("""

@@ -35,7 +35,7 @@ class ChatStreamContractTest {
                 .thenReturn(Flux.just(ModelEvent.token("你好"), ModelEvent.done(Map.of())));
 
         ChatController controller = new ChatController(
-                mock(AgentService.class), local, null, "java", new ObjectMapper());
+                mock(AgentService.class), local, new ObjectMapper());
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         mockMvc.perform(post("/api/chat/stream")

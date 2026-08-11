@@ -166,6 +166,27 @@ class ConversationMemoryServiceTest {
         assertThat(summaries.get(0).type()).isEqualTo("summary");
     }
 
+    @Test
+    void extractsProjectContextEveryProjectIntervalTurns() {
+        for (int i = 1; i <= 8; i++) {
+            service.recordTurn(withProject(ctx("u1", "项目第" + i + "轮：后端使用 Java 21 重构"), "p1"), "回答" + i);
+        }
+
+        List<MemoryRecord> project = repository.search(
+                MemorySearchQuery.builder("u1", "Java 21", 20)
+                        .projectId("p1")
+                        .type("project")
+                        .build());
+
+        assertThat(project).isNotEmpty();
+        assertThat(project.get(0).projectId()).isEqualTo("p1");
+    }
+
+    private static AgentRequestContext withProject(AgentRequestContext base, String projectId) {
+        return new AgentRequestContext(base.userId(), base.message(), base.model(), base.persona(),
+                projectId, base.sessionId(), base.useTools(), base.useMemory(), base.channel(), base.options());
+    }
+
     private static AgentRequestContext ctx(String userId, String message) {
         return new AgentRequestContext(
                 userId, message, null, null, null, null, true, true, null, Map.of());

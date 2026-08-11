@@ -44,8 +44,7 @@
 > - ✅ SystemPromptBuilder 注入【心证铁卷】段（③.5 位置，IM 渠道排除）
 > - ✅ heart_record 工具（append/list/delete，轮转备份）
 > - ✅ 5 信号分支失败检测 + 自动撤回
-> - ✅ L1 响应缓存（5min TTL + LRU）
-> - ✅ L2 语义缓存（ChromaDB 24h TTL）
-> - ✅ L3/L4 命中率监控埋点
+> - ✅ 响应缓存（精确 + 语义，24h TTL，真实 embedding / n-gram 兜底）
+> - ✅ 长期记忆持久化（重启不丢失）+ 容量上限淘汰
 > - ✅ Ollama keep_alive=-1 常驻
-> - ⚠️ 量化模型拉取待用户手动执行 `ollama pull dolphin:7b-q4_K_M`
+> - ⚠️ 模型拉取待用户手动执行（当前默认 `qwen2.5:7b`，可选 `ollama pull dolphin:7b-q4_K_M`）

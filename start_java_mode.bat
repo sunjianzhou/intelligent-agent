@@ -3,7 +3,6 @@ setlocal enabledelayedexpansion
 
 REM ============================================================================
 REM  Java-only startup (Plan 3 cutover / post-retirement)
-REM   - AI_RUNTIME_MODE defaults to java; override with env var (shadow/python)
 REM   - Reads JWT_SECRET / ADMIN_PASSWORD from root .env
 REM   - Backend data dir: backend/web/data (Java domain services persistence)
 REM ============================================================================
@@ -11,7 +10,6 @@ REM ============================================================================
 set "ROOT=%~dp0"
 set "ROOT=%ROOT:~0,-1%"
 
-if not defined AI_RUNTIME_MODE set "AI_RUNTIME_MODE=java"
 if not defined JAVA_HOME set "JAVA_HOME=D:\software\jdk21\jdk-21.0.12+8"
 set "JAVA=%JAVA_HOME%\bin\java.exe"
 
@@ -33,6 +31,6 @@ if "%JWT_SECRET%"=="" (
 )
 
 cd /d "%ROOT%\backend\web"
-echo Starting backend in %AI_RUNTIME_MODE% mode on :8080 ...
+echo Starting Java backend on :8080 ...
 "%JAVA%" -jar target\web-1.0-SNAPSHOT.jar
 endlocal

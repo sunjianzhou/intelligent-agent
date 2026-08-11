@@ -40,7 +40,7 @@ class WebSocketMessageTest {
 
     @Test
     void messageType_constants_matchProtocol() {
-        // 协议常量回归：任何重命名都会触发这里的失败，提醒同步前端和 Python 端
+        // 协议常量回归：任何重命名都会触发这里的失败，提醒同步前端和 Java 端
         assertThat(WebSocketMessageType.CHAT_TOKEN).isEqualTo("chat_token");
         assertThat(WebSocketMessageType.CHAT_DONE).isEqualTo("chat_done");
         assertThat(WebSocketMessageType.THINKING).isEqualTo("thinking");

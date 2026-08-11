@@ -4,47 +4,53 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Project overview
 
-A local-first, three-tier intelligent agent platform: Ollama local inference → Python FastAPI agent (all AI logic) → Java Spring Boot gateway (WebSocket + HTTP proxy, zero AI logic) → Vue 3 SPA. A Python CLI client can talk to the agent directly, bypassing Java.
+Local-first intelligent agent platform (Java-only since 2026-08-08; the Python FastAPI agent
+and Python CLI were retired and their source removed). All AI logic now lives in the Java
+Spring Boot backend; Ollama serves local inference; ChromaDB was replaced by a file-persisted
+vector repository (real embeddings via Ollama `nomic-embed-text` when available, falling back
+to n-gram hashing).
 
 ```
-Browser / CLI
-    │  WebSocket (streaming) + REST
+Browser (Vue 3 SPA) / Java CLI
+    │  WebSocket (streaming) + REST + SSE
     ▼
-Java backend (Spring Boot :8080)   ← pure gateway: JWT auth, WS management, proxying
-    │  HTTP + SSE
-    ▼
-Python Agent (FastAPI :8000)       ← all AI logic lives here
-    │
-    ├── Ollama (:11434)            ← local LLM inference
-    └── ChromaDB (embedded)        ← vector long-term memory
+Java backend (Spring Boot :8080)        ← the only server: JWT auth, WS management,
+    │                                      ReAct orchestration, memory, tools, domain APIs
+    ├── Ollama (:11434)                 ← local LLM inference + embeddings
+    └── ComfyUI (:8188, optional)       ← image generation (external service)
 ```
 
-For a deep dive (full module breakdown, API reference, known tech debt by ID), read `AI_PROJECT_CONTEXT.md` first — it's written specifically for LLM context-loading and is kept up to date. `README.md` has user-facing setup/ops instructions in Chinese. `TODOS.md` tracks open work items.
+For a deep dive (full module breakdown, API reference, known tech debt by ID), read
+`AI_PROJECT_CONTEXT.md` first — it's written specifically for LLM context-loading.
+`README.md` has user-facing setup/ops instructions in Chinese. `TODOS.md` tracks open work items.
+Historical Python-era design notes live under `docs/migration/` and are kept only as reference.
 
-This repo also vendors an unrelated set of frontend design skills under `skills-src/` (ui-design, accessibility, color-theory, etc.) — these are Claude Code skills, not part of the agent application itself.
+This repo also vendors an unrelated set of frontend design skills under `skills-src/`
+(ui-design, accessibility, color-theory, etc.) — these are Claude Code skills, not part of
+the agent application itself.
 
 ## Commands
 
-### Python Agent (`agent/`) — conda env `python310`
-
-```bash
-conda activate python310
-cd agent
-pip install -e ".[dev]"
-python -m uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000 --reload
-
-pytest tests/ -v                          # full suite (~250 tests)
-pytest tests/test_some_file.py::test_name -v   # single test
-black . && isort .                        # formatting (line-length 88, black profile)
-```
-
-### Java backend (`backend/web/`)
+### Java backend (`backend/web/`) — requires JDK 21 (`D:\software\jdk21\jdk-21.0.12+8`)
 
 ```bash
 cd backend/web
-./mvnw spring-boot:run     # mvnw.cmd on Windows
-./mvnw test
-./mvnw package
+./mvnw.cmd spring-boot:run     # Windows; JWT_SECRET / ADMIN_PASSWORD env required
+./mvnw.cmd test                # full suite (~270 tests)
+./mvnw.cmd package
+```
+
+`start_java_mode.bat` reads `JWT_SECRET`/`ADMIN_PASSWORD` from the root `.env` and starts the
+Java backend (Java-only; the Python service and its rollback paths have been removed).
+
+### Java CLI client (`client/`)
+
+```bash
+cd client
+../backend/web/mvnw.cmd package -DskipTests
+java -jar target/client-1.0-SNAPSHOT.jar login --username admin --password <pw>
+java -jar target/client-1.0-SNAPSHOT.jar chat "你好"
+java -jar target/client-1.0-SNAPSHOT.jar repl
 ```
 
 ### Vue frontend (`frontend/`)
@@ -58,7 +64,10 @@ npm run test        # vitest run
 npm run test:watch
 ```
 
-### E2E tests (`tests/e2e/`, requires all services running)
+### E2E tests (`tests/e2e/`, requires backend + frontend + Ollama running)
+
+The E2E suite itself is still written in Python (pytest + httpx) but targets the Java backend
+only — it no longer talks to any Python service.
 
 ```bash
 cd tests/e2e && pytest -v
@@ -66,50 +75,71 @@ cd tests/e2e && pytest -v
 
 ### Full stack startup order
 
-Ollama → Agent → Backend → Frontend (Backend waits on Agent's health check). `start_all.sh` / `start_all.bat` automate this; `docker compose up -d --build` for containerized startup (`--profile local` adds Ollama+ComfyUI, `--profile https` adds TLS via nginx).
+Ollama → Java backend → Frontend. `start_all.bat` / `start_all.sh` automate this;
+`docker compose up -d --build` for containerized startup (`--profile local` adds
+Ollama+ComfyUI, `--profile https` adds TLS via nginx).
 
 ## Architecture
 
-### Why three tiers
+### Why a single Java tier (post-migration)
 
-The Java backend is intentionally a thin, swappable gateway: WebSocket session management, JWT auth (validated at WS handshake via `JwtHandshakeInterceptor`), and HTTP proxying to Python. It contains **no AI logic** — every proxy controller (`RoleController`, `MemoryProxyController`, `TaskProxyController`, etc.) extends `AbstractProxyController` and forwards to Python with the real user ID attached via `X-User-Id`. All intelligence lives in the Python agent.
+The Java backend is now self-contained: WebSocket session management, JWT auth (validated at
+WS handshake via `JwtHandshakeInterceptor` and REST via `JwtAuthFilter`), ReAct orchestration,
+memory, tools, persona/prompt/soul, scheduling, IM channels, and all domain APIs. Every AI
+feature is implemented in `backend/web/src/main/java/com/intelligent/agent/web/`.
 
-### Python agent core (`agent/core/`)
+### Core agent (`ai/agent/`, `ai/llm/`)
 
-`IntelligentAgent` (`core/agent.py`) is a thin facade composed of three mixins to avoid a God Class:
-- `ConversationFlowMixin` (`conversation_flow.py`) — message building, `chat()`/`chat_stream()`
-- `ToolDispatcherMixin` (`tool_dispatcher.py`) — tool registration, intent routing, LLM calls
-- `MemoryWriterMixin` (`memory_writer.py`) — warmup, MCP, distillation, cleanup
+`AgentOrchestrator` is the ReAct orchestrator:
+- `AgentRequestContext` — per-request isolation (userId, message, model, persona, projectId,
+  sessionId, tools/memory flags, channel, image base64, group-scene markers).
+- `LlmProviderRouter` — routes by requested model: local `OllamaLlmProvider` by default,
+  `OpenAiCompatibleLlmProvider` for configured cloud models.
+- Tool loop: first non-streaming call → `ToolExecutor` executes parsed tool calls
+  (native function calling or text-tool parsing for dolphin/phi2/orca-* prefixes) →
+  loop (max 5 rounds) → final streaming answer as SSE/WS `ModelEvent`s.
+- `BranchFailureDetector` — 6 failure signals + iron-rule violation scan terminate the loop.
 
-Per-request isolation (multi-user) is done via `ContextVar`s in `core/_context_vars.py` (model provider, persona, request image base64) rather than instance state, since `ToolManager` and the agent facade are shared.
+### Memory system (`ai/memory/`)
 
-### ReAct loop
+- Short-term: in-process deque per user (TTL 24h, last 100 messages).
+- Distillation: every 5 turns `MemoryDistillationService` extracts facts via LLM
+  (`LlmExtractionService`), falling back to rule-based extraction; every 10 turns writes a
+  session summary; with a `project_id`, every 8 turns LLM-extracts project nuggets into
+  `project` memory records, injected back as `[PROJECT CONTEXT]`.
+- Long-term retrieval: `VectorMemoryRepository` (in-memory) uses `EmbeddingService`
+  (Ollama `/api/embed`, default `nomic-embed-text`, 768-dim) with n-gram hash fallback.
+- `SemanticResponseCache` — persona/model-scoped exact + semantic cache (24h TTL).
 
-```
-_build_messages_async()  → injects short-term memory + long-term semantic recall
-                             + project context + task list + spec (every 10 turns)
-_call_model_with_tools()  → first LLM call
-  ├── tool calls present → _execute_tool_round() → append results → loop (max 5 rounds)
-  └── no tool calls       → _stream_tokens_async()  (SSE)
-```
+### Project / task system (`domain/`)
 
-Models without native function calling (dolphin, phi2, orca-*) fall back to text-tool parsing, supporting JSON / `<tool_call>` tags / markdown code blocks / plain text.
+Each project has a Markdown spec and a task tree. The LLM marks completion by emitting
+`[TASK_DONE:<id>]` / `[TASK_BLOCKED:<id>]` in its reply; the stream turns these into
+`task_update`/`task_blocked` events consumed by the frontend.
 
-### Two-tier memory
+### Persona / prompt / soul system (`ai/prompt/`)
 
-Short-term memory is an in-process deque (TTL 24h, last 100 messages). Every 5 turns, `MemoryDistiller` extracts facts into long-term memory (ChromaDB, `all-MiniLM-L6-v2` embeddings); every 10 turns `SessionSummarizer` writes a stage summary. When a `project_id` is present, `ContextExtractor` additionally pulls project-specific nuggets into a per-project ChromaDB collection every 8 turns, injected back as `[PROJECT CONTEXT]`.
+Soul layer loaded from `soul/` (`SOUL_DIR`), rules/heart via `heart_record` tool;
+`SystemPromptBuilder` composes SOUL → tool_overlay → rules (privacy-tiered per channel) →
+persona sections; `PromptService` assembles the full system prompt with model-specific
+overrides (e.g. unrestricted overlay for dolphin).
 
-### Project system
+### Tools (`ai/tool/`)
 
-Each project has a Markdown spec (re-injected as `[SPEC]` every 5 turns) and a task tree. The LLM marks completion by emitting `[TASK_DONE:<id>]` / `[TASK_BLOCKED:<id>]` in its reply text; the SSE stream turns this into `task_update`/`task_blocked` events that the frontend uses to update the task tree.
-
-### Persona system
-
-`.md`/JSON-backed roles in `agent/personas/` (data in `agent/data/roles.json`), hot-reloaded — no restart needed to add or edit a persona. `PromptBuilder` (singleton) composes: persona description → model-specific override layer (e.g. an unrestricted overlay for dolphin) → tool-use instructions (when in text-tool mode). Active persona per user persists to `data/user_persona_prefs.json`.
+Builtin tools: calculator, time, file (whitelisted read-only), shell (command whitelist),
+web_search, database (read-only), feishu_calendar, feishu_task, heart_record. MCP tools via
+`McpToolRegistry`. All registered in `AgentConfig`.
 
 ### Request flow boundaries to know before touching code
 
-- All REST/SSE endpoints are mounted in `agent/api/fastapi_app.py`; feature-specific routers live alongside it (`chat_router.py`, `roles_router.py`, `projects_router.py`, `knowledge_router.py`, `cloud_router.py`, `conversations_router.py`).
-- Java never computes anything AI-related — if a feature needs new server logic, it goes in `agent/`, with Java only adding a thin proxy controller plus a WebSocket event type if streaming is involved.
-- Frontend navigation has a single source of truth: `frontend/src/config/routes.config.js` (`NAV_ITEMS`/`CONFIG_ITEMS`/`SYSTEM_ITEMS`) — both the sidebar and mobile header read from it, so new pages only need one edit there.
-- Destructive UI confirmations must use the custom `useConfirmDialogStore`, never `window.confirm`/`alert` — those are silently swallowed in PWA/WebView contexts in this app (caused a recurring bug previously).
+- All REST/SSE/WS endpoints live in `backend/web/src/main/java/com/intelligent/agent/web/`.
+  Controllers under `controller/` are thin facades over local domain services; no Python
+  proxying exists anymore.
+- Frontend navigation has a single source of truth:
+  `frontend/src/config/routes.config.js` (`NAV_ITEMS`/`CONFIG_ITEMS`/`SYSTEM_ITEMS`) — both
+  the sidebar and mobile header read from it, so new pages only need one edit there.
+- Destructive UI confirmations must use the custom `useConfirmDialogStore`, never
+  `window.confirm`/`alert` — those are silently swallowed in PWA/WebView contexts in this app
+  (caused a recurring bug previously).
+- New AI/server logic goes in the Java backend; do not reintroduce a Python service without
+  an explicit decision to restore the retired stack.

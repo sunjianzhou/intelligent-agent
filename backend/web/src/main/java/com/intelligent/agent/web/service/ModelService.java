@@ -6,6 +6,7 @@ import com.intelligent.agent.web.infrastructure.filesystem.JsonFileStore;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -50,10 +51,17 @@ public class ModelService {
     @Value("${intelligent-agent.data-dir:data}")
     private String dataDir;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, String> runtimeModels = new ConcurrentHashMap<>();
     private volatile Map<String, String> cloudOverride;
+
+    public ModelService() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);
+        factory.setReadTimeout(5000);
+        this.restTemplate = new RestTemplate(factory);
+    }
 
     /** 云端服务商激活（CloudService 调用）：运行时覆盖 @Value 静态配置。 */
     public void activateCloud(String provider, String baseUrl, String apiKey, String model) {
@@ -71,14 +79,8 @@ public class ModelService {
 
     public Map<String, Object> getModels(String userId) {
         List<String> localModels = ollamaTags();
-        Map<String, String> cloud = cloudOverride != null ? cloudOverride
-                : Map.of(
-                "provider", cloudProvider == null ? "" : cloudProvider,
-                "base_url", cloudBaseUrl == null ? "" : cloudBaseUrl,
-                "api_key", cloudApiKey == null ? "" : cloudApiKey,
-                "model", cloudModel == null ? "" : cloudModel);
-        boolean configuredCloud = notBlank(cloud.get("provider"))
-                && notBlank(cloud.get("api_key")) && notBlank(cloud.get("model"));
+        Map<String, String> cloud = cloudConfig();
+        boolean configuredCloud = cloudConfigured(cloud);
         String cloudModelName = configuredCloud ? cloud.get("model") : "";
 
         Set<String> all = new LinkedHashSet<>(localModels);
@@ -97,6 +99,36 @@ public class ModelService {
         result.put("cloud_provider", configuredCloud ? cloud.get("provider") : "");
         result.put("known_cloud_providers", KNOWN_CLOUD_PROVIDERS);
         return result;
+    }
+
+    /**
+     * 解析某用户当前生效的推理模型（不触发网络请求）：
+     * 运行时切换 → 持久化偏好 → 已配置云端模型 → 默认模型。
+     * 由 {@code LocalChatService} 在每次聊天时调用，让 per-user 模型切换真正生效。
+     */
+    public String resolveModel(String userId) {
+        String key = effective(userId);
+        String runtime = runtimeModels.get(key);
+        if (runtime != null) {
+            return runtime;
+        }
+        Map<String, Object> prefs = prefs();
+        Object saved = prefs.get(key);
+        if (saved != null) {
+            return String.valueOf(saved);
+        }
+        Map<String, String> cloud = cloudConfig();
+        return cloudConfigured(cloud) ? cloud.get("model") : defaultModel;
+    }
+
+    /** Ollama 是否可达（本地模型列表非空）。 */
+    public boolean ollamaAvailable() {
+        return !ollamaTags().isEmpty();
+    }
+
+    /** 当前生效的云端配置（含运行时激活覆盖）；未配置时返回全空 map。 */
+    public Map<String, String> activeCloudConfig() {
+        return cloudConfig();
     }
 
     public Map<String, Object> switchModel(String userId, String modelName) {
@@ -132,6 +164,23 @@ public class ModelService {
             return String.valueOf(saved);
         }
         return configuredCloud ? cloudModelName : defaultModel;
+    }
+
+    private Map<String, String> cloudConfig() {
+        if (cloudOverride != null) {
+            return cloudOverride;
+        }
+        Map<String, String> cloud = new LinkedHashMap<>();
+        cloud.put("provider", cloudProvider == null ? "" : cloudProvider);
+        cloud.put("base_url", cloudBaseUrl == null ? "" : cloudBaseUrl);
+        cloud.put("api_key", cloudApiKey == null ? "" : cloudApiKey);
+        cloud.put("model", cloudModel == null ? "" : cloudModel);
+        return cloud;
+    }
+
+    private static boolean cloudConfigured(Map<String, String> cloud) {
+        return notBlank(cloud.get("provider"))
+                && notBlank(cloud.get("api_key")) && notBlank(cloud.get("model"));
     }
 
     private List<String> ollamaTags() {

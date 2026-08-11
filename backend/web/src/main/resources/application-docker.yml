@@ -1,3 +1,0 @@
-intelligent-agent:
-  python-service:
-    base-url: http://agent:8000

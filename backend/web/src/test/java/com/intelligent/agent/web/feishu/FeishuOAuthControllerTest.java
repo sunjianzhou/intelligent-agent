@@ -1,7 +1,6 @@
 package com.intelligent.agent.web.feishu;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.intelligent.agent.web.service.PythonProxyService;
+import com.intelligent.agent.web.service.FeishuOAuthService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.*;
@@ -15,7 +14,7 @@ import static org.mockito.Mockito.*;
 
 class FeishuOAuthControllerTest {
 
-    @Mock PythonProxyService proxy;
+    @Mock FeishuOAuthService feishuOAuthService;
 
     private FeishuOAuthController controller;
 
@@ -23,38 +22,34 @@ class FeishuOAuthControllerTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         controller = new FeishuOAuthController();
-        // proxy and objectMapper are protected in AbstractProxyController (different package)
-        ReflectionTestUtils.setField(controller, "proxy", proxy);
-        ReflectionTestUtils.setField(controller, "objectMapper", new ObjectMapper());
+        ReflectionTestUtils.setField(controller, "feishuOAuthService", feishuOAuthService);
     }
 
     @Test
-    void callbackProxiesToPythonWithoutJwt() {
-        when(proxy.get(contains("/api/feishu/oauth/callback")))
-                .thenReturn(ResponseEntity.ok("<html>授权成功</html>"));
+    void callbackUsesLocalOAuthService() {
+        when(feishuOAuthService.callback("c123", "s456")).thenReturn("<html>授权成功</html>");
 
         MockHttpServletRequest req = new MockHttpServletRequest();
-        req.setQueryString("code=c123&state=s456");
+        req.setParameter("code", "c123");
+        req.setParameter("state", "s456");
 
         ResponseEntity<String> resp = controller.oauthCallback(req);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(resp.getBody()).contains("授权成功");
-        verify(proxy).get("/api/feishu/oauth/callback?code=c123&state=s456");
+        verify(feishuOAuthService).callback("c123", "s456");
     }
 
     @Test
-    void callbackPassesErrorParamThrough() {
-        when(proxy.get(contains("error=access_denied")))
-                .thenReturn(ResponseEntity.ok("<html>拒绝</html>"));
-
+    void callbackReturnsDeniedOnErrorParam() {
         MockHttpServletRequest req = new MockHttpServletRequest();
-        req.setQueryString("error=access_denied&state=s456");
+        req.setParameter("error", "access_denied");
+        req.setParameter("state", "s456");
 
         ResponseEntity<String> resp = controller.oauthCallback(req);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(resp.getBody()).contains("拒绝");
-        verify(proxy).get("/api/feishu/oauth/callback?error=access_denied&state=s456");
+        assertThat(resp.getBody()).contains("拒绝授权");
+        verifyNoInteractions(feishuOAuthService);
     }
 }

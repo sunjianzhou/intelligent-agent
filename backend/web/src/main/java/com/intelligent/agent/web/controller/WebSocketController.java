@@ -7,19 +7,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
-import org.springframework.web.client.RestTemplate;
 import com.intelligent.agent.web.dto.request.ChatRequest;
 import com.intelligent.agent.web.dto.WebSocketMessageType;
 import com.intelligent.agent.web.service.AgentService;
+import com.intelligent.agent.web.infrastructure.scheduler.TaskSchedulerService;
 
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -46,15 +42,12 @@ public class WebSocketController extends TextWebSocketHandler {
     @Autowired
     private AgentService agentService;
 
-    @Value("${intelligent-agent.python-service.base-url:http://localhost:8000}")
-    private String pythonServiceBaseUrl;
-
-    @Autowired
-    private RestTemplate restTemplate;
-
     @Autowired
     @org.springframework.beans.factory.annotation.Qualifier("streamExecutor")
     private ExecutorService streamExecutor;
+
+    @Autowired(required = false)
+    private TaskSchedulerService taskSchedulerService;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
@@ -74,8 +67,7 @@ public class WebSocketController extends TextWebSocketHandler {
             JsonUtil.sendJsonMessage(session, response);
             log.info("已发送连接确认消息");
 
-            // 异步发送系统信息：getRealSystemInfo() 内部做 2 次 HTTP 调用到 Python，
-            // 同步执行会阻塞 Spring WS accept 线程长达 60s（超时两倍）。
+            // 异步发送系统信息：内部会探测 Ollama 健康，避免阻塞 Spring WS accept 线程。
             streamExecutor.submit(() -> {
                 try { sendSystemInfo(session); } catch (Exception e) {
                     log.warn("异步发送系统信息失败: {}", e.getMessage());
@@ -145,6 +137,7 @@ public class WebSocketController extends TextWebSocketHandler {
         String  requestId    = (String)  request.get("request_id");
         String  projectId    = (String)  request.get("project_id");
         String  sessionId    = (String)  request.get("session_id");
+        String  model        = (String)  request.get("model");
         String  imageBase64  = (String)  request.get("image_base64");
         @SuppressWarnings("unchecked")
         java.util.List<java.util.Map<String, Object>> pendingTasks =
@@ -173,6 +166,7 @@ public class WebSocketController extends TextWebSocketHandler {
         chatRequest.setUseMemory(useMemory != null ? useMemory : true);
         chatRequest.setProjectId(projectId);
         chatRequest.setSessionId(sessionId);
+        chatRequest.setModel(model);
         chatRequest.setPendingTasks(pendingTasks);
         chatRequest.setImageBase64(imageBase64);
         chatRequest.setUserId(userId);  // 透传真实用户 ID
@@ -218,14 +212,12 @@ public class WebSocketController extends TextWebSocketHandler {
         }
     }
 
-    /**
-     * 每 5 秒轮询一次 Python 通知队列。
-     * 有通知时广播给所有在线 WS 会话，取代前端 30s 轮询方案。
-     */
+    /** 每 5 秒轮询本地调度通知队列，有通知时广播给所有在线 WS 会话。 */
     @Scheduled(fixedDelay = 5000)
     public void pushPendingNotifications() {
         if (sessions.isEmpty()) return;
-        List<Map<String, Object>> notifications = agentService.pollNotifications();
+        List<Map<String, Object>> notifications = taskSchedulerService == null
+                ? List.of() : taskSchedulerService.pollNotifications();
         if (notifications.isEmpty()) return;
 
         Map<String, Object> push = new HashMap<>();

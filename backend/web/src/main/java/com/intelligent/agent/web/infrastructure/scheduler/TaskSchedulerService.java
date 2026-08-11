@@ -20,7 +20,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 任务调度服务（Plan 2 / Task 5）：
@@ -36,7 +40,10 @@ public class TaskSchedulerService {
     private final TaskScheduler taskScheduler;
     private final Queue<Map<String, Object>> notifications = new ConcurrentLinkedQueue<>();
     private final LlmProviderRouter llmRouter;
+    private final ExecutorService taskExecutor;
+    private final AtomicBoolean ticking = new AtomicBoolean(false);
     private ScheduledFuture<?> scheduledFuture;
+    private ScheduledFuture<?> wakeupFuture;
 
     public TaskSchedulerService(TaskService taskService, Path dataDir) {
         this(taskService, dataDir, null, null);
@@ -52,14 +59,21 @@ public class TaskSchedulerService {
         this.actionLog = dataDir.resolve("actions.log");
         this.taskScheduler = taskScheduler;
         this.llmRouter = llmRouter;
+        this.taskExecutor = Executors.newFixedThreadPool(2, r -> {
+            Thread t = new Thread(r, "agent-task-executor");
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     @PostConstruct
     public void start() {
         if (taskScheduler != null) {
+            // 事件驱动：按最近到期时刻唤醒；60s 兜底扫描自愈漂移
             scheduledFuture = taskScheduler.scheduleAtFixedRate(
-                    this::tick, Duration.ofSeconds(1));
-            log.info("任务调度器已启动（每秒 tick）");
+                    this::refresh, Duration.ofSeconds(60));
+            refresh();
+            log.info("任务调度器已启动（事件驱动，60s 兜底扫描）");
         }
     }
 
@@ -67,6 +81,102 @@ public class TaskSchedulerService {
     public void stop() {
         if (scheduledFuture != null) {
             scheduledFuture.cancel(false);
+        }
+        if (wakeupFuture != null) {
+            wakeupFuture.cancel(false);
+        }
+        taskExecutor.shutdownNow();
+    }
+
+    /**
+     * 异步 tick 入口（生产调度循环使用）：单飞行锁保证同一时刻至多一个 tick 在执行，
+     * 且 tick 在专用线程池上运行——llm_generate 等长任务不再阻塞共享的 Spring 调度线程
+     * （该线程同时服务 @Scheduled 通知推送）。tick 本身保持同步，供测试直调。
+     */
+    void tickAsync() {
+        if (!ticking.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            taskExecutor.submit(() -> {
+                try {
+                    tick();
+                } finally {
+                    ticking.set(false);
+                    refresh();
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            ticking.set(false);
+            log.warn("任务执行线程池已满，跳过本次 tick");
+        }
+    }
+
+    /**
+     * 事件驱动核心：取消旧唤醒，按所有 pending 任务里最近的到期时刻安排一次性唤醒。
+     * 任务增删改（控制器调用）与每次执行完成后都会触发，取代每秒全量盲扫。
+     */
+    public synchronized void refresh() {
+        if (taskScheduler == null) {
+            return;
+        }
+        if (wakeupFuture != null) {
+            wakeupFuture.cancel(false);
+            wakeupFuture = null;
+        }
+        Instant earliest = null;
+        for (Map<String, Object> task : taskService.allTasks()) {
+            Instant next = nextRunInstant(task);
+            if (next != null && (earliest == null || next.isBefore(earliest))) {
+                earliest = next;
+            }
+        }
+        if (earliest == null) {
+            return;
+        }
+        Instant target = earliest.isBefore(Instant.now()) ? Instant.now() : earliest;
+        wakeupFuture = taskScheduler.schedule(this::tickAsync, target);
+    }
+
+    /** 计算某 pending 任务的下一次到期时刻；不可运行返回 null。 */
+    Instant nextRunInstant(Map<String, Object> task) {
+        if (!"pending".equals(task.get("status"))) {
+            return null;
+        }
+        Object maxRuns = task.get("max_runs");
+        if (maxRuns instanceof Number
+                && num(task.get("run_count")) >= ((Number) maxRuns).intValue()) {
+            return null;
+        }
+        Instant now = Instant.now();
+        Instant lastRun = parseInstant(task.get("last_run"));
+        switch (str(task.get("schedule_type")) == null ? "immediate" : str(task.get("schedule_type"))) {
+            case "delay": {
+                Instant base = lastRun != null ? lastRun : parseInstant(task.get("created_at"));
+                return base == null ? now : base.plusSeconds(num(task.get("delay_seconds")));
+            }
+            case "interval": {
+                return lastRun == null ? now
+                        : lastRun.plusSeconds(num(task.get("interval_seconds")));
+            }
+            case "datetime": {
+                Instant runAt = parseInstant(task.get("run_at"));
+                return runAt == null ? null : runAt;
+            }
+            case "cron": {
+                Instant base = lastRun != null ? lastRun : parseInstant(task.get("created_at"));
+                if (base == null) {
+                    return null;
+                }
+                try {
+                    CronExpression cron = CronExpression.parse("0 " + str(task.get("cron_expression")));
+                    return cron.next(base);
+                } catch (Exception e) {
+                    return null;
+                }
+            }
+            default: // immediate
+                return now;
         }
     }
 

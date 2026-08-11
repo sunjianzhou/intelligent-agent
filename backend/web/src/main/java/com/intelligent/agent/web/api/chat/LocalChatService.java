@@ -4,6 +4,8 @@ import com.intelligent.agent.web.ai.agent.AgentOrchestrator;
 import com.intelligent.agent.web.ai.agent.AgentRequestContext;
 import com.intelligent.agent.web.ai.llm.ModelEvent;
 import com.intelligent.agent.web.dto.request.ChatRequest;
+import com.intelligent.agent.web.service.ModelService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -18,9 +20,16 @@ import java.util.Map;
 public class LocalChatService {
 
     private final AgentOrchestrator orchestrator;
+    private final ModelService modelService;
 
     public LocalChatService(AgentOrchestrator orchestrator) {
+        this(orchestrator, null);
+    }
+
+    @Autowired
+    public LocalChatService(AgentOrchestrator orchestrator, ModelService modelService) {
         this.orchestrator = orchestrator;
+        this.modelService = modelService;
     }
 
     public Flux<ModelEvent> stream(ChatRequest request) {
@@ -31,11 +40,11 @@ public class LocalChatService {
         return orchestrator.complete(toContext(request));
     }
 
-    private static AgentRequestContext toContext(ChatRequest request) {
+    private AgentRequestContext toContext(ChatRequest request) {
         return new AgentRequestContext(
                 request.getUserId(),
                 request.getMessage(),
-                null,
+                resolveModel(request),
                 null,
                 request.getProjectId(),
                 request.getSessionId(),
@@ -46,5 +55,13 @@ public class LocalChatService {
                 request.getImageBase64(),
                 request.getSceneChatType(),
                 Boolean.TRUE.equals(request.getSceneMentioned()));
+    }
+
+    /** 请求显式指定模型优先；否则按用户偏好解析（ModelService），确保 per-user 模型切换生效。 */
+    private String resolveModel(ChatRequest request) {
+        if (request.getModel() != null && !request.getModel().isBlank()) {
+            return request.getModel().trim();
+        }
+        return modelService == null ? null : modelService.resolveModel(request.getUserId());
     }
 }

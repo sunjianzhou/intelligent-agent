@@ -39,16 +39,20 @@ public class ChatRequest {
     @JsonProperty("session_id")
     private String sessionId;
 
+    /** 请求指定的模型名；为空时由 LocalChatService 按用户偏好解析（ModelService.resolveModel）。 */
+    @JsonProperty("model")
+    private String model;
+
     /** 多模态图片（base64，不含 data URL 前缀；非多模态模型时忽略；上限 10MB 原始图片 ≈ 13.3MB base64）*/
     @JsonProperty("image_base64")
     @Size(max = 14_000_000, message = "图片大小不能超过 10MB")
     private String imageBase64;
 
-    /** 请求来源渠道（"web"/"feishu_im"/...），决定 Python 端 system prompt 是否注入私密档案段。
-     *  为空时 Python 侧默认按 "web" 处理。*/
+    /** 请求来源渠道（"web"/"feishu_im"/...），决定本地 SystemPromptBuilder 是否注入私密档案段。
+     *  为空时默认按 "web" 处理。*/
     private String channel;
 
-    /** 多人会话场景标记（如飞书 "group"/"p2p"），group 时 Python 端注入群聊静默规则。*/
+    /** 多人会话场景标记（如飞书 "group"/"p2p"），group 时注入群聊静默规则。*/
     @JsonProperty("scene_chat_type")
     private String sceneChatType;
 

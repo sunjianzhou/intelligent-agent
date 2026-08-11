@@ -105,7 +105,7 @@ native_start() {
     [[ -x "$MVN" ]] || { err "Maven wrapper not found at $MVN"; exit 1; }
 
     step "[1/3] Backend (port 8080, java mode)"
-    start_bg backend bash -c "cd '$ROOT/backend/web' && AI_RUNTIME_MODE='${AI_RUNTIME_MODE:-java}' '$JAVA' -jar target/web-1.0-SNAPSHOT.jar"
+    start_bg backend bash -c "cd '$ROOT/backend/web' && '$JAVA' -jar target/web-1.0-SNAPSHOT.jar"
 
     step "[2/3] Frontend (port 5173)"
     start_bg frontend bash -c "cd '$ROOT/frontend' && npm run dev"

@@ -23,9 +23,9 @@ import java.util.Map;
  */
 public class OpenAiCompatibleLlmProvider extends AbstractHttpLlmProvider {
 
-    private final String baseUrl;
-    private final String apiKey;
-    private final String defaultModel;
+    private volatile String baseUrl;
+    private volatile String apiKey;
+    private volatile String defaultModel;
 
     public OpenAiCompatibleLlmProvider(String baseUrl, String apiKey,
                                        String defaultModel, Duration timeout) {
@@ -40,6 +40,21 @@ public class OpenAiCompatibleLlmProvider extends AbstractHttpLlmProvider {
         return apiKey != null && !apiKey.isBlank()
                 && baseUrl != null && !baseUrl.isBlank()
                 && defaultModel != null && !defaultModel.isBlank();
+    }
+
+    /** 运行期热切换云端配置（CloudService 激活时调用），使激活立即对路由生效。 */
+    public void configure(String baseUrl, String apiKey, String defaultModel) {
+        this.baseUrl = stripTrailingSlash(baseUrl == null ? "" : baseUrl);
+        this.apiKey = apiKey == null ? "" : apiKey;
+        this.defaultModel = defaultModel == null ? "" : defaultModel;
+        addRedactionSecret(this.apiKey);
+    }
+
+    /** 停用云端：清空配置，路由回落到本地 Ollama。 */
+    public void clearConfig() {
+        this.baseUrl = "";
+        this.apiKey = "";
+        this.defaultModel = "";
     }
 
     @Override

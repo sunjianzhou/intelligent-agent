@@ -1,4 +1,4 @@
-"""E2E: 健康检查 — Java、Python、系统信息、系统资源。"""
+"""E2E: 健康检查 — Java、系统信息、系统资源。"""
 
 
 def test_java_health(client):
@@ -11,10 +11,11 @@ def test_java_health(client):
 
 
 def test_python_health(client):
+    # /api/python/health 为历史兼容端点：Java-only 模式下返回自包含状态
     r = client.get("/api/python/health")
     assert r.status_code == 200
     data = r.json()
-    assert data["status"] == "connected", f"Python agent disconnected: {data}"
+    assert data["status"] == "java-only", f"unexpected status: {data}"
 
 
 def test_system_info(client):

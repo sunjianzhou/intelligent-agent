@@ -38,10 +38,9 @@ def test_login_missing_user():
 
 
 def test_protected_endpoint_without_token():
-    # Java 代理层不做 JWT 拦截（由 Python 层负责鉴权）；
-    # 直连 Python 不带 token → 应返回 401
-    from conftest import PYTHON_URL
-    r = httpx.get(f"{PYTHON_URL}/api/memory", timeout=10)
+    # Java 后端 JwtAuthFilter 对受保护 REST 路径鉴权；
+    # 不带 token → 应返回 401
+    r = httpx.get(f"{BASE_URL}/api/memory", timeout=10)
     assert r.status_code == 401
 
 

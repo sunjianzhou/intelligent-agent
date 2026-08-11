@@ -61,15 +61,16 @@ https://your-domain.com/feishu/callback/interactive
 
 需要公网可访问（使用 Cloudflare Tunnel：`docker compose --profile tunnel up -d`）。
 
-## 主动推送（Python Agent 侧）
+## 主动推送（Java 后端）
 
-Agent 可通过 `im_message` 工具主动发送飞书消息：
+Java 后端可通过 `FeishuChannelClient` / `FeishuMessageSender` 主动推送飞书消息
+（调度任务完成通知、`ChannelRouter` 广播等）：
 
 ```
 用户：任务完成后通知飞书用户 ou_xxxxx
 ```
 
-Agent 会自动调用 `im_message(receiver_id="ou_xxxxx", msg_type="text", content={"text": "任务已完成"})`
+示例：任务完成时向后端注册的飞书用户推送 `{ "message": "任务已完成" }` 通知
 
 ## 群聊行为
 
@@ -160,13 +161,10 @@ Agent 会自动调用 `im_message(receiver_id="ou_xxxxx", msg_type="text", conte
 ```env
 # .env.docker 追加
 FEISHU_OAUTH_REDIRECT_URI=https://{tunnel域名}/feishu/oauth/callback
-FEISHU_OAUTH_ENCRYPTION_KEY=<Fernet.generate_key() 输出>
 ```
 
-生成 Fernet 密钥：
-```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
+用户 token 落盘加密由后端 `SecretCrypto`（AES-128-GCM，密钥由 `JWT_SECRET` SHA-256 派生）自动处理，
+无需额外配置密钥。
 
 飞书开放平台后台：「安全设置」tab → 「重定向 URL」填入 tunnel callback 地址；
 「权限管理」开通 `contact:user.id:readonly` / `calendar:calendar` / `calendar:calendar:write` /

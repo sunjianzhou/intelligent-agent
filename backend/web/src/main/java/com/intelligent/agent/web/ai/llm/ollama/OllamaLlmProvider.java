@@ -82,7 +82,7 @@ public class OllamaLlmProvider extends AbstractHttpLlmProvider {
             payload.put("model", resolveModel(turn));
             payload.put("messages", toMessages(turn));
             payload.put("stream", stream);
-            payload.put("keep_alive", defaultOptions.keepAlive());
+            payload.put("keep_alive", keepAliveValue());
             payload.put("options", resolveOptions(turn));
             String body = MAPPER.writeValueAsString(payload);
             return jsonRequest(baseUrl + "/api/chat")
@@ -97,6 +97,23 @@ public class OllamaLlmProvider extends AbstractHttpLlmProvider {
     private String resolveModel(ChatTurn turn) {
         String requested = turn.model();
         return requested == null || requested.isBlank() ? defaultModel : requested.trim();
+    }
+
+    /**
+     * keep_alive 参数：纯数字字符串按数字发送（"-1"=永久驻留），
+     * 其余（如 "5m" / "1h"）按时长字符串发送。Ollama 0.5.x 拒绝字符串 "-1"（HTTP 400）。
+     */
+    private Object keepAliveValue() {
+        String raw = defaultOptions.keepAlive();
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        try {
+            return Long.parseLong(trimmed);
+        } catch (NumberFormatException e) {
+            return trimmed;
+        }
     }
 
     private List<Map<String, Object>> toMessages(ChatTurn turn) {

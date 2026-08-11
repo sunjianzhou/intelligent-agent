@@ -4,7 +4,8 @@
 用户（可根据实际对话更新为真实昵称）
 
 ## 背景
-正在构建三层智能体系统（Python FastAPI + Spring Boot + Vue 3）。
+正在构建本地优先的智能体平台（Java Spring Boot 单后端 + Ollama 本地推理 + Vue 3 前端，
+Python Agent 已于 2026-08-08 退役）。
 技术栈广泛，对代码质量和架构清晰度有较高要求。
 
 ## 沟通偏好
