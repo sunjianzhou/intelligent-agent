@@ -47,6 +47,14 @@
 > 全量 284 用例绿（0 失败）。
 > 以下为当前全部未完成项，按可推进性分组。
 
+> **2026-08-13 发现（配置问题，未擅自改动 .env，待 owner 决策）**：
+> 根目录 `.env` 的 `JWT_SECRET` 为 29 字节（232 bits），jjwt 要求 ≥256 bits，
+> 登录/换发 token 抛 `WeakKeyException`（HTTP 500），`start_java_mode.bat` 本地启动
+> 路径不可用（`POST /api/auth/login` 直接失败）。复现：该 secret + `java -jar`。
+> 轮换需 ≥32 字节，但 `SecretCrypto` 密钥由 JWT_SECRET SHA-256 派生，轮换后
+> 存量加密的云端 API Key / 飞书 token 将无法解密（decrypt 失败返回 enc: 原文），
+> 需重新录入云端 Key 并重新走飞书 OAuth。建议由 owner 明确轮换。
+
 ### A. 环境依赖待办（需 Ollama / 嵌入模型，可用后恢复）
 
 - [x] 记忆蒸馏升级为 LLM 提取（TODO-110 Task 5，已完成：LlmExtractionService + 规则式兜底）
@@ -1462,7 +1470,8 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
         过滤 null 参数值防 NPE。
       - 契约测试 12 个：provider 原生 tool_calls 解析（对象/字符串参数）、tools 载荷、
         历史消息序列化、并行顺序/超时/轮次上限、编排器原生调用与并行时序。
-      全量 296 用例绿（0 失败）。
+      全量 296 用例绿（0 失败）；真机冒烟（Ollama qwen2.5:7b + SSE /api/chat/stream）：
+      工具轮发出 `tool_calls_done`（calculator/17*23），结果回传后流式作答，链路贯通。
 - [ ] G2 真实 MCP 客户端：
       最小实现 streamable HTTP/stdio 传输（或引入 Spring AI MCP client）；
       `McpToolRegistry` 从 name→executor 桩改为"连接管理器"（每服务器 session，
