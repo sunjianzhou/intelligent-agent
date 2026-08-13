@@ -36,7 +36,14 @@ public class WebSearchTool implements AgentTool {
     public ToolDefinition definition() {
         return new ToolDefinition(
                 "web_search", "使用 DuckDuckGo 搜索网络信息。参数: query(搜索关键词,必填),"
-                        + " max_results(结果数量,默认5,最大10)", true, null, Duration.ofSeconds(20));
+                        + " max_results(结果数量,默认5,最大10)", true, null, Duration.ofSeconds(20),
+                Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "query", Map.of("type", "string", "description", "搜索关键词"),
+                                "max_results", Map.of("type", "integer",
+                                        "description", "结果数量，默认 5，最大 10")),
+                        "required", List.of("query")));
     }
 
     @Override

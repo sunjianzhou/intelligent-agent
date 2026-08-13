@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -67,6 +68,40 @@ class ToolExecutorTest {
         }
     };
 
+    private static final AgentTool PARALLEL_A = new AgentTool() {
+        @Override
+        public ToolDefinition definition() {
+            return new ToolDefinition("p_a", "并行A", true, null, Duration.ofSeconds(5));
+        }
+
+        @Override
+        public Object execute(Map<String, Object> arguments) {
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return "A";
+        }
+    };
+
+    private static final AgentTool PARALLEL_B = new AgentTool() {
+        @Override
+        public ToolDefinition definition() {
+            return new ToolDefinition("p_b", "并行B", true, null, Duration.ofSeconds(5));
+        }
+
+        @Override
+        public Object execute(Map<String, Object> arguments) {
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return "B";
+        }
+    };
+
     private final ToolExecutor executor =
             new ToolExecutor(List.of(READ_TOOL, WRITE_TOOL, ADMIN_TOOL, SLOW_TOOL));
     private final ToolCall writeCall = ToolCall.of("write_file", Map.of());
@@ -101,6 +136,51 @@ class ToolExecutorTest {
         ToolExecutionContext ctx = ToolExecutionContext.of("u1", "user");
         assertThat(executor.execute(ToolCall.of("slow_tool", Map.of()), ctx).status())
                 .isEqualTo("timeout");
+    }
+
+    @Test
+    void executesCallsInParallelAndPreservesOrder() {
+        ToolExecutor parallel = new ToolExecutor(List.of(PARALLEL_A, PARALLEL_B));
+        long start = System.nanoTime();
+        List<ToolResult> results = parallel.executeParallel(
+                List.of(ToolCall.of("p_a", Map.of()), ToolCall.of("p_b", Map.of())),
+                ToolExecutionContext.of("u1", "user"));
+        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+
+        assertThat(results).extracting(r -> r.data()).containsExactly("A", "B");
+        // 200ms * 2 串行约 400ms；并行应明显更快（留足 CI 余量）
+        assertThat(elapsedMs).isLessThan(350);
+    }
+
+    @Test
+    void parallelExecutionAppliesPerCallTimeout() {
+        ToolExecutor parallel = new ToolExecutor(List.of(READ_TOOL, SLOW_TOOL));
+        long start = System.nanoTime();
+        List<ToolResult> results = parallel.executeParallel(
+                List.of(ToolCall.of("read_file", Map.of()), ToolCall.of("slow_tool", Map.of())),
+                ToolExecutionContext.of("u1", "user"));
+        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+
+        assertThat(results.get(0).status()).isEqualTo("success");
+        assertThat(results.get(1).status()).isEqualTo("timeout");
+        // 慢工具 50ms 超时即返回，不等待其 2s 休眠
+        assertThat(elapsedMs).isLessThan(1500);
+    }
+
+    @Test
+    void parallelExecutionHonorsRoundLimit() {
+        ToolExecutor limited = new ToolExecutor(List.of(READ_TOOL), 5);
+        List<ToolCall> calls = IntStream.range(0, 8)
+                .mapToObj(i -> ToolCall.of("read_file", Map.of("i", i)))
+                .toList();
+
+        List<ToolResult> results =
+                limited.executeParallel(calls, ToolExecutionContext.of("u1", "user"));
+
+        assertThat(results.stream().filter(r -> r.status().equals(ToolResult.SUCCESS)).count())
+                .isEqualTo(5);
+        assertThat(results.stream().filter(r -> r.status().equals(ToolResult.ERROR)).count())
+                .isEqualTo(3);
     }
 
     @Test

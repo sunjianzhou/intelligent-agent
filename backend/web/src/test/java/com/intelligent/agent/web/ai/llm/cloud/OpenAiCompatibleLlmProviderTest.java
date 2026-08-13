@@ -3,6 +3,8 @@ package com.intelligent.agent.web.ai.llm.cloud;
 import com.intelligent.agent.web.ai.llm.ChatMessage;
 import com.intelligent.agent.web.ai.llm.ChatTurn;
 import com.intelligent.agent.web.ai.llm.LlmProviderException;
+import com.intelligent.agent.web.ai.tool.ToolCall;
+import com.intelligent.agent.web.ai.tool.ToolDefinition;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -14,6 +16,7 @@ import reactor.test.StepVerifier;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -85,6 +88,74 @@ class OpenAiCompatibleLlmProviderTest {
                         ChatTurn.of("deepseek-chat", List.of(ChatMessage.user("hi")))))
                 .expectNext("你好")
                 .verifyComplete();
+    }
+
+    @Test
+    void completeWithToolsParsesNativeToolCalls() {
+        server.enqueue(new MockResponse()
+                .setBody("""
+                        {"choices":[{"message":{"role":"assistant","content":null,"tool_calls":[
+                          {"id":"call_1","type":"function","function":{"name":"calculator","arguments":"{\\"expression\\":\\"2*3\\"}"}},
+                          {"id":"call_2","type":"function","function":{"name":"web_search","arguments":{"query":"java"}}}
+                        ]}}]}
+                        """)
+                .setHeader("Content-Type", "application/json"));
+
+        StepVerifier.create(provider.completeWithTools(
+                        ChatTurn.of("deepseek-chat", List.of(ChatMessage.user("算一下"))),
+                        List.of(new ToolDefinition("calculator", "计算", true, null, null))))
+                .assertNext(resp -> {
+                    assertThat(resp.hasNativeToolCalls()).isTrue();
+                    assertThat(resp.toolCalls()).containsExactly(
+                            ToolCall.of("calculator", Map.of("expression", "2*3")),
+                            ToolCall.of("web_search", Map.of("query", "java")));
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void sendsToolsPayloadToChatCompletions() throws Exception {
+        server.enqueue(new MockResponse()
+                .setBody("{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}")
+                .setHeader("Content-Type", "application/json"));
+        ToolDefinition def = new ToolDefinition("calculator", "计算工具", true, null, null,
+                Map.of("type", "object",
+                        "properties", Map.of("expression", Map.of("type", "string")),
+                        "required", List.of("expression")));
+        provider.completeWithTools(
+                        ChatTurn.of("deepseek-chat", List.of(ChatMessage.user("hi"))),
+                        List.of(def))
+                .block();
+
+        RecordedRequest request = server.takeRequest();
+        String body = request.getBody().readUtf8();
+        assertThat(body).contains("\"tools\":[")
+                .contains("\"type\":\"function\"")
+                .contains("\"name\":\"calculator\"")
+                .contains("\"parameters\":{")
+                .contains("\"type\":\"object\"");
+    }
+
+    @Test
+    void serializesNativeToolCallsInHistory() throws Exception {
+        server.enqueue(new MockResponse()
+                .setBody("{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}")
+                .setHeader("Content-Type", "application/json"));
+        ChatMessage assistant = ChatMessage.assistant("", List.of(Map.of(
+                "id", "call_0",
+                "function", Map.of("name", "calculator", "arguments", Map.of("expression", "1+2")))));
+        ChatTurn turn = new ChatTurn("u1", "deepseek-chat",
+                List.of(assistant, ChatMessage.tool("3", "call_0")), Map.of());
+        provider.complete(turn).block();
+
+        RecordedRequest request = server.takeRequest();
+        String body = request.getBody().readUtf8();
+        assertThat(body).contains("\"tool_calls\":[")
+                .contains("\"id\":\"call_0\"")
+                .contains("\"type\":\"function\"")
+                .contains("\"arguments\":\"{\\\"expression\\\":\\\"1+2\\\"}\"")
+                .contains("\"role\":\"tool\"")
+                .contains("\"tool_call_id\":\"call_0\"");
     }
 
     @Test

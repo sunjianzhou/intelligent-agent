@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -35,7 +36,17 @@ public class FeishuTaskTool implements AgentTool {
         return new ToolDefinition(
                 "feishu_task", "飞书任务工具。action=list(查询任务,可选open_id/tasklist_guid),"
                         + " action=create(创建任务,需summary), action=complete(完成任务,需task_guid)。"
-                        + " 使用用户 OAuth 授权。", false, null, null);
+                        + " 使用用户 OAuth 授权。", false, null, null,
+                Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "action", Map.of("type", "string", "enum", List.of("list", "create", "complete")),
+                                "open_id", Map.of("type", "string", "description", "用户 open_id"),
+                                "tasklist_guid", Map.of("type", "string", "description", "任务清单 ID"),
+                                "summary", Map.of("type", "string", "description", "任务标题（create 时必填）"),
+                                "task_guid", Map.of("type", "string", "description", "任务 ID（complete 时必填）"),
+                                "page_size", Map.of("type", "integer", "description", "分页大小，默认 50")),
+                        "required", List.of("action")));
     }
 
     @Override

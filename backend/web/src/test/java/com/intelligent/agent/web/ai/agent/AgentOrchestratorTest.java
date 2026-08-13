@@ -2,9 +2,11 @@ package com.intelligent.agent.web.ai.agent;
 
 import com.intelligent.agent.web.ai.llm.ChatTurn;
 import com.intelligent.agent.web.ai.llm.LlmProvider;
+import com.intelligent.agent.web.ai.llm.LlmResponse;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.ai.llm.ModelEvent;
 import com.intelligent.agent.web.ai.tool.AgentTool;
+import com.intelligent.agent.web.ai.tool.ToolCall;
 import com.intelligent.agent.web.ai.tool.ToolDefinition;
 import com.intelligent.agent.web.ai.tool.ToolExecutor;
 import org.junit.jupiter.api.Test;
@@ -12,6 +14,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -64,6 +67,53 @@ class AgentOrchestratorTest {
         }
     }
 
+    /** 慢速回显工具（并行时序测试用）：休眠 sleepMs 后返回。 */
+    static class SlowTool implements AgentTool {
+        final String name;
+        final long sleepMs;
+
+        SlowTool(String name, long sleepMs) {
+            this.name = name;
+            this.sleepMs = sleepMs;
+        }
+
+        @Override
+        public ToolDefinition definition() {
+            return new ToolDefinition(name, "慢工具", true, null, Duration.ofSeconds(5));
+        }
+
+        @Override
+        public Object execute(Map<String, Object> arguments) {
+            try {
+                Thread.sleep(sleepMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return name + ":" + arguments.getOrDefault("v", "");
+        }
+    }
+
+    /** 前 nativeCallRounds 次 completeWithTools 返回原生 tool_calls，之后只返回文本。 */
+    static class ToolCallProvider extends FakeProvider {
+        final List<ToolCall> nativeCalls;
+        final int nativeCallRounds;
+
+        ToolCallProvider(List<String> replies, Flux<ModelEvent> streamEvents,
+                         List<ToolCall> nativeCalls, int nativeCallRounds) {
+            super(replies, streamEvents);
+            this.nativeCalls = nativeCalls;
+            this.nativeCallRounds = nativeCallRounds;
+        }
+
+        @Override
+        public Mono<LlmResponse> completeWithTools(ChatTurn turn, List<ToolDefinition> tools) {
+            completeCalls[0]++;
+            String reply = replies.get(Math.min(completeCalls[0] - 1, replies.size() - 1));
+            List<ToolCall> calls = completeCalls[0] <= nativeCallRounds ? nativeCalls : List.of();
+            return Mono.just(new LlmResponse(reply, calls));
+        }
+    }
+
     private final FakeProvider fake = new FakeProvider(
             List.of("你好"),
             Flux.just(ModelEvent.token("你好"), ModelEvent.done(Map.of())));
@@ -95,6 +145,44 @@ class AgentOrchestratorTest {
                 .expectNextMatches(e -> e.type().equals("done"))
                 .verifyComplete();
         assertThat(toolFake.completeCalls[0]).isEqualTo(2);
+    }
+
+    @Test
+    void executesNativeToolCallsFromProviderResponse() {
+        ToolCallProvider nativeProvider = new ToolCallProvider(
+                List.of("", "计算完成"),
+                Flux.just(ModelEvent.token("计算完成"), ModelEvent.done(Map.of())),
+                List.of(ToolCall.of("echo", Map.of("text", "hi"))), 1);
+        AgentOrchestrator o =
+                new AgentOrchestrator(new LlmProviderRouter(nativeProvider, null, List.of()), tools);
+
+        StepVerifier.create(o.stream(AgentRequestContext.of("u1", "echo hi")))
+                .expectNextMatches(e -> e.type().equals("tool_calls_done"))
+                .expectNextMatches(e -> e.type().equals("token") && e.data().equals("计算完成"))
+                .expectNextMatches(e -> e.type().equals("done"))
+                .verifyComplete();
+        assertThat(nativeProvider.completeCalls[0]).isEqualTo(2);
+    }
+
+    @Test
+    void executesNativeToolCallsInParallel() {
+        ToolExecutor slowTools = new ToolExecutor(
+                List.of(new SlowTool("slow_a", 250), new SlowTool("slow_b", 250)));
+        ToolCallProvider nativeProvider = new ToolCallProvider(
+                List.of("", "并行完成"),
+                Flux.just(ModelEvent.token("并行完成"), ModelEvent.done(Map.of())),
+                List.of(ToolCall.of("slow_a", Map.of("v", "1")),
+                        ToolCall.of("slow_b", Map.of("v", "2"))), 1);
+        AgentOrchestrator o =
+                new AgentOrchestrator(new LlmProviderRouter(nativeProvider, null, List.of()), slowTools);
+
+        long start = System.nanoTime();
+        StepVerifier.create(o.complete(AgentRequestContext.of("u1", "go")))
+                .expectNext("并行完成")
+                .verifyComplete();
+        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+        // 250ms * 2 串行约 500ms；并行约 250ms（留足 CI 余量）
+        assertThat(elapsedMs).isLessThan(450);
     }
 
     @Test

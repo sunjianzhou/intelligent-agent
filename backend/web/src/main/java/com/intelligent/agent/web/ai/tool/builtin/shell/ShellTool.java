@@ -30,7 +30,14 @@ public class ShellTool implements AgentTool {
         return new ToolDefinition(
                 "shell_tool", "执行安全的 Shell 命令（只读/信息类白名单）。"
                         + "参数: command(必填), timeout(秒,默认10,最大30)", true, null,
-                Duration.ofSeconds(35));
+                Duration.ofSeconds(35),
+                Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "command", Map.of("type", "string", "description", "要执行的命令"),
+                                "timeout", Map.of("type", "integer",
+                                        "description", "超时秒数，默认 10，最大 30")),
+                        "required", List.of("command")));
     }
 
     @Override

@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -35,7 +36,18 @@ public class FeishuCalendarTool implements AgentTool {
         return new ToolDefinition(
                 "feishu_calendar", "飞书日历工具。action=list(查询事件,需calendar_id/start_time/end_time,"
                         + "可选open_id), action=create(创建事件,需calendar_id/summary/start_time/end_time)。"
-                        + " 使用用户 OAuth 授权。", false, null, null);
+                        + " 使用用户 OAuth 授权。", false, null, null,
+                Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "action", Map.of("type", "string", "enum", List.of("list", "create")),
+                                "calendar_id", Map.of("type", "string", "description", "日历 ID"),
+                                "open_id", Map.of("type", "string", "description", "用户 open_id"),
+                                "start_time", Map.of("type", "string", "description", "开始时间"),
+                                "end_time", Map.of("type", "string", "description", "结束时间"),
+                                "summary", Map.of("type", "string", "description", "事件标题（create 时必填）"),
+                                "page_size", Map.of("type", "integer", "description", "分页大小，默认 50")),
+                        "required", List.of("action")));
     }
 
     @Override

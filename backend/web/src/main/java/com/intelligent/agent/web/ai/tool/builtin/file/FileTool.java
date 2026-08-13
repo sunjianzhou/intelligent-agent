@@ -37,7 +37,19 @@ public class FileTool implements AgentTool {
         return new ToolDefinition(
                 "file_tool", "文件和目录操作。action: read(读取全文), write(写入), list(列目录),"
                         + " create, delete, copy, move, info, exists。参数: action, path, content(写时必填)",
-                false, null, null);
+                false, null, null,
+                Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "action", Map.of("type", "string",
+                                        "enum", List.of("read", "write", "list", "create",
+                                                "delete", "copy", "move", "info", "exists")),
+                                "path", Map.of("type", "string", "description", "文件或目录路径"),
+                                "content", Map.of("type", "string", "description", "写入内容（write 时必填）"),
+                                "destination", Map.of("type", "string", "description", "目标路径（copy/move 时必填）"),
+                                "mode", Map.of("type", "string", "enum", List.of("text", "binary"),
+                                        "description", "读写模式，默认 text")),
+                        "required", List.of("action", "path")));
     }
 
     @Override

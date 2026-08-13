@@ -38,6 +38,14 @@ public final class ToolExecutionContext {
         return round.incrementAndGet();
     }
 
+    /**
+     * 原子获取一个执行槽位（1 起计数），供并行执行时精确限制总次数。
+     * 返回值为 1-based 槽位号，超过上限由调用方判定。
+     */
+    public int acquireSlot() {
+        return round.incrementAndGet();
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {

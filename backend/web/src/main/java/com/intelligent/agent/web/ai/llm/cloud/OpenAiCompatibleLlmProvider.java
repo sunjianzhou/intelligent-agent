@@ -1,11 +1,16 @@
 package com.intelligent.agent.web.ai.llm.cloud;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.intelligent.agent.web.ai.llm.AbstractHttpLlmProvider;
 import com.intelligent.agent.web.ai.llm.ChatMessage;
 import com.intelligent.agent.web.ai.llm.ChatTurn;
+import com.intelligent.agent.web.ai.llm.LlmResponse;
 import com.intelligent.agent.web.ai.llm.LlmProviderException;
 import com.intelligent.agent.web.ai.llm.ModelEvent;
+import com.intelligent.agent.web.ai.tool.ToolCall;
+import com.intelligent.agent.web.ai.tool.ToolDefinition;
+import com.intelligent.agent.web.ai.tool.ToolSchemas;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -102,7 +107,36 @@ public class OpenAiCompatibleLlmProvider extends AbstractHttpLlmProvider {
         });
     }
 
+    @Override
+    public Mono<LlmResponse> completeWithTools(ChatTurn turn, List<ToolDefinition> tools) {
+        return completeBody(chatRequest(turn, false, tools)).map(body -> {
+            try {
+                JsonNode message = MAPPER.readTree(body).path("choices").path(0).path("message");
+                String content = message.path("content").asText("").trim();
+                List<ToolCall> calls = new ArrayList<>();
+                JsonNode toolCalls = message.path("tool_calls");
+                if (toolCalls.isArray()) {
+                    for (JsonNode tc : toolCalls) {
+                        String name = tc.path("function").path("name").asText("");
+                        if (name.isEmpty()) {
+                            continue;
+                        }
+                        calls.add(ToolCall.of(name,
+                                parseArguments(tc.path("function").path("arguments"))));
+                    }
+                }
+                return new LlmResponse(content, calls);
+            } catch (Exception e) {
+                throw new LlmProviderException(redact(e.getMessage()), e);
+            }
+        });
+    }
+
     private HttpRequest chatRequest(ChatTurn turn, boolean stream) {
+        return chatRequest(turn, stream, null);
+    }
+
+    private HttpRequest chatRequest(ChatTurn turn, boolean stream, List<ToolDefinition> tools) {
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("model", resolveModel(turn));
@@ -110,6 +144,9 @@ public class OpenAiCompatibleLlmProvider extends AbstractHttpLlmProvider {
             payload.put("temperature", number(turn.options(), "temperature", 0.7));
             payload.put("max_tokens", integer(turn.options(), "max_tokens", 2048));
             payload.put("stream", stream);
+            if (tools != null && !tools.isEmpty()) {
+                payload.put("tools", ToolSchemas.toPayload(tools));
+            }
             String body = MAPPER.writeValueAsString(payload);
             return jsonRequest(baseUrl + "/chat/completions")
                     .header("Authorization", "Bearer " + apiKey)
@@ -131,7 +168,44 @@ public class OpenAiCompatibleLlmProvider extends AbstractHttpLlmProvider {
         for (ChatMessage m : turn.messages()) {
             Map<String, Object> msg = new LinkedHashMap<>();
             msg.put("role", m.role());
-            msg.put("content", m.content());
+            if ("tool".equals(m.role())) {
+                msg.put("content", m.content());
+                if (m.toolCallId() != null && !m.toolCallId().isBlank()) {
+                    msg.put("tool_call_id", m.toolCallId());
+                }
+            } else {
+                msg.put("content", m.content());
+            }
+            // 原生工具调用：归一化结构 → OpenAI 格式（id/type/function + arguments JSON 字符串）
+            if (m.toolCalls() != null && !m.toolCalls().isEmpty()) {
+                List<Map<String, Object>> openAiCalls = new ArrayList<>();
+                for (Map<String, Object> tc : m.toolCalls()) {
+                    Object fnRaw = tc.get("function");
+                    if (!(fnRaw instanceof Map<?, ?> fnMap)) {
+                        continue;
+                    }
+                    Map<String, Object> function = new LinkedHashMap<>();
+                    function.put("name", String.valueOf(fnMap.get("name")));
+                    Object args = fnMap.get("arguments");
+                    if (args instanceof Map<?, ?> argsMap) {
+                        try {
+                            function.put("arguments", MAPPER.writeValueAsString(argsMap));
+                        } catch (Exception e) {
+                            function.put("arguments", "");
+                        }
+                    } else {
+                        function.put("arguments", args == null ? "" : String.valueOf(args));
+                    }
+                    Map<String, Object> call = new LinkedHashMap<>();
+                    call.put("id", tc.get("id") == null ? "call_default" : tc.get("id"));
+                    call.put("type", "function");
+                    call.put("function", function);
+                    openAiCalls.add(call);
+                }
+                if (!openAiCalls.isEmpty()) {
+                    msg.put("tool_calls", openAiCalls);
+                }
+            }
             messages.add(msg);
         }
         // 多模态图片：OpenAI 兼容协议 content 改为多段数组，image_url 使用 data URL
@@ -151,5 +225,26 @@ public class OpenAiCompatibleLlmProvider extends AbstractHttpLlmProvider {
             }
         }
         return messages;
+    }
+
+    /** OpenAI 兼容 arguments：JSON 字符串（标准）或对象（部分兼容实现）。 */
+    private static Map<String, Object> parseArguments(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return Map.of();
+        }
+        if (node.isObject()) {
+            return MAPPER.convertValue(node, new TypeReference<Map<String, Object>>() { });
+        }
+        if (node.isTextual()) {
+            try {
+                JsonNode parsed = MAPPER.readTree(node.asText());
+                if (parsed.isObject()) {
+                    return MAPPER.convertValue(parsed, new TypeReference<Map<String, Object>>() { });
+                }
+            } catch (Exception ignored) {
+                // 非 JSON 参数文本，忽略
+            }
+        }
+        return Map.of();
     }
 }

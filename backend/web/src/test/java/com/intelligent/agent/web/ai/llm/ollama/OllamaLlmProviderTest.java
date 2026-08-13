@@ -2,7 +2,10 @@ package com.intelligent.agent.web.ai.llm.ollama;
 
 import com.intelligent.agent.web.ai.llm.ChatMessage;
 import com.intelligent.agent.web.ai.llm.ChatTurn;
+import com.intelligent.agent.web.ai.llm.LlmResponse;
 import com.intelligent.agent.web.ai.llm.OllamaOptions;
+import com.intelligent.agent.web.ai.tool.ToolCall;
+import com.intelligent.agent.web.ai.tool.ToolDefinition;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -68,6 +71,91 @@ class OllamaLlmProviderTest {
                         ChatTurn.of("qwen2.5:7b", List.of(ChatMessage.user("hi")))))
                 .expectNext("你好世界")
                 .verifyComplete();
+    }
+
+    @Test
+    void completeWithToolsParsesNativeToolCalls() {
+        server.enqueue(new MockResponse()
+                .setBody("""
+                        {"message":{"role":"assistant","content":"","tool_calls":[
+                          {"function":{"name":"calculator","arguments":{"expression":"1+2"}}},
+                          {"function":{"name":"time_tool","arguments":"{\\"action\\":\\"timestamp\\"}"}}
+                        ]},"done":true}
+                        """)
+                .setHeader("Content-Type", "application/json"));
+
+        StepVerifier.create(provider.completeWithTools(
+                        ChatTurn.of("qwen2.5:7b", List.of(ChatMessage.user("算一下"))),
+                        List.of(new ToolDefinition("calculator", "计算", true, null, null))))
+                .assertNext(resp -> {
+                    assertThat(resp.content()).isEmpty();
+                    assertThat(resp.hasNativeToolCalls()).isTrue();
+                    assertThat(resp.toolCalls()).containsExactly(
+                            ToolCall.of("calculator", Map.of("expression", "1+2")),
+                            ToolCall.of("time_tool", Map.of("action", "timestamp")));
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void completeWithToolsFallsBackToPlainContent() {
+        server.enqueue(new MockResponse()
+                .setBody("{\"message\":{\"content\":\"直接回答\"},\"done\":true}")
+                .setHeader("Content-Type", "application/json"));
+
+        StepVerifier.create(provider.completeWithTools(
+                        ChatTurn.of("qwen2.5:7b", List.of(ChatMessage.user("hi"))),
+                        List.of(new ToolDefinition("calculator", "计算", true, null, null))))
+                .assertNext(resp -> {
+                    assertThat(resp.content()).isEqualTo("直接回答");
+                    assertThat(resp.hasNativeToolCalls()).isFalse();
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void sendsToolsPayloadToApiChat() throws Exception {
+        server.enqueue(new MockResponse()
+                .setBody("{\"message\":{\"content\":\"ok\"},\"done\":true}")
+                .setHeader("Content-Type", "application/json"));
+        ToolDefinition def = new ToolDefinition("calculator", "计算工具", true, null, null,
+                Map.of("type", "object",
+                        "properties", Map.of("expression", Map.of("type", "string")),
+                        "required", List.of("expression")));
+        provider.completeWithTools(
+                        ChatTurn.of("qwen2.5:7b", List.of(ChatMessage.user("hi"))),
+                        List.of(def))
+                .block();
+
+        RecordedRequest request = server.takeRequest();
+        String body = request.getBody().readUtf8();
+        assertThat(body).contains("\"tools\":[")
+                .contains("\"type\":\"function\"")
+                .contains("\"name\":\"calculator\"")
+                .contains("\"parameters\":{")
+                .contains("\"type\":\"object\"")
+                .contains("\"required\":[\"expression\"]");
+    }
+
+    @Test
+    void serializesNativeToolCallsInHistory() throws Exception {
+        server.enqueue(new MockResponse()
+                .setBody("{\"message\":{\"content\":\"ok\"},\"done\":true}")
+                .setHeader("Content-Type", "application/json"));
+        ChatMessage assistant = ChatMessage.assistant("", List.of(Map.of(
+                "id", "call_0",
+                "function", Map.of("name", "calculator", "arguments", Map.of("expression", "1+2")))));
+        ChatTurn turn = new ChatTurn("u1", "qwen2.5:7b",
+                List.of(assistant, ChatMessage.tool("3", "call_0")), Map.of());
+        provider.complete(turn).block();
+
+        RecordedRequest request = server.takeRequest();
+        String body = request.getBody().readUtf8();
+        assertThat(body).contains("\"role\":\"assistant\"")
+                .contains("\"tool_calls\":[{\"function\":{")
+                .contains("\"name\":\"calculator\"")
+                .doesNotContain("\"id\":\"call_0\"")
+                .contains("\"role\":\"tool\"");
     }
 
     @Test

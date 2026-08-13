@@ -4,6 +4,7 @@ import com.intelligent.agent.web.ai.tool.AgentTool;
 import com.intelligent.agent.web.ai.tool.ToolDefinition;
 import net.objecthunter.exp4j.ExpressionBuilder;
 
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -21,7 +22,13 @@ public class CalculatorTool implements AgentTool {
     public ToolDefinition definition() {
         return new ToolDefinition(
                 "calculator", "执行数学计算。支持加减乘除、幂(^)、sqrt/sin/cos/tan/log/ln/abs 等。"
-                        + "参数: expression(表达式,必填)", true, null, null);
+                        + "参数: expression(表达式,必填)", true, null, null,
+                Map.of(
+                        "type", "object",
+                        "properties", Map.of("expression",
+                                Map.of("type", "string",
+                                        "description", "数学表达式，如 1+2*3")),
+                        "required", List.of("expression")));
     }
 
     @Override

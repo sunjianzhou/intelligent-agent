@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -21,7 +22,15 @@ public class TimeTool implements AgentTool {
     public ToolDefinition definition() {
         return new ToolDefinition(
                 "time_tool", "获取当前时间。参数: action(current_time|formatted|timestamp,默认current_time),"
-                        + " format(格式化模板,可选)", true, null, null);
+                        + " format(格式化模板,可选)", true, null, null,
+                Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "action", Map.of("type", "string",
+                                        "enum", List.of("current_time", "formatted", "timestamp"),
+                                        "description", "current_time=当前时间, formatted=自定义格式, timestamp=时间戳"),
+                                "format", Map.of("type", "string",
+                                        "description", "格式化模板，如 yyyy-MM-dd HH:mm:ss"))));
     }
 
     @Override

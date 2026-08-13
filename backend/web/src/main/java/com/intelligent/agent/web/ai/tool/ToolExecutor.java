@@ -1,11 +1,12 @@
 package com.intelligent.agent.web.ai.tool;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
@@ -55,17 +56,17 @@ public class ToolExecutor {
                 && !definition.requiredRole().equals(context.role())) {
             return ToolResult.denied("tool requires role: " + definition.requiredRole());
         }
-        if (context.currentRound() >= maxRounds) {
+        int slot = context.acquireSlot();
+        if (slot > maxRounds) {
             return ToolResult.error("tool round limit exceeded (max " + maxRounds + ")");
         }
-        context.nextRound();
 
         long start = System.nanoTime();
         try {
             Object result;
             if (definition.timeout() != null) {
-                Future<Object> future =
-                        timeoutExecutor.submit(() -> tool.execute(call.arguments()));
+                CompletableFuture<Object> future = CompletableFuture.supplyAsync(
+                        () -> tool.execute(call.arguments()), timeoutExecutor);
                 try {
                     result = future.get(definition.timeout().toMillis(), TimeUnit.MILLISECONDS);
                 } catch (TimeoutException e) {
@@ -81,6 +82,39 @@ public class ToolExecutor {
         } catch (Exception e) {
             return ToolResult.error("tool failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * 并行执行一组工具调用（原生 function calling 多工具场景）。
+     * <p>
+     * 每个调用复用 {@link #execute} 的超时/角色/轮次语义；
+     * 结果按入参顺序返回（并行执行但收集顺序确定）。
+     */
+    public List<ToolResult> executeParallel(List<ToolCall> calls, ToolExecutionContext context) {
+        Objects.requireNonNull(calls, "calls must not be null");
+        Objects.requireNonNull(context, "context must not be null");
+        if (calls.isEmpty()) {
+            return List.of();
+        }
+        ToolResult[] results = new ToolResult[calls.size()];
+        List<CompletableFuture<Void>> futures = new ArrayList<>(calls.size());
+        for (int i = 0; i < calls.size(); i++) {
+            int idx = i;
+            futures.add(CompletableFuture.runAsync(
+                    () -> results[idx] = execute(calls.get(idx), context), timeoutExecutor));
+        }
+        try {
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        } catch (Exception e) {
+            // 兜底：任何未捕获异常映射为 error，保持顺序与结果完整性
+        }
+        List<ToolResult> out = new ArrayList<>(calls.size());
+        for (ToolResult result : results) {
+            out.add(result == null
+                    ? ToolResult.error("tool execution failed")
+                    : result);
+        }
+        return out;
     }
 
     /** 已注册工具的定义列表（/api/tools/list 与 LLM 工具提示用）。 */

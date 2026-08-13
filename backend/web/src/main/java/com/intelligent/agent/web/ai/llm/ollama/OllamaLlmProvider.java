@@ -1,12 +1,17 @@
 package com.intelligent.agent.web.ai.llm.ollama;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.intelligent.agent.web.ai.llm.AbstractHttpLlmProvider;
 import com.intelligent.agent.web.ai.llm.ChatMessage;
 import com.intelligent.agent.web.ai.llm.ChatTurn;
+import com.intelligent.agent.web.ai.llm.LlmResponse;
 import com.intelligent.agent.web.ai.llm.LlmProviderException;
 import com.intelligent.agent.web.ai.llm.ModelEvent;
 import com.intelligent.agent.web.ai.llm.OllamaOptions;
+import com.intelligent.agent.web.ai.tool.ToolCall;
+import com.intelligent.agent.web.ai.tool.ToolDefinition;
+import com.intelligent.agent.web.ai.tool.ToolSchemas;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -76,7 +81,36 @@ public class OllamaLlmProvider extends AbstractHttpLlmProvider {
         });
     }
 
+    @Override
+    public Mono<LlmResponse> completeWithTools(ChatTurn turn, List<ToolDefinition> tools) {
+        return completeBody(chatRequest(turn, false, tools)).map(body -> {
+            try {
+                JsonNode root = MAPPER.readTree(body);
+                String content = root.path("message").path("content").asText("").trim();
+                List<ToolCall> calls = new ArrayList<>();
+                JsonNode toolCalls = root.path("message").path("tool_calls");
+                if (toolCalls.isArray()) {
+                    for (JsonNode tc : toolCalls) {
+                        String name = tc.path("function").path("name").asText("");
+                        if (name.isEmpty()) {
+                            continue;
+                        }
+                        calls.add(ToolCall.of(name,
+                                parseArguments(tc.path("function").path("arguments"))));
+                    }
+                }
+                return new LlmResponse(content, calls);
+            } catch (Exception e) {
+                throw new LlmProviderException(redact(e.getMessage()), e);
+            }
+        });
+    }
+
     private HttpRequest chatRequest(ChatTurn turn, boolean stream) {
+        return chatRequest(turn, stream, null);
+    }
+
+    private HttpRequest chatRequest(ChatTurn turn, boolean stream, List<ToolDefinition> tools) {
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("model", resolveModel(turn));
@@ -84,6 +118,9 @@ public class OllamaLlmProvider extends AbstractHttpLlmProvider {
             payload.put("stream", stream);
             payload.put("keep_alive", keepAliveValue());
             payload.put("options", resolveOptions(turn));
+            if (tools != null && !tools.isEmpty()) {
+                payload.put("tools", ToolSchemas.toPayload(tools));
+            }
             String body = MAPPER.writeValueAsString(payload);
             return jsonRequest(baseUrl + "/api/chat")
                     .header("Accept", "application/x-ndjson")
@@ -122,6 +159,19 @@ public class OllamaLlmProvider extends AbstractHttpLlmProvider {
             Map<String, Object> msg = new LinkedHashMap<>();
             msg.put("role", m.role());
             msg.put("content", m.content());
+            // 原生工具调用：归一化结构 → Ollama 原生格式（仅 function，去掉 id）
+            if (m.toolCalls() != null && !m.toolCalls().isEmpty()) {
+                List<Map<String, Object>> ollamaCalls = new ArrayList<>();
+                for (Map<String, Object> tc : m.toolCalls()) {
+                    Object fn = tc.get("function");
+                    if (fn instanceof Map<?, ?> fnMap) {
+                        ollamaCalls.add(Map.of("function", fnMap));
+                    }
+                }
+                if (!ollamaCalls.isEmpty()) {
+                    msg.put("tool_calls", ollamaCalls);
+                }
+            }
             messages.add(msg);
         }
         // 多模态图片：挂到最近一条 user 消息上（Ollama /api/chat 协议 images 字段）
@@ -134,6 +184,27 @@ public class OllamaLlmProvider extends AbstractHttpLlmProvider {
             }
         }
         return messages;
+    }
+
+    /** Ollama 原生 tool_calls arguments：对象或 JSON 字符串都兼容。 */
+    private static Map<String, Object> parseArguments(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return Map.of();
+        }
+        if (node.isObject()) {
+            return MAPPER.convertValue(node, new TypeReference<Map<String, Object>>() { });
+        }
+        if (node.isTextual()) {
+            try {
+                JsonNode parsed = MAPPER.readTree(node.asText());
+                if (parsed.isObject()) {
+                    return MAPPER.convertValue(parsed, new TypeReference<Map<String, Object>>() { });
+                }
+            } catch (Exception ignored) {
+                // 非 JSON 参数文本，忽略
+            }
+        }
+        return Map.of();
     }
 
     private Map<String, Object> resolveOptions(ChatTurn turn) {

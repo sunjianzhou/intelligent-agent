@@ -1435,3 +1435,76 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 
 > **2026-08-08 进度**：Task 6 完成。剩余 Task 3（persona/prompt/soul）、Task 4（chat 高级行为）、
 > Task 5（降级项提升）、Task 1 的 database/feishu 工具。
+
+---
+
+## 2026 Agent 升级路线（office-hours 设计，2026-08-13）
+
+设计文档：`~/.gstack/projects/intelligent-agent/acer-master-design-20260813.md`
+
+定位：Java 迁移收尾（TODO-110 全清）后的下一跳 —— 协议层补强（原生工具调用 / MCP /
+评估 / 可观测），保留自研 ReAct 编排不动架构。方案 A（增量吸收）为推荐路径。
+
+### P0 协议层四件套（推荐先做，约 1-2 周）
+
+- [x] G1 原生工具调用 + 并行执行（2026-08-13 完成，commit 待填）：
+      - `ToolDefinition` 增加 JSON Schema `parameters`；9 个内置工具全部补齐参数声明；
+        新增 `ToolSchemas` 统一生成 Ollama/OpenAI 兼容 `tools` 载荷。
+      - `OllamaLlmProvider` / `OpenAiCompatibleLlmProvider` 新增 `completeWithTools()`：
+        请求带 `tools` 字段，优先解析 `message.tool_calls`（arguments 对象或 JSON 字符串兼容），
+        不支持原生工具的 provider 走 `LlmProvider` 默认降级，`TextToolCallParser` 保留为 fallback。
+      - `ChatMessage` 扩展原生 tool_calls / tool 角色消息：编排器在工具轮后追加
+        assistant(tool_calls) + tool(结果) 历史，Ollama 序列化剥 id、OpenAI 归一化
+        id/type/function + arguments JSON 字符串。
+      - `AgentOrchestrator.handleRound()` 串行 for 循环改 `ToolExecutor.executeParallel()`
+        （CompletableFuture.allOf + 各自超时），结果按入参顺序合并后单线程写共享容器；
+        `ToolExecutionContext.acquireSlot()` 原子槽位使并行下轮次上限精确；`ToolCall`
+        过滤 null 参数值防 NPE。
+      - 契约测试 12 个：provider 原生 tool_calls 解析（对象/字符串参数）、tools 载荷、
+        历史消息序列化、并行顺序/超时/轮次上限、编排器原生调用与并行时序。
+      全量 296 用例绿（0 失败）。
+- [ ] G2 真实 MCP 客户端：
+      最小实现 streamable HTTP/stdio 传输（或引入 Spring AI MCP client）；
+      `McpToolRegistry` 从 name→executor 桩改为"连接管理器"（每服务器 session，
+      工具动态注册进 ToolExecutor）；/admin/mcp 从 API Key 配置升级为服务器 CRUD；
+      工具输出按不可信数据处理（8K 截断 + 注入防护）；验收：接一个社区 MCP
+      服务器并在聊天中真实调用。
+- [ ] G3 LLM 评估体系：
+      `backend/web/src/test/eval/` 建 golden 用例集（用户消息 → 期望工具调用/答案要点）；
+      LLM-as-judge 按 rubric 打分（0-10）；`mvn -Peval` 运行 + 结果 JSONL 落盘；
+      CI 先跑 1-2 周建基线，再决定是否开"分数低于阈值 block merge"门。
+- [ ] G4 可观测性：
+      `AgentRunTrace`（requestId → spans：llm_call/tool_call/rag/memory，含 token/耗时/
+      成败/工具参数摘要）；落盘 `data/traces/` + `/api/traces` 接口 + 前端 TraceView
+      （挂 routes.config.js）；预留 OTel/OpenInference 导出。
+
+### P1 记忆与上下文
+
+- [ ] G5 记忆检索优化：embedding 随记录落盘（避免每次全量重嵌入）；候选预筛
+      （userId/type/projectId/importance）再算余弦；分层记忆 working/episodic/semantic
+      （RAG_TOP_K 按层配额）；时间衰减 score = 0.7*sim + 0.2*importance + 0.1*recency。
+- [ ] G6 编排升级（可后置）：planning 前置（复杂任务先出 plan）、reflection 后验、
+      human-in-the-loop 审批门、circuit breaker/SLO。
+- [ ] 上下文成本：确认 Ollama `cache_prompt` 开启；`num_ctx` 按模型配置表下发；
+      soul/heart/rules 大 system prompt 静态预拼接 + 变更检测。
+
+### P2 工程化
+
+- [ ] G7 依赖升级：前端 vite 7 / vitest 3 / vue 3.5；后端 jjwt 0.12.x、
+      HttpClient 4 → 5（或统一 JDK HttpClient）、springdoc 2.10.x、PDFBox 3.x 评估；
+      决定 spring-ai-bom（1.1.8 引入未用）去留。
+- [ ] G8 CI/CD：`.github/workflows/ci.yml`（JDK 21 + Node 22，`mvnw test` +
+      `npm run build` + `npm run test`，push/PR 双触发）；E2E 走 workflow_dispatch。
+- [ ] 后续轮：图片生成 P3（ComfyUI 热重载/LoRA/FLUX）、飞书群聊表情回应、
+      Telegram bot 真实送达验收。
+
+### 环境问题记录（2026-08-13 排查，与项目代码无关）
+
+- [x] 排查结论：codex-cli 0.146.0 的协作任务消息（spawn_agent / followup_task /
+      send_message）正文以 `encrypted_content` 投递，但接收端子代理的模型上下文
+      从未解密渲染该正文，只看到空 `Payload:` 包装 → 子代理判定"没有任务"并回问候语。
+      中英文任务、spawn 与 followup 均复现；`fork_turns=all` 可让子代理从父上下文
+      推断任务但不可靠（可能抢错任务）。详见 CLAUDE.md「环境问题」。
+- [ ] 升级验证（进行中）：0.147.0 已安装（2026-08-13，安装器需 System32 tar 前置
+      + 直连 GitHub 才能成功）；重启 Codex 后 spawn 测试代理确认任务正文可达，
+      若确认修复则删除 CLAUDE.md「环境问题」一节。

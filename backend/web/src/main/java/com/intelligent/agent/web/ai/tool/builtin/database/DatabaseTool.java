@@ -61,7 +61,16 @@ public class DatabaseTool implements AgentTool {
         return new ToolDefinition(
                 "database_tool", "数据库只读查询工具。action: query(执行SELECT/SHOW/DESCRIBE SQL),"
                         + " list_tables(列出所有表), describe(查看表结构,需table), sample(样本数据,需table)。"
-                        + " 禁止 INSERT/UPDATE/DELETE/DROP 等写操作。", true, null, null);
+                        + " 禁止 INSERT/UPDATE/DELETE/DROP 等写操作。", true, null, null,
+                Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "action", Map.of("type", "string",
+                                        "enum", List.of("query", "list_tables", "describe", "sample")),
+                                "sql", Map.of("type", "string", "description", "SELECT/SHOW/DESCRIBE SQL（query 时必填）"),
+                                "table", Map.of("type", "string", "description", "表名（describe/sample 时必填）"),
+                                "limit", Map.of("type", "integer", "description", "返回行数上限，默认 10")),
+                        "required", List.of("action")));
     }
 
     @Override

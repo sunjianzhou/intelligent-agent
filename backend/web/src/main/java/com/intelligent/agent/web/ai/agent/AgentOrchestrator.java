@@ -5,6 +5,7 @@ import com.intelligent.agent.web.ai.llm.ChatTurn;
 import com.intelligent.agent.web.ai.llm.LlmProvider;
 import com.intelligent.agent.web.ai.llm.LlmProviderException;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
+import com.intelligent.agent.web.ai.llm.LlmResponse;
 import com.intelligent.agent.web.ai.llm.ModelEvent;
 import com.intelligent.agent.web.ai.memory.AgentContext;
 import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
@@ -161,15 +162,20 @@ public class AgentOrchestrator {
             return Mono.just(new ReActState(messages, "", true, executedCalls, false));
         }
         LlmProvider provider = router.forUser(ctx.userId(), ctx.model());
-        return provider.complete(buildTurn(ctx, messages))
-                .flatMap(content -> {
-                    // 信号 4（近似）：窗口内同时存在工具错误与空响应
-                    if ((content == null || content.isBlank()) && !failures.isEmpty()) {
+        Mono<LlmResponse> responseMono = ctx.useTools()
+                ? provider.completeWithTools(buildTurn(ctx, messages), toolExecutor.definitions())
+                : provider.complete(buildTurn(ctx, messages))
+                        .map(content -> new LlmResponse(content, List.of()));
+        return responseMono.flatMap(response -> {
+                    String content = response.content();
+                    // 信号 4（近似）：窗口内同时存在工具错误与空响应（原生 tool_calls 除外）
+                    if ((content == null || content.isBlank()) && !failures.isEmpty()
+                            && !response.hasNativeToolCalls()) {
                         return Mono.just(new ReActState(messages,
                                 "⚠️ 分支失败：runtime_error_and_empty（窗口内同时存在工具错误与空响应）。已停止执行。",
                                 true, executedCalls, false));
                     }
-                    return handleRound(ctx, messages, content, executedCalls, failures, assistantTexts);
+                    return handleRound(ctx, messages, response, executedCalls, failures, assistantTexts);
                 })
                 .flatMap(state -> state.continueLoop()
                         ? runToolRounds(ctx, state.messages(), round + 1,
@@ -178,9 +184,10 @@ public class AgentOrchestrator {
     }
 
     private Mono<ReActState> handleRound(AgentRequestContext ctx, List<ChatMessage> messages,
-                                         String content, List<ToolCall> executedCalls,
+                                         LlmResponse response, List<ToolCall> executedCalls,
                                          List<ToolResult> failures,
                                          List<String> assistantTexts) {
+        String content = response.content();
         // toolsRan 是粘性的：只要本轮或之前任一工具轮执行过工具，后续轮次不得再复用
         // 首轮内容跳过 tool_calls_done / 最终流式回答。
         boolean toolsRan = !executedCalls.isEmpty();
@@ -188,7 +195,9 @@ public class AgentOrchestrator {
             return Mono.just(new ReActState(
                     appendAssistant(messages, content), content, toolsRan, executedCalls, false));
         }
-        List<ToolCall> calls = toolCallParser.parse(content);
+        // 原生工具调用优先；文本解析（dolphin/phi2/orca-* 等无原生工具模型）降级为 fallback
+        List<ToolCall> calls = response.hasNativeToolCalls()
+                ? response.toolCalls() : toolCallParser.parse(content);
         if (calls.isEmpty()) {
             assistantTexts.add(content);
             // 信号 6：铁律违反扫描（仅扫描自然语言回复，避免工具调用语法误报）
@@ -202,20 +211,23 @@ public class AgentOrchestrator {
             return Mono.just(new ReActState(
                     appendAssistant(messages, content), content, toolsRan, executedCalls, false));
         }
-        List<ChatMessage> next = appendAssistant(messages, content);
+        List<ChatMessage> next = appendAssistant(messages, content, calls, executedCalls.size());
         return Mono.fromCallable(() -> {
             ToolExecutionContext execCtx = ToolExecutionContext.of(ctx.userId(), "user");
+            // 并行执行（各自超时复用 ToolExecutor 语义）；结果按入参顺序合并后
+            // 再单线程追加消息/失败列表，避免共享容器并发写。
+            List<ToolResult> results = toolExecutor.executeParallel(calls, execCtx);
             List<ToolCall> executed = new ArrayList<>(executedCalls);
-            for (ToolCall call : calls) {
-                ToolResult result = toolExecutor.execute(call, execCtx);
+            for (int i = 0; i < calls.size(); i++) {
+                ToolCall call = calls.get(i);
+                ToolResult result = results.get(i);
                 executed.add(call);
                 if (!ToolResult.SUCCESS.equals(result.status())) {
                     failures.add(result);
                 }
                 String text = result.data() != null ? String.valueOf(result.data())
                         : (result.error() != null ? result.error() : result.status());
-                next.add(ChatMessage.user(
-                        "[工具执行结果]\n" + text + "\n\n请基于以上结果继续。"));
+                next.add(ChatMessage.tool(text, "call_" + (executedCalls.size() + i)));
             }
             // 信号 1：同工具同错误 ≥3 次
             String sameError = BranchFailureDetector.detectSameToolError(failures);
@@ -316,6 +328,25 @@ public class AgentOrchestrator {
     private static List<ChatMessage> appendAssistant(List<ChatMessage> messages, String content) {
         List<ChatMessage> next = new ArrayList<>(messages);
         next.add(ChatMessage.assistant(content));
+        return next;
+    }
+
+    /** 追加 assistant 消息；带原生工具调用时附加归一化 tool_calls 结构（id 按轮次全局递增）。 */
+    private static List<ChatMessage> appendAssistant(List<ChatMessage> messages, String content,
+                                                     List<ToolCall> calls, int idBase) {
+        List<ChatMessage> next = new ArrayList<>(messages);
+        if (calls == null || calls.isEmpty()) {
+            next.add(ChatMessage.assistant(content));
+            return next;
+        }
+        List<Map<String, Object>> toolCalls = new ArrayList<>();
+        for (int i = 0; i < calls.size(); i++) {
+            ToolCall call = calls.get(i);
+            toolCalls.add(Map.of(
+                    "id", "call_" + (idBase + i),
+                    "function", Map.of("name", call.name(), "arguments", call.arguments())));
+        }
+        next.add(ChatMessage.assistant(content, toolCalls));
         return next;
     }
 

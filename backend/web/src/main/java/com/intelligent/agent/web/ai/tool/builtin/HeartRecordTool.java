@@ -68,7 +68,39 @@ public class HeartRecordTool implements AgentTool {
                         + "支持的 action: append(追加心证), list(列出心证), delete(删除心证), "
                         + "rule_add(新增铁律), rule_list(列出铁律), rule_delete(废止铁律), "
                         + "rule_validate(校验铁律), rule_rollback(回滚铁律)。写入前自动轮转备份。",
-                false, null, null);
+                false, null, null,
+                Map.ofEntries(
+                        Map.entry("type", "object"),
+                        Map.entry("properties", Map.ofEntries(
+                                Map.entry("action", Map.of("type", "string",
+                                        "enum", List.of("append", "list", "delete", "rule_add",
+                                                "rule_list", "rule_delete", "rule_validate", "rule_rollback"))),
+                                Map.entry("content", Map.of("type", "string",
+                                        "description", "心证内容（append 时必填）")),
+                                Map.entry("category", Map.of("type", "string",
+                                        "description", "分区：如 principle/experience/insight 等")),
+                                Map.entry("tags", Map.of("type", "string",
+                                        "description", "逗号分隔标签")),
+                                Map.entry("weight", Map.of("type", "string",
+                                        "enum", List.of("normal", "important", "critical"),
+                                        "description", "心证权重，默认 normal")),
+                                Map.entry("id", Map.of("type", "string",
+                                        "description", "心证条目 ID（delete 时必填）")),
+                                Map.entry("rule_id", Map.of("type", "string",
+                                        "description", "铁律 ID（rule_delete 时必填）")),
+                                Map.entry("rule_title", Map.of("type", "string",
+                                        "description", "铁律标题（rule_add）")),
+                                Map.entry("rule_requirement", Map.of("type", "string",
+                                        "description", "铁律要求（rule_add）")),
+                                Map.entry("rule_trigger", Map.of("type", "string",
+                                        "description", "触发条件（rule_add）")),
+                                Map.entry("rule_consequence", Map.of("type", "string",
+                                        "description", "违反后果（rule_add）")),
+                                Map.entry("rule_priority", Map.of("type", "string",
+                                        "description", "优先级（rule_add）")),
+                                Map.entry("rule_privacy", Map.of("type", "string",
+                                        "description", "隐私级别（rule_add）")))),
+                        Map.entry("required", List.of("action"))));
     }
 
     @Override
