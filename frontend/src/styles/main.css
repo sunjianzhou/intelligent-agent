@@ -6,8 +6,8 @@
   --color-surface-raised: #f0f1ff;
   --color-border:         #e0e3e8;
 
-  --color-primary:       #667eea;
-  --color-primary-hover: #5a6fd6;
+  --color-primary:       #3b82f6;
+  --color-primary-hover: #2f6feb;
   --color-accent:        #2f9e7a;
 
   --color-text:           #1f2430;
@@ -30,10 +30,15 @@
 
   /* 阴影 */
   --shadow-sm:   0 1px 3px rgba(15,23,42,0.08);
-  --shadow-glow: 0 0 0 1px rgba(102,126,234,0.35), 0 4px 16px rgba(102,126,234,0.25);
+  --shadow-glow: 0 0 0 1px rgba(59,130,246,0.35), 0 4px 16px rgba(59,130,246,0.25);
+
+  /* 滚动条 */
+  --scrollbar-track:        #eef0f4;
+  --scrollbar-thumb:        #b8bfc9;
+  --scrollbar-thumb-hover:  #9aa3b1;
 
   /* 字号 */
-  --text-xs: 0.72rem; --text-sm: 0.82rem; --text-base: 0.92rem;
+  --text-xs: 0.75rem; --text-sm: 0.875rem; --text-base: 0.9375rem;
   --text-lg: 1.05rem; --text-xl: 1.3rem;
 
   /* 页面内容区最大宽度（全屏外壳下，避免页面自身的旧 max-width 在宽屏上留出大片空白） */
@@ -50,8 +55,8 @@
   --color-surface-raised: #1f2733;
   --color-border:         rgba(255,255,255,0.08);
 
-  --color-primary:       #7c8cf8;
-  --color-primary-hover: #8e9dff;
+  --color-primary:       #7ba3ff;
+  --color-primary-hover: #8cb0ff;
   --color-accent:        #4fc3a1;
 
   --color-text:           #e6e8eb;
@@ -66,7 +71,11 @@
   --color-sidebar-text: rgba(255,255,255,0.78);
 
   --shadow-sm:   0 1px 3px rgba(0,0,0,0.5);
-  --shadow-glow: 0 0 0 1px rgba(124,140,248,0.45), 0 4px 20px rgba(124,140,248,0.4);
+  --shadow-glow: 0 0 0 1px rgba(123,163,255,0.45), 0 4px 20px rgba(123,163,255,0.4);
+
+  --scrollbar-track:       #141a22;
+  --scrollbar-thumb:       #39424f;
+  --scrollbar-thumb-hover: #4b5666;
 }
 
 /* Element Plus 变量同步（仅同步颜色，不替换其组件） */
@@ -103,17 +112,17 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--scrollbar-track);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #888;
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* 工具类 */
@@ -188,7 +197,7 @@ body {
 }
 .input:focus {
   outline: none; border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(102,126,234,0.15);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
 }
 
 /* ── 移动端全局基础（iPhone 16 PWA 适配）────────────────── */
