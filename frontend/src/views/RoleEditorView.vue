@@ -58,10 +58,7 @@
             <span style="font-weight:500">快速上手</span>
           </template>
           <div class="card-guide-body">
-            <span><b>角色名称</b>：如「技术顾问」「写作助手」「健身教练」</span>
-            <span><b>签名</b>：一句话描述角色定位，如「帮你把想法变成清晰的文字」</span>
-            <span><b>标签</b>：打标签方便分类，如「编程」「创作」「效率」</span>
-            <span>填写名片后，前往 <b>核心身份</b> 和 <b>行为风格</b> 选项卡配置 AI 性格与回答方式。</span>
+            <span>填写<b>名片</b>后，再到「<b>核心身份</b> / <b>行为风格</b>」配置 AI 性格与回答方式。</span>
           </div>
         </el-alert>
         <el-form :model="form.roleCard" label-width="90px" style="margin-top:12px">
