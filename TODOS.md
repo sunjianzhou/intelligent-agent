@@ -1493,8 +1493,11 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 - [ ] G7 依赖升级：前端 vite 7 / vitest 3 / vue 3.5；后端 jjwt 0.12.x、
       HttpClient 4 → 5（或统一 JDK HttpClient）、springdoc 2.10.x、PDFBox 3.x 评估；
       决定 spring-ai-bom（1.1.8 引入未用）去留。
-- [ ] G8 CI/CD：`.github/workflows/ci.yml`（JDK 21 + Node 22，`mvnw test` +
-      `npm run build` + `npm run test`，push/PR 双触发）；E2E 走 workflow_dispatch。
+- [x] G8 CI/CD（2026-08-13 完成，commit 待填）：
+      新增 `.github/workflows/ci.yml`：backend（JDK 21 + `mvnw test`）、
+      frontend（Node 22 + `npm ci` + `vitest run` + `vite build`），master push/PR 双触发；
+      E2E（需 Ollama + 后端）为 `workflow_dispatch` 手动 job，不进默认门。
+      本地已验证全部命令：后端 296 用例绿、前端 14 用例绿、构建通过。
 - [ ] 后续轮：图片生成 P3（ComfyUI 热重载/LoRA/FLUX）、飞书群聊表情回应、
       Telegram bot 真实送达验收。
 
