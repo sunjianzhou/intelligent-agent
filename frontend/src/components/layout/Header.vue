@@ -74,7 +74,7 @@ watch(isConnected, (connected) => {
   background: var(--color-surface);
   border-top: 2px solid var(--color-primary);
   border-bottom: 1px solid var(--color-border);
-  padding: 0 var(--space-5);
+  padding: 0 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -87,7 +87,7 @@ watch(isConnected, (connected) => {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-weight: 500;
+  font-weight: 600;
 }
 .header-left .page-title i { color: var(--color-primary); }
 
@@ -122,9 +122,9 @@ watch(isConnected, (connected) => {
 }
 
 .theme-btn {
-  width: 34px; height: 34px; border-radius: var(--radius-sm);
+  width: 38px; height: 38px; border-radius: var(--radius-sm);
   border: 1px solid var(--color-border); background: var(--color-surface);
-  color: var(--color-text-secondary); cursor: pointer; font-size: 0.9rem;
+  color: var(--color-text-secondary); cursor: pointer; font-size: 0.95rem;
   display: flex; align-items: center; justify-content: center;
   transition: all 0.2s;
 }

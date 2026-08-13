@@ -247,8 +247,8 @@ const isActive = computed(() => (name) => route.name === name)
 .new-chat-btn {
   background: rgba(255,255,255,0.08);
   border: none; color: rgba(255,255,255,0.6);
-  width: 20px; height: 20px; border-radius: 5px;
-  cursor: pointer; font-size: 0.65rem;
+  width: 28px; height: 28px; border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 0.75rem;
   display: flex; align-items: center; justify-content: center;
   transition: all 0.2s;
 }
@@ -284,8 +284,8 @@ const isActive = computed(() => (name) => route.name === name)
 .del-session-btn {
   background: none; border: none;
   color: rgba(255,255,255,0.2);
-  cursor: pointer; font-size: 0.62rem;
-  padding: 2px 3px; border-radius: 3px;
+  cursor: pointer; font-size: 0.7rem;
+  padding: 6px 8px; border-radius: 4px;
   opacity: 0; transition: opacity 0.15s, color 0.15s;
 }
 .history-item:hover .del-session-btn { opacity: 1; }
