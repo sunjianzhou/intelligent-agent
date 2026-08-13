@@ -70,12 +70,12 @@
         <svg v-else class="line-chart" viewBox="0 0 400 120">
           <polyline
             :points="rtPoints"
-            fill="none" stroke="#667eea" stroke-width="2"
+            fill="none" stroke="#3b82f6" stroke-width="2"
             stroke-linejoin="round" stroke-linecap="round"
           />
           <circle
             v-for="(p, i) in rtPointList" :key="i"
-            :cx="p.x" :cy="p.y" r="3" fill="#667eea"
+            :cx="p.x" :cy="p.y" r="3" fill="#3b82f6"
           >
             <title>{{ stats.response_time_trend[i]?.time }}: {{ stats.response_time_trend[i]?.value }}s</title>
           </circle>
@@ -382,7 +382,7 @@ onMounted(load)
   background: white; font-size: 0.88rem; color: #444; cursor: pointer;
   white-space: nowrap; transition: border-color 0.15s;
 }
-.filter-btn:hover, .filter-btn:focus { border-color: #667eea; outline: none; }
+.filter-btn:hover, .filter-btn:focus { border-color: var(--color-primary); outline: none; }
 .filter-btn i { font-size: 0.7rem; color: #888; transition: transform 0.2s; }
 .filter-menu {
   position: absolute; top: calc(100% + 4px); right: 0;
@@ -394,14 +394,14 @@ onMounted(load)
   padding: 8px 14px; font-size: 0.88rem; color: #444; cursor: pointer;
   transition: background 0.1s;
 }
-.filter-item:hover { background: #f5f6ff; }
-.filter-item.active { color: #667eea; background: #f0f2ff; font-weight: 500; }
+.filter-item:hover { background: rgba(59,130,246,0.08); }
+.filter-item.active { color: var(--color-primary); background: rgba(59,130,246,0.12); font-weight: 500; }
 .refresh-btn {
   display: flex; align-items: center; gap: 6px; padding: 7px 14px;
   border-radius: 8px; border: 1px solid #e0e3e8; background: white;
   font-size: 0.88rem; color: #555; cursor: pointer;
 }
-.refresh-btn:hover { border-color: #667eea; color: #667eea; }
+.refresh-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .refresh-btn.spinning i { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -411,7 +411,7 @@ onMounted(load)
   background: white; border-radius: 12px; border: 0.5px solid #e8eaed;
   padding: 16px; text-align: center;
 }
-.ov-card.accent-primary { border-top: 3px solid #667eea; }
+.ov-card.accent-primary { border-top: 3px solid var(--color-primary); }
 .ov-card.accent-success { border-top: 3px solid #43a047; }
 .ov-card.accent-danger  { border-top: 3px solid #ef4444; }
 .ov-card.accent-warn    { border-top: 3px solid #f57c00; }
@@ -419,7 +419,7 @@ onMounted(load)
 .ov-label { font-size: 0.82rem; color: #888; margin-top: 4px; }
 .ov-card.like    .ov-val { color: #43a047; }
 .ov-card.dislike .ov-val { color: #e53935; }
-.ov-card.rate    .ov-val { color: #667eea; }
+.ov-card.rate    .ov-val { color: var(--color-primary); }
 .ov-card.rate .ov-val.rate-good { color: #43a047; }
 .ov-card.rate .ov-val.rate-warn { color: #f57c00; }
 .ov-card.rate .ov-val.rate-bad  { color: #e53935; }
@@ -434,13 +434,13 @@ onMounted(load)
   font-size: 0.9rem; font-weight: 500; color: #333;
   margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
 }
-.chart-title i { color: #667eea; }
+.chart-title i { color: var(--color-primary); }
 
 /* 柱状图 */
 .bar-chart { display: flex; align-items: flex-end; gap: 4px; height: 100px; }
 .bar-item  { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .bar-wrap  { flex: 1; width: 100%; display: flex; align-items: flex-end; }
-.bar       { width: 100%; background: #667eea; border-radius: 3px 3px 0 0; min-height: 14px; transition: height 0.3s; }
+.bar       { width: 100%; background: var(--color-primary); border-radius: 3px 3px 0 0; min-height: 14px; transition: height 0.3s; }
 .bar-label { font-size: 0.65rem; color: #aaa; white-space: nowrap; }
 
 /* 折线图 */
@@ -457,7 +457,7 @@ onMounted(load)
   font-size: 0.9rem; font-weight: 500; color: #333;
   margin-bottom: 14px; display: flex; align-items: center; gap: 6px;
 }
-.detail-title i { color: #667eea; }
+.detail-title i { color: var(--color-primary); }
 .empty-tip { color: #aaa; font-size: 0.88rem; padding: 10px 0; }
 
 /* 排行 */
@@ -465,7 +465,7 @@ onMounted(load)
 .rank-item { display: flex; align-items: center; gap: 8px; }
 .rank-name { font-size: 0.82rem; color: #555; min-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rank-bar-wrap { flex: 1; height: 6px; background: #f0f0f0; border-radius: 3px; overflow: hidden; }
-.rank-bar { height: 100%; background: #667eea; border-radius: 3px; transition: width 0.4s; }
+.rank-bar { height: 100%; background: var(--color-primary); border-radius: 3px; transition: width 0.4s; }
 .rank-bar.skill-bar { background: #f57c00; }
 .rank-count { font-size: 0.78rem; color: #888; min-width: 24px; text-align: right; }
 
@@ -495,13 +495,13 @@ onMounted(load)
 
 .title-badge {
   font-size: 0.75rem; font-weight: 400;
-  background: #f0f2ff; color: #667eea;
+  background: rgba(59,130,246,0.12); color: var(--color-primary);
   padding: 2px 8px; border-radius: 10px; margin-left: 8px;
 }
-.skill-record { border-left-color: #667eea; }
+.skill-record { border-left-color: var(--color-primary); }
 .skill-badge {
   font-size: 0.78rem; padding: 2px 8px;
-  background: #f0f2ff; color: #667eea;
+  background: rgba(59,130,246,0.12); color: var(--color-primary);
   border-radius: 8px; white-space: nowrap; flex-shrink: 0;
 }
 .divider { border: none; border-top: 0.5px solid #f0f0f0; }

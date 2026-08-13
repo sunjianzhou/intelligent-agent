@@ -62,7 +62,7 @@ const login = async () => {
 <style scoped>
 .login-page {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
 }
 .login-card {
   background: white; border-radius: 16px; padding: 40px 36px;
@@ -72,7 +72,7 @@ const login = async () => {
 .login-logo {
   display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 8px;
 }
-.login-logo i  { font-size: 2.5rem; color: #667eea; }
+.login-logo i  { font-size: 2.5rem; color: var(--color-primary); }
 .login-logo h1 { font-size: 1.5rem; color: #333; font-weight: 600; margin: 0; }
 .form-group { display: flex; flex-direction: column; gap: 6px; }
 .form-group label { font-size: 0.88rem; color: #555; font-weight: 500; }
@@ -80,7 +80,7 @@ const login = async () => {
   padding: 10px 14px; border: 1px solid #e0e3e8; border-radius: 8px;
   font-size: 0.95rem; outline: none; transition: border-color 0.2s;
 }
-.form-group input:focus { border-color: #667eea; }
+.form-group input:focus { border-color: var(--color-primary); }
 .form-group input:disabled { background: #f8f9fa; }
 .error-tip {
   background: #fce4e4; color: #c62828; padding: 10px 12px;
@@ -88,10 +88,10 @@ const login = async () => {
 }
 .login-btn {
   padding: 12px; border-radius: 8px; border: none;
-  background: #667eea; color: white; font-size: 1rem; font-weight: 500;
+  background: var(--color-primary); color: white; font-size: 1rem; font-weight: 500;
   cursor: pointer; transition: background 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;
   margin-top: 4px;
 }
-.login-btn:hover:not(:disabled) { background: #5a6fd6; }
+.login-btn:hover:not(:disabled) { background: var(--color-primary-hover); }
 .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 </style>
