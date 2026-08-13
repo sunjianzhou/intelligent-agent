@@ -80,6 +80,55 @@
 
 ---
 
+## 前端设计审计（2026-08-13 /design-review，仅记录未修复）
+
+> 审计方式：真实登录 + headless Chromium（browse daemon）逐页访问，12 个页面 + 登录页，
+> 桌面 1280×720 + 移动 390×844；截图在 `frontend/qa-screenshots/design-audit-20260813/`
+> （gitignored）。结论基于渲染后 DOM 几何 / computed style / 设计 token，非源码推测。
+> 设计基线：深色科技感 PWA，4px 间距刻度，radius 6/10/16，主色 #667eea（蓝紫）+ 强调 #2f9e7a（绿）。
+
+### 高影响
+- [ ] D-01 基础字号偏小：`--text-base` 0.92rem≈14.7px、`--text-sm` 13.1px、`--text-xs` 11.5px，
+      低于 16px 正文 / 12px 最小标签基线，暗色下更吃力。→ 正文提到 ≥0.9375rem，xs 提到 12px。
+      （typography · `frontend/src/styles/main.css`）
+- [ ] D-02 双主色相（蓝紫 primary + 绿 accent）：stat-card/徽章再叠加 success/warn/danger，
+      蓝→紫配色是典型 AI 模板信号，界面显“模板感”。→ 收敛为单一品牌色相，语义色只用于状态。
+      （color · main.css 令牌）
+
+### 中影响
+- [ ] D-03 图片生成页「生成」按钮在参数面板折叠线以下（y=791 > 视口 720，面板 580px 内部滚动），
+      每次生成都要先滚参数列。→ 生成按钮 sticky 在参数面板底部，或移到右上角。
+      （layout · ImageView）
+- [ ] D-04 全局字体为系统栈（PingFang/雅黑/system），品牌/标题无字体层级，整体“无设计观点”。
+      → 品牌 H1 加重字重/字距，或引入开源中文显示字体（思源黑体子集）仅用于标题。
+      （typography · main.css body）
+- [ ] D-05 登录页仍显示完整应用侧栏（220px 导航可见），表单只在主内容区居中（x=606），
+      视觉像“未登录却进了应用壳”。→ 登录页独立全屏布局或隐藏侧栏。
+      （layout · LoginView / 外壳）
+- [ ] D-06 暗色主题滚动条未适配：`::-webkit-scrollbar-track` 固定 #f1f1f1，
+      暗色下滚动条轨道刺眼。→ 改用 CSS 变量。
+      （interaction · main.css）
+- [ ] D-07 角色配置页顶部 125px 说明条（el-alert，描述 81px 文本）——用户不读说明，
+      说明越长说明交互越不自明。→ 拆短/内联到字段，删除大段说明。
+      （content · RoleEditorView）
+
+### 低影响（打磨项）
+- [ ] D-08 标题层级弱：H1「智能体」20.8px/700 与 chat 空态「你好，我是智能助手」20px/600 同级，
+      页面标题（16.8px/500）与品牌区分不足。→ 统一页面标题样式，品牌与内容层级拉开。
+- [ ] D-09 触控目标偏小（<44px）：新建会话 20×20、header 主题/连接 34×34、模型下拉 23px 高、
+      输入区发送 26×26；移动 PWA 不达标。→ 至少 36-44px。
+- [ ] D-10 间距偏离 4px 刻度：chat 建议卡片 gap 10px（应为 8/12）、header padding 24px 与
+      内容 padding 20px 错位 4px（标题 244 vs 内容 240）。→ 统一到刻度。
+- [ ] D-11 管理后台卡片密度高：admin-system/stat 4-5 张 246px 卡片并排，工具管理 3 列卡片高度
+      不一（268 vs 169），呈 dashboard 卡片马赛克。→ 改表格/分组或统一高度。
+- [ ] D-12 chat 空态「🐬 无限制模式」用 emoji 当设计元素（AI slop 模式）。→ 换图标或纯文字 badge。
+- [ ] D-13 MCP 配置页为 1244px 单张长卡片（内部大量滚动）；且与 G2 升级方向（服务器 CRUD）
+      重叠，可并入 G2 一并重做。
+
+> 基线分（主观）：Design C / AI Slop B-。修复建议按 D-01→D-13 顺序，CSS-only 优先。
+
+---
+
 ## 图片生成模块（本地优先）— 框架 + Docker 集成已完成（2026-06-20）
 
 > **框架状态（2026-06-14 更新）：**
