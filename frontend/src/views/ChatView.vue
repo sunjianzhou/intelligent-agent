@@ -31,7 +31,7 @@
           <h2 class="empty-title">你好，我是智能助手</h2>
           <p class="empty-sub">本地 AI · 私有部署 · 支持工具调用</p>
           <div v-if="modelStatus?.includes('dolphin')" class="uncensored-badge-row">
-            <span class="uncensored-badge">🐬 无限制模式</span>
+            <span class="uncensored-badge"><i class="fas fa-lock-open" />无限制模式</span>
           </div>
         </div>
 
@@ -345,7 +345,7 @@
           >
             <i class="fas fa-cube" />
             <span>{{ m }}</span>
-            <i v-if="m === currentModel" class="fas fa-check" style="color:#667eea;margin-left:auto" />
+            <i v-if="m === currentModel" class="fas fa-check" style="color:var(--color-primary);margin-left:auto" />
             <i v-if="configSwitchingModel === m" class="fas fa-circle-notch fa-spin" style="margin-left:auto" />
           </div>
           <div v-if="availableModels.length === 0" class="config-dropdown-empty">暂无可用模型</div>
@@ -1557,6 +1557,7 @@ onUnmounted(() => {
 .uncensored-badge {
   background: linear-gradient(135deg, #f6d365, #fda085);
   color: white;
+  display: inline-flex; align-items: center; gap: 4px;
   padding: 2px var(--space-2);
   border-radius: 20px;
   font-size: 0.78rem;
@@ -1567,7 +1568,7 @@ onUnmounted(() => {
 .suggestion-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  gap: var(--space-3);
   width: 100%;
 }
 .suggestion-card {
@@ -1609,7 +1610,7 @@ onUnmounted(() => {
 .suggestion-card:nth-child(4) .suggestion-icon { color: #a855f7; }
 .suggestion-label {
   grid-area: label;
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   font-weight: 500;
   text-transform: uppercase;
@@ -1617,7 +1618,7 @@ onUnmounted(() => {
 }
 .suggestion-text {
   grid-area: text;
-  font-size: 0.84rem;
+  font-size: 0.875rem;
   color: var(--color-text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -1761,8 +1762,8 @@ onUnmounted(() => {
   padding: var(--space-2) 10px;
   transition: border-color 0.2s;
 }
-.input-wrap:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(102,126,234,0.18); }
-.input-wrap-thinking    { border-color: var(--color-primary); background: #faf9ff; }
+.input-wrap:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(59,130,246,0.18); }
+.input-wrap-thinking    { border-color: var(--color-primary); background: #f0f6ff; }
 .input-wrap-disconnected{ border-color: #f0a0a0; background: #fff8f8; }
 .chat-input {
   flex: 1;
@@ -1878,7 +1879,7 @@ onUnmounted(() => {
 .hint.warn  { color: #e67e22; }
 .hint i     { font-size: 0.75rem; }
 .hint-tip   { font-size: 0.72rem; color: var(--color-text-muted); }
-.project-badge { background: #e8f4fd; color: #1976d2; border-radius: 4px; padding: 1px 6px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
+.project-badge { background: rgba(59,130,246,0.12); color: var(--color-primary); border-radius: 4px; padding: 1px 6px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
 .project-badge:hover { background: #d0eaf9; }
 .input-meta-right { display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0; }
 .token-indicator { font-size: 0.72rem; display: flex; align-items: center; gap: var(--space-1); }
@@ -1887,7 +1888,7 @@ onUnmounted(() => {
 /* ── 会话操作工具条（历史/导出/清空，input-meta 右下角水平排列） ── */
 .input-toolbar { display: flex; align-items: center; gap: 6px; }
 .toolbar-btn {
-  width: 26px; height: 26px;
+  width: 30px; height: 30px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
@@ -1956,7 +1957,7 @@ onUnmounted(() => {
 }
 .message-row.retract-mode { cursor: pointer; }
 .retract-checkbox {
-  display: flex; align-items: center; padding: 0 6px; color: var(--color-primary, #667eea);
+  display: flex; align-items: center; padding: 0 6px; color: var(--color-primary, #3b82f6);
   font-size: 1rem; flex-shrink: 0;
 }
 .retracted-placeholder {
