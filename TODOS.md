@@ -47,6 +47,19 @@
 > 全量 284 用例绿（0 失败）。
 > 以下为当前全部未完成项，按可推进性分组。
 
+> **2026-08-13 收尾**（今日进展，全部已提交）：
+> - G1 原生工具调用 + 并行执行 ✅（commit `e4156e4`）：Ollama/OpenAI tools 载荷 +
+>   `message.tool_calls` 原生解析，TextToolCallParser 降级 fallback；工具并行执行；
+>   全量 296 用例绿 + qwen2.5:7b 真机冒烟（SSE `tool_calls_done` 链路贯通）。
+> - G8 CI/CD ✅（commit `ba296f7`）：`.github/workflows/ci.yml`（backend JDK21 +
+>   frontend Node22，push/PR 双触发；E2E 手动 job），命令本地全部验证。
+> - 前端设计审计 + 修复 ✅：/design-review 审计 12 页 + 登录页，记录 D-01~D-13；
+>   已修复 9 项（D-01/02/03/06/07/08/09/10/12，6 个 style commit，见下方设计审计节）。
+> - 环境工具：superpowers 插件已重新启用（`codex plugin add superpowers@openai-curated`，
+>   **新会话生效**，本会话不注入）；Playwright MCP 已配置但工具不注入当前会话，
+>   浏览器验证走 gstack browse（已补装 playwright@1.58.0 / diff / sharp@0.34.5）；
+>   `.env` JWT_SECRET 过短（232 bits < 256）导致登录 500，待 owner 决策轮换。
+
 > **2026-08-13 发现（配置问题，未擅自改动 .env，待 owner 决策）**：
 > 根目录 `.env` 的 `JWT_SECRET` 为 29 字节（232 bits），jjwt 要求 ≥256 bits，
 > 登录/换发 token 抛 `WeakKeyException`（HTTP 500），`start_java_mode.bat` 本地启动
@@ -1514,7 +1527,7 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 
 ### P0 协议层四件套（推荐先做，约 1-2 周）
 
-- [x] G1 原生工具调用 + 并行执行（2026-08-13 完成，commit 待填）：
+- [x] G1 原生工具调用 + 并行执行（2026-08-13 完成，commit `e4156e4`）：
       - `ToolDefinition` 增加 JSON Schema `parameters`；9 个内置工具全部补齐参数声明；
         新增 `ToolSchemas` 统一生成 Ollama/OpenAI 兼容 `tools` 载荷。
       - `OllamaLlmProvider` / `OpenAiCompatibleLlmProvider` 新增 `completeWithTools()`：
@@ -1561,7 +1574,7 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 - [ ] G7 依赖升级：前端 vite 7 / vitest 3 / vue 3.5；后端 jjwt 0.12.x、
       HttpClient 4 → 5（或统一 JDK HttpClient）、springdoc 2.10.x、PDFBox 3.x 评估；
       决定 spring-ai-bom（1.1.8 引入未用）去留。
-- [x] G8 CI/CD（2026-08-13 完成，commit 待填）：
+- [x] G8 CI/CD（2026-08-13 完成，commit `ba296f7`）：
       新增 `.github/workflows/ci.yml`：backend（JDK 21 + `mvnw test`）、
       frontend（Node 22 + `npm ci` + `vitest run` + `vite build`），master push/PR 双触发；
       E2E（需 Ollama + 后端）为 `workflow_dispatch` 手动 job，不进默认门。
