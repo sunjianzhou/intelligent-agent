@@ -39,6 +39,10 @@ public class ChatRequest {
     @JsonProperty("session_id")
     private String sessionId;
 
+    /** 请求 traceID（G4 可观测性；前端 crypto.randomUUID() 生成，可空）。 */
+    @JsonProperty("request_id")
+    private String requestId;
+
     /** 请求指定的模型名；为空时由 LocalChatService 按用户偏好解析（ModelService.resolveModel）。 */
     @JsonProperty("model")
     private String model;

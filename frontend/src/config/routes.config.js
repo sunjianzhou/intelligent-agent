@@ -26,6 +26,7 @@ export const SYSTEM_ITEMS = [
   { name: 'admin-tasks',  label: '任务管理', icon: 'fas fa-tasks',         path: '/admin/tasks' },
   { name: 'admin-logs',   label: '操作日志', icon: 'fas fa-clipboard-list', path: '/admin/logs' },
   { name: 'admin-stats',  label: '统计分析', icon: 'fas fa-chart-bar',     path: '/admin/stats' },
+  { name: 'admin-traces', label: '运行追踪', icon: 'fas fa-route',         path: '/admin/traces' },
   { name: 'admin-system', label: '系统信息', icon: 'fas fa-info-circle',   path: '/admin/system' },
 ]
 
@@ -46,6 +47,7 @@ export const PAGE_CONFIGS = {
   'admin-tasks':  { title: '任务管理',     icon: 'fas fa-tasks' },
   'admin-logs':   { title: '操作日志',     icon: 'fas fa-clipboard-list' },
   'admin-system': { title: '系统信息',     icon: 'fas fa-info-circle' },
+  'admin-traces': { title: '运行追踪',     icon: 'fas fa-route' },
   'admin-stats':  { title: '统计分析',     icon: 'fas fa-chart-bar' },
   'admin-models': { title: '模型管理',     icon: 'fas fa-robot' },
 }

@@ -13,6 +13,7 @@ import com.intelligent.agent.web.ai.prompt.SystemPromptBuilder;
 import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
 import com.intelligent.agent.web.infrastructure.vectorstore.EmbeddingService;
 import com.intelligent.agent.web.infrastructure.monitoring.SystemResourceService;
+import com.intelligent.agent.web.infrastructure.observability.TraceService;
 import com.intelligent.agent.web.infrastructure.security.SecretCrypto;
 import com.intelligent.agent.web.ai.tool.AgentTool;
 import com.intelligent.agent.web.ai.tool.ToolExecutor;
@@ -182,9 +183,11 @@ public class AgentConfig {
                                                ToolExecutor toolExecutor,
                                                ConversationMemoryService conversationMemoryService,
                                                PromptService promptService,
-                                               BranchFailureDetector branchFailureDetector) {
+                                               BranchFailureDetector branchFailureDetector,
+                                               TraceService traceService) {
         return new AgentOrchestrator(llmProviderRouter, toolExecutor, conversationMemoryService,
-                promptService, branchFailureDetector, AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS);
+                promptService, branchFailureDetector, AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS,
+                traceService);
     }
 
     /** TODO-110 Task 4.4：分支失败检测 + 铁律违反扫描（模式来自 rules.md + 硬编码清单）。 */

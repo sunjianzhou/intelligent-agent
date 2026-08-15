@@ -171,6 +171,7 @@ public class WebSocketController extends TextWebSocketHandler {
         chatRequest.setPendingTasks(pendingTasks);
         chatRequest.setImageBase64(imageBase64);
         chatRequest.setUserId(userId);  // 透传真实用户 ID
+        chatRequest.setRequestId(requestId);  // G4 traceID 关联
 
         // 异步流式处理；线程池满时向客户端返回 503 而不是卡住 Tomcat 线程
         long startTime = System.currentTimeMillis();

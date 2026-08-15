@@ -16,6 +16,8 @@ import com.intelligent.agent.web.ai.tool.ToolCall;
 import com.intelligent.agent.web.ai.tool.ToolExecutionContext;
 import com.intelligent.agent.web.ai.tool.ToolExecutor;
 import com.intelligent.agent.web.ai.tool.ToolResult;
+import com.intelligent.agent.web.infrastructure.observability.TraceService;
+import com.intelligent.agent.web.infrastructure.observability.TraceSpan;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -45,6 +47,7 @@ public class AgentOrchestrator {
     private final PromptService promptService;
     private final BranchFailureDetector branchFailureDetector;
     private final int maxToolRounds;
+    private final TraceService traceService;
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor) {
         this(router, toolExecutor, DEFAULT_MAX_TOOL_ROUNDS);
@@ -69,6 +72,15 @@ public class AgentOrchestrator {
                              ConversationMemoryService memoryService,
                              PromptService promptService,
                              BranchFailureDetector branchFailureDetector, int maxToolRounds) {
+        this(router, toolExecutor, memoryService, promptService, branchFailureDetector,
+                maxToolRounds, null);
+    }
+
+    public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
+                             ConversationMemoryService memoryService,
+                             PromptService promptService,
+                             BranchFailureDetector branchFailureDetector, int maxToolRounds,
+                             TraceService traceService) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.toolExecutor = Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
         this.toolCallParser = new TextToolCallParser();
@@ -77,50 +89,155 @@ public class AgentOrchestrator {
         this.branchFailureDetector = branchFailureDetector == null
                 ? new BranchFailureDetector() : branchFailureDetector;
         this.maxToolRounds = maxToolRounds;
+        this.traceService = traceService;
     }
 
     public Flux<ModelEvent> stream(AgentRequestContext context) {
         Objects.requireNonNull(context, "context must not be null");
-        AgentContext memory = loadMemory(context);
+        String traceId = beginTrace(context);
+        AgentContext memory = loadMemory(context, traceId);
         if (memory.cachedAnswer().isPresent()) {
             String cached = memory.cachedAnswer().get();
             return Flux.concat(
                             Flux.just(ModelEvent.token(cached)),
                             Flux.just(ModelEvent.done(Map.of())))
-                    .doOnComplete(() -> recordTurn(context, cached));
+                    .doOnComplete(() -> {
+                        recordTurn(context, cached, traceId);
+                        endTrace(traceId, true);
+                    })
+                    .doOnError(e -> endTrace(traceId, false));
         }
         StringBuilder tokens = new StringBuilder();
-        return Flux.defer(() -> runToolRounds(context, initialMessages(context, memory), 0, List.of())
-                        .flatMapMany(state -> streamFinal(context, state)))
+        return Flux.defer(() -> runToolRounds(context, initialMessages(context, memory),
+                        0, List.of(), traceId)
+                        .flatMapMany(state -> streamFinal(context, state, traceId)))
                 .doOnNext(event -> {
                     if ("token".equals(event.type())) {
                         tokens.append(event.data());
                     }
                 })
-                .doOnComplete(() -> recordTurn(context, TaskSentinelUtils.strip(tokens.toString())));
+                .doOnComplete(() -> {
+                    recordTurn(context, TaskSentinelUtils.strip(tokens.toString()), traceId);
+                    endTrace(traceId, true);
+                })
+                .doOnError(e -> endTrace(traceId, false));
     }
 
     public Mono<String> complete(AgentRequestContext context) {
         Objects.requireNonNull(context, "context must not be null");
-        AgentContext memory = loadMemory(context);
+        String traceId = beginTrace(context);
+        AgentContext memory = loadMemory(context, traceId);
         if (memory.cachedAnswer().isPresent()) {
             String cached = memory.cachedAnswer().get();
             return Mono.just(cached).doOnSuccess(answer ->
-                    recordTurn(context, TaskSentinelUtils.strip(answer)));
+                    {
+                        recordTurn(context, TaskSentinelUtils.strip(answer), traceId);
+                        endTrace(traceId, true);
+                    })
+                    .doOnError(e -> endTrace(traceId, false));
         }
-        return Mono.defer(() -> runToolRounds(context, initialMessages(context, memory), 0, List.of())
-                        .flatMap(state -> completeFinal(context, state)))
-                .doOnSuccess(answer -> recordTurn(context, answer));
+        return Mono.defer(() -> runToolRounds(context, initialMessages(context, memory),
+                        0, List.of(), traceId)
+                        .flatMap(state -> completeFinal(context, state, traceId)))
+                .doOnSuccess(answer -> {
+                    recordTurn(context, answer, traceId);
+                    endTrace(traceId, true);
+                })
+                .doOnError(e -> endTrace(traceId, false));
     }
 
-    private AgentContext loadMemory(AgentRequestContext ctx) {
-        return memoryService == null ? AgentContext.empty() : memoryService.loadContext(ctx);
+    private AgentContext loadMemory(AgentRequestContext ctx, String traceId) {
+        long start = System.currentTimeMillis();
+        AgentContext memory = memoryService == null
+                ? AgentContext.empty() : memoryService.loadContext(ctx);
+        addSpan(traceId, "rag", start, Map.of(
+                "recall", memory.longTermRecall().size(),
+                "history", memory.history().size(),
+                "cached", memory.cachedAnswer().isPresent()));
+        return memory;
     }
 
-    private void recordTurn(AgentRequestContext ctx, String answer) {
+    private void recordTurn(AgentRequestContext ctx, String answer, String traceId) {
+        long start = System.currentTimeMillis();
         if (memoryService != null) {
             memoryService.recordTurn(ctx, answer);
         }
+        addSpan(traceId, "memory", start, Map.of("op", "record"));
+    }
+
+    private String beginTrace(AgentRequestContext ctx) {
+        if (traceService == null) {
+            return null;
+        }
+        return traceService.begin(ctx.requestId(), ctx.userId(), ctx.sessionId(),
+                ctx.channel(), ctx.model());
+    }
+
+    private void endTrace(String traceId, boolean success) {
+        if (traceService != null && traceId != null) {
+            traceService.complete(traceId, success ? "ok" : "error");
+        }
+    }
+
+    private void addSpan(String traceId, String name, long startedAt,
+                         Map<String, Object> details) {
+        if (traceService != null && traceId != null) {
+            traceService.addSpan(traceId, TraceSpan.ok(name, startedAt,
+                    System.currentTimeMillis() - startedAt, details));
+        }
+    }
+
+    /** 非流式 LLM 调用埋点（G4）：成功/失败都记录耗时与模型。 */
+    private Mono<LlmResponse> traceLlmCall(String traceId, Mono<LlmResponse> source,
+                                           AgentRequestContext ctx, boolean stream) {
+        if (traceService == null || traceId == null) {
+            return source;
+        }
+        long[] start = {0};
+        return source
+                .doOnSubscribe(s -> start[0] = System.currentTimeMillis())
+                .doOnSuccess(r -> traceService.addSpan(traceId, TraceSpan.ok("llm_call",
+                        start[0], System.currentTimeMillis() - start[0],
+                        Map.of("model", ctx.model() == null ? "" : ctx.model(),
+                                "stream", stream, "status", "ok"))))
+                .doOnError(e -> traceService.addSpan(traceId, TraceSpan.error("llm_call",
+                        start[0], System.currentTimeMillis() - start[0],
+                        Map.of("model", ctx.model() == null ? "" : ctx.model(),
+                                "stream", stream, "error", safeMessage(e)))));
+    }
+
+    /** 流式 LLM 调用埋点（G4）。 */
+    private Flux<ModelEvent> traceLlmStream(String traceId, Flux<ModelEvent> source,
+                                            AgentRequestContext ctx) {
+        if (traceService == null || traceId == null) {
+            return source;
+        }
+        long[] start = {0};
+        return source
+                .doOnSubscribe(s -> start[0] = System.currentTimeMillis())
+                .doOnComplete(() -> traceService.addSpan(traceId, TraceSpan.ok("llm_call",
+                        start[0], System.currentTimeMillis() - start[0],
+                        Map.of("model", ctx.model() == null ? "" : ctx.model(),
+                                "stream", true, "status", "ok"))))
+                .doOnError(e -> traceService.addSpan(traceId, TraceSpan.error("llm_call",
+                        start[0], System.currentTimeMillis() - start[0],
+                        Map.of("model", ctx.model() == null ? "" : ctx.model(),
+                                "stream", true, "error", safeMessage(e)))));
+    }
+
+    /** 工具参数摘要（截断，避免敏感/超长内容进 trace）。 */
+    private static String argsSummary(Map<String, Object> arguments) {
+        if (arguments == null || arguments.isEmpty()) {
+            return "";
+        }
+        String json;
+        try {
+            json = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .writeValueAsString(arguments);
+        } catch (Exception e) {
+            json = String.valueOf(arguments);
+        }
+        return json.length() <= 200 ? json : json.substring(0, 200) + "...";
     }
 
     private List<ChatMessage> initialMessages(AgentRequestContext ctx, AgentContext memory) {
@@ -174,15 +291,16 @@ public class AgentOrchestrator {
     }
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
-                                           int round, List<ToolCall> executedCalls) {
+                                           int round, List<ToolCall> executedCalls,
+                                           String traceId) {
         return runToolRounds(ctx, messages, round, executedCalls,
-                new ArrayList<>(), new ArrayList<>());
+                new ArrayList<>(), new ArrayList<>(), traceId);
     }
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
                                            int round, List<ToolCall> executedCalls,
                                            List<ToolResult> failures,
-                                           List<String> assistantTexts) {
+                                           List<String> assistantTexts, String traceId) {
         if (round >= maxToolRounds) {
             return Mono.just(new ReActState(messages, "", true, executedCalls, false));
         }
@@ -191,6 +309,7 @@ public class AgentOrchestrator {
                 ? provider.completeWithTools(buildTurn(ctx, messages), toolExecutor.definitions())
                 : provider.complete(buildTurn(ctx, messages))
                         .map(content -> new LlmResponse(content, List.of()));
+        responseMono = traceLlmCall(traceId, responseMono, ctx, false);
         return responseMono.flatMap(response -> {
                     String content = response.content();
                     // 信号 4（近似）：窗口内同时存在工具错误与空响应（原生 tool_calls 除外）
@@ -200,18 +319,19 @@ public class AgentOrchestrator {
                                 "⚠️ 分支失败：runtime_error_and_empty（窗口内同时存在工具错误与空响应）。已停止执行。",
                                 true, executedCalls, false));
                     }
-                    return handleRound(ctx, messages, response, executedCalls, failures, assistantTexts);
+                    return handleRound(ctx, messages, response, executedCalls,
+                            failures, assistantTexts, traceId);
                 })
                 .flatMap(state -> state.continueLoop()
                         ? runToolRounds(ctx, state.messages(), round + 1,
-                        state.executedCalls(), failures, assistantTexts)
+                        state.executedCalls(), failures, assistantTexts, traceId)
                         : Mono.just(state));
     }
 
     private Mono<ReActState> handleRound(AgentRequestContext ctx, List<ChatMessage> messages,
                                          LlmResponse response, List<ToolCall> executedCalls,
                                          List<ToolResult> failures,
-                                         List<String> assistantTexts) {
+                                         List<String> assistantTexts, String traceId) {
         String content = response.content();
         // toolsRan 是粘性的：只要本轮或之前任一工具轮执行过工具，后续轮次不得再复用
         // 首轮内容跳过 tool_calls_done / 最终流式回答。
@@ -239,6 +359,7 @@ public class AgentOrchestrator {
         List<ChatMessage> next = appendAssistant(messages, content, calls, executedCalls.size());
         return Mono.fromCallable(() -> {
             ToolExecutionContext execCtx = ToolExecutionContext.of(ctx.userId(), "user");
+            long toolStart = System.currentTimeMillis();
             // 并行执行（各自超时复用 ToolExecutor 语义）；结果按入参顺序合并后
             // 再单线程追加消息/失败列表，避免共享容器并发写。
             List<ToolResult> results = toolExecutor.executeParallel(calls, execCtx);
@@ -253,6 +374,12 @@ public class AgentOrchestrator {
                 String text = result.data() != null ? String.valueOf(result.data())
                         : (result.error() != null ? result.error() : result.status());
                 next.add(ChatMessage.tool(text, "call_" + (executedCalls.size() + i)));
+                // G4：每个工具调用一个 span
+                addSpan(traceId, "tool_call", toolStart, Map.of(
+                        "tool", call.name(),
+                        "args", argsSummary(call.arguments()),
+                        "status", result.status(),
+                        "duration_ms", result.executionTimeMs()));
             }
             // 信号 1：同工具同错误 ≥3 次
             String sameError = BranchFailureDetector.detectSameToolError(failures);
@@ -270,7 +397,8 @@ public class AgentOrchestrator {
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
-    private Flux<ModelEvent> streamFinal(AgentRequestContext ctx, ReActState state) {
+    private Flux<ModelEvent> streamFinal(AgentRequestContext ctx, ReActState state,
+                                         String traceId) {
         // content 非空 = 已有最终答复（无工具路径或分支失败终止态），不再调用模型
         if (state.content() != null && !state.content().isBlank()) {
             Flux<ModelEvent> finalFlux = finalizeAnswer(ctx, state.content());
@@ -285,6 +413,7 @@ public class AgentOrchestrator {
         Flux<ModelEvent> answer = router.forUser(ctx.userId(), ctx.model())
                 .stream(buildTurn(ctx, finalMessages))
                 .onErrorResume(e -> Flux.just(ModelEvent.error(safeMessage(e))));
+        answer = traceLlmStream(traceId, answer, ctx);
         if (state.executedCalls().isEmpty()) {
             return answer.map(event -> "token".equals(event.type())
                     ? ModelEvent.token(TaskSentinelUtils.strip(String.valueOf(event.data())))
@@ -295,15 +424,18 @@ public class AgentOrchestrator {
                 bufferFinalAnswer(ctx, answer));
     }
 
-    private Mono<String> completeFinal(AgentRequestContext ctx, ReActState state) {
+    private Mono<String> completeFinal(AgentRequestContext ctx, ReActState state,
+                                       String traceId) {
         if (state.content() != null && !state.content().isBlank()) {
             return Mono.just(TaskSentinelUtils.strip(state.content()));
         }
         List<ChatMessage> finalMessages = finalizeMessages(state.messages(), state.toolsRan());
-        return router.forUser(ctx.userId(), ctx.model())
+        Mono<String> result = router.forUser(ctx.userId(), ctx.model())
                 .complete(buildTurn(ctx, finalMessages))
                 .map(TaskSentinelUtils::strip)
                 .onErrorResume(e -> Mono.just(safeMessage(e)));
+        return traceLlmCall(traceId, result.map(c -> new LlmResponse(c, List.of())),
+                ctx, false).map(LlmResponse::content);
     }
 
     /** 缓冲流式回答 → 剥除任务标记 → 发出事件与 done（与 Python 全结束后扫描一致）。 */

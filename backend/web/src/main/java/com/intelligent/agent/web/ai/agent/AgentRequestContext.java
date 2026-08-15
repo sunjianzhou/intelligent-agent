@@ -21,6 +21,7 @@ import java.util.Map;
  * @param sceneMentioned group 场景下是否被显式 @ 提及
  * @param pendingTasks  项目待处理任务列表（前端随请求传入，注入 [TASKS] 上下文；
  *                      2026-08-15 补齐，对齐 Python pending_tasks）
+ * @param requestId     请求 traceID（G4 可观测性；可为 null）
  */
 public record AgentRequestContext(
         String userId,
@@ -36,7 +37,8 @@ public record AgentRequestContext(
         String imageBase64,
         String sceneChatType,
         boolean sceneMentioned,
-        List<Map<String, Object>> pendingTasks) {
+        List<Map<String, Object>> pendingTasks,
+        String requestId) {
 
     public AgentRequestContext {
         userId = userId == null ? "" : userId;
@@ -51,16 +53,16 @@ public record AgentRequestContext(
                                String projectId, String sessionId, boolean useTools,
                                boolean useMemory, String channel, Map<String, Object> options) {
         this(userId, message, model, persona, projectId, sessionId, useTools, useMemory,
-                channel, options, null, null, false, List.of());
+                channel, options, null, null, false, List.of(), null);
     }
 
-    /** 13 参便捷构造（无 pendingTasks），保持旧调用点兼容。 */
+    /** 13 参便捷构造（无 pendingTasks/requestId），保持旧调用点兼容。 */
     public AgentRequestContext(String userId, String message, String model, String persona,
                                String projectId, String sessionId, boolean useTools,
                                boolean useMemory, String channel, Map<String, Object> options,
                                String imageBase64, String sceneChatType, boolean sceneMentioned) {
         this(userId, message, model, persona, projectId, sessionId, useTools, useMemory,
-                channel, options, imageBase64, sceneChatType, sceneMentioned, List.of());
+                channel, options, imageBase64, sceneChatType, sceneMentioned, List.of(), null);
     }
 
     public static AgentRequestContext of(String userId, String message) {

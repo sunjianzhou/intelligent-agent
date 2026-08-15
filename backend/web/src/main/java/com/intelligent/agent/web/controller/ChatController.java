@@ -46,6 +46,7 @@ public class ChatController {
         // 真实用户 ID 一律取 JWT（JwtAuthFilter 写入 request attribute），
         // 不信任请求体/客户端传入的身份（REST 路径此前 userId 恒为 null → 所有用户共享 "default" 记忆）。
         request.setUserId(UserContext.userId(httpRequest));
+        ensureRequestId(request);
         log.info("收到REST聊天请求: {}", request.getMessage());
         try {
             long startTime = System.currentTimeMillis();
@@ -88,6 +89,7 @@ public class ChatController {
     public Flux<ServerSentEvent<String>> stream(@Valid @RequestBody ChatRequest request,
                                                 HttpServletRequest httpRequest) {
         request.setUserId(UserContext.userId(httpRequest));
+        ensureRequestId(request);
         return localChatService.stream(request)
                 .map(event -> ServerSentEvent.<String>builder()
                         .event(event.type())
@@ -103,6 +105,13 @@ public class ChatController {
             return objectMapper.writeValueAsString(event);
         } catch (Exception e) {
             return "{\"type\":\"error\",\"data\":\"serialize failed\"}";
+        }
+    }
+
+    /** G4：REST 请求无 traceID 时自动生成，保证可观测性关联。 */
+    private static void ensureRequestId(ChatRequest request) {
+        if (request.getRequestId() == null || request.getRequestId().isBlank()) {
+            request.setRequestId("req-" + Long.toHexString(System.nanoTime()));
         }
     }
 

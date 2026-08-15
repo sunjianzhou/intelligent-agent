@@ -1643,10 +1643,13 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       `backend/web/src/test/eval/` 建 golden 用例集（用户消息 → 期望工具调用/答案要点）；
       LLM-as-judge 按 rubric 打分（0-10）；`mvn -Peval` 运行 + 结果 JSONL 落盘；
       CI 先跑 1-2 周建基线，再决定是否开"分数低于阈值 block merge"门。
-- [ ] G4 可观测性：
-      `AgentRunTrace`（requestId → spans：llm_call/tool_call/rag/memory，含 token/耗时/
-      成败/工具参数摘要）；落盘 `data/traces/` + `/api/traces` 接口 + 前端 TraceView
-      （挂 routes.config.js）；预留 OTel/OpenInference 导出。
+- [x] G4 可观测性（核心）✅ 2026-08-15：`AgentRunTrace`（requestId → spans：
+      llm_call/tool_call/rag/memory/cache，含耗时/成败/模型/工具参数摘要，截断防敏感）；
+      落盘 `data/traces/`（原子写 + 500 条容量淘汰 + userId 隔离）；`/api/traces`
+      list/get/delete；前端 TraceView（/admin/traces，routes.config.js 单源挂载）；
+      requestId 全链路（ChatRequest.request_id + WS/REST 自动生成）。
+      测试：TraceServiceTest 6 + TraceController 4 + TraceInstrumentation 2 + E2E 1。
+      剩余：OTel/OpenInference 导出（预留位）。
 
 ### P1 记忆与上下文
 

@@ -9,6 +9,7 @@ import com.intelligent.agent.web.domain.skill.SkillService;
 import com.intelligent.agent.web.domain.analytics.AnalyticsService;
 import com.intelligent.agent.web.domain.teaching.TeachingService;
 import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
+import com.intelligent.agent.web.infrastructure.observability.TraceService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -64,5 +65,11 @@ public class DomainConfig {
     @Bean
     public TeachingService teachingService() {
         return new TeachingService(Path.of(dataDir));
+    }
+
+    /** G4：Agent 运行追踪（data/traces/ 落盘，默认 500 条上限）。 */
+    @Bean
+    public TraceService traceService() {
+        return new TraceService(Path.of(dataDir));
     }
 }

@@ -55,7 +55,8 @@ public class LocalChatService {
                 request.getImageBase64(),
                 request.getSceneChatType(),
                 Boolean.TRUE.equals(request.getSceneMentioned()),
-                request.getPendingTasks());
+                request.getPendingTasks(),
+                request.getRequestId());
     }
 
     /** 请求显式指定模型优先；否则按用户偏好解析（ModelService），确保 per-user 模型切换生效。 */

@@ -39,6 +39,7 @@ const routes = [
   { path: '/admin/stats',  name: 'admin-stats',  component: () => import('@/views/StatsView.vue'), meta: { title: '统计分析', admin: true } },
   { path: '/admin/models', name: 'admin-models', component: ModelView,   meta: { title: '模型管理', admin: true } },
   { path: '/admin/logs',   name: 'admin-logs',   component: LogView,    meta: { title: '操作日志', admin: true } },
+  { path: '/admin/traces', name: 'admin-traces', component: () => import('@/views/TraceView.vue'), meta: { title: '运行追踪', admin: true } },
 
   // 旧路径重定向，保持后向兼容
   { path: '/tools',  redirect: '/admin/tools' },

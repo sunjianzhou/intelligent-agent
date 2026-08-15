@@ -291,3 +291,10 @@ export const activateCloudProvider  = (id) =>
   request(`${BASE}/cloud/providers/${encodeURIComponent(id)}/activate`, { method: 'POST' })
 export const deactivateCloudProviders = () =>
   request(`${BASE}/cloud/deactivate`, { method: 'POST' })
+
+// ── Agent 运行追踪（G4）───────────────────────────────────
+export const getTraces      = (limit = 50) => request(`${BASE}/traces?limit=${limit}`)
+export const getTrace       = (requestId) =>
+  request(`${BASE}/traces/${encodeURIComponent(requestId)}`)
+export const deleteTrace    = (requestId) =>
+  request(`${BASE}/traces/${encodeURIComponent(requestId)}`, { method: 'DELETE' })

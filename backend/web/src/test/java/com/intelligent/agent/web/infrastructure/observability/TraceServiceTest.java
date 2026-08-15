@@ -1,0 +1,95 @@
+package com.intelligent.agent.web.infrastructure.observability;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Agent 运行追踪服务契约（G4）：begin/addSpan/complete 落盘、list/get 按用户隔离、
+ * 删除、容量上限淘汰。
+ */
+class TraceServiceTest {
+
+    @TempDir
+    Path tempDir;
+
+    @Test
+    void completedTraceIsPersistedAndReadable() throws Exception {
+        TraceService service = new TraceService(tempDir);
+        service.begin("req-1", "alice", "s1", "web", "qwen2.5:7b");
+        service.addSpan("req-1", TraceSpan.ok("llm_call", 1, 20, Map.of("model", "qwen2.5:7b")));
+        service.addSpan("req-1", TraceSpan.ok("rag", 2, 5, Map.of("recall", 3)));
+
+        service.complete("req-1", "ok");
+
+        assertThat(Files.exists(tempDir.resolve("traces/req-1.json"))).isTrue();
+        Map<String, Object> trace = service.get("alice", "req-1");
+        assertThat(trace).isNotNull();
+        assertThat(trace.get("request_id")).isEqualTo("req-1");
+        assertThat(trace.get("user_id")).isEqualTo("alice");
+        assertThat(trace.get("status")).isEqualTo("ok");
+        assertThat(trace.get("spans")).asList().hasSize(2);
+    }
+
+    @Test
+    void listIsScopedByUser() {
+        TraceService service = new TraceService(tempDir);
+        service.begin("req-a", "alice", null, "web", null);
+        service.complete("req-a", "ok");
+        service.begin("req-b", "bob", null, "web", null);
+        service.complete("req-b", "ok");
+
+        assertThat(service.list("alice", 50)).hasSize(1);
+        assertThat(service.list("alice", 50).get(0).get("request_id")).isEqualTo("req-a");
+        assertThat(service.list("bob", 50)).hasSize(1);
+    }
+
+    @Test
+    void getRejectsOtherUsersTrace() {
+        TraceService service = new TraceService(tempDir);
+        service.begin("req-x", "alice", null, "web", null);
+        service.complete("req-x", "ok");
+
+        assertThat(service.get("bob", "req-x")).isNull();
+        assertThat(service.delete("bob", "req-x")).isFalse();
+        assertThat(service.get("alice", "req-x")).isNotNull();
+        assertThat(service.delete("alice", "req-x")).isTrue();
+        assertThat(service.get("alice", "req-x")).isNull();
+    }
+
+    @Test
+    void capacityPrunesOldestTraces() {
+        TraceService service = new TraceService(tempDir, 2);
+        service.begin("r1", "alice", null, "web", null);
+        service.complete("r1", "ok");
+        service.begin("r2", "alice", null, "web", null);
+        service.complete("r2", "ok");
+        service.begin("r3", "alice", null, "web", null);
+        service.complete("r3", "ok");
+
+        assertThat(service.list("alice", 50)).hasSize(2);
+        assertThat(service.list("alice", 50).get(0).get("request_id")).isEqualTo("r3");
+    }
+
+    @Test
+    void generateRequestIdWhenBlank() {
+        TraceService service = new TraceService(tempDir);
+        String id = service.begin(null, "alice", null, "web", null);
+        assertThat(id).startsWith("trace-");
+        service.complete(id, "ok");
+        assertThat(service.list("alice", 10)).hasSize(1);
+    }
+
+    @Test
+    void spansOnlyRecordedForActiveTrace() {
+        TraceService service = new TraceService(tempDir);
+        service.addSpan("no-such-trace", TraceSpan.ok("llm_call", 1, 1, Map.of()));
+        assertThat(service.activeCount()).isZero();
+    }
+}
