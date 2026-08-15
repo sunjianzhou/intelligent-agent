@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 
@@ -61,5 +63,48 @@ class VectorMemoryRepositoryTest {
         assertThat(remaining).hasSize(2);
         assertThat(remaining).extracting(MemoryRecord::id)
                 .containsExactlyInAnyOrder("high", "mid");
+    }
+
+    @Test
+    void searchVectorsArePersistedAndSurviveReload() throws Exception {
+        VectorMemoryRepository repo = new VectorMemoryRepository(tempDir);
+        repo.upsert(new MemoryRecord("m1", "alice", "alice prefers green tea",
+                null, null, "fact", Map.of(), 0.8));
+        repo.upsert(new MemoryRecord("m2", "alice", "project ships next week",
+                null, "p1", "project", Map.of(), 0.5));
+
+        // 首次检索触发惰性嵌入 + 落盘
+        assertThat(repo.search("alice", "green tea", 5))
+                .extracting(MemoryRecord::id)
+                .contains("m1");
+
+        String persisted = java.nio.file.Files.readString(
+                tempDir.resolve("memory/vector_memory.json"));
+        assertThat(persisted).contains("\"vector\"");
+
+        // 重载后仍可检索（向量从磁盘恢复，不重新嵌入）
+        VectorMemoryRepository reloaded = new VectorMemoryRepository(tempDir);
+        assertThat(reloaded.search("alice", "green tea", 5))
+                .extracting(MemoryRecord::id)
+                .contains("m1");
+    }
+
+    @Test
+    void newerRecordRanksHigherWithTimeDecay() {
+        VectorMemoryRepository repo = new VectorMemoryRepository();
+        Instant now = Instant.now();
+        MemoryRecord oldRecord = new MemoryRecord(
+                "old", "alice", "shared preference note", null, null, "fact",
+                Map.of(), 0.7, now.minus(10, ChronoUnit.DAYS), now.minus(10, ChronoUnit.DAYS), 0);
+        MemoryRecord newRecord = new MemoryRecord(
+                "new", "alice", "shared preference note", null, null, "fact",
+                Map.of(), 0.7, now, now, 0);
+        repo.upsert(oldRecord);
+        repo.upsert(newRecord);
+
+        // 内容/重要度相同，时间衰减使新记录排前（0.7sim + 0.2imp + 0.1recency）
+        assertThat(repo.search("alice", "shared preference note", 5))
+                .extracting(MemoryRecord::id)
+                .containsExactly("new", "old");
     }
 }

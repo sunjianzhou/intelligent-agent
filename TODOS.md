@@ -65,13 +65,10 @@
 >   浏览器验证走 gstack browse（已补装 playwright@1.58.0 / diff / sharp@0.34.5）；
 >   `.env` JWT_SECRET 过短（232 bits < 256）导致登录 500，待 owner 决策轮换。
 
-> **2026-08-13 发现（配置问题，未擅自改动 .env，待 owner 决策）**：
-> 根目录 `.env` 的 `JWT_SECRET` 为 29 字节（232 bits），jjwt 要求 ≥256 bits，
-> 登录/换发 token 抛 `WeakKeyException`（HTTP 500），`start_java_mode.bat` 本地启动
-> 路径不可用（`POST /api/auth/login` 直接失败）。复现：该 secret + `java -jar`。
-> 轮换需 ≥32 字节，但 `SecretCrypto` 密钥由 JWT_SECRET SHA-256 派生，轮换后
-> 存量加密的云端 API Key / 飞书 token 将无法解密（decrypt 失败返回 enc: 原文），
-> 需重新录入云端 Key 并重新走飞书 OAuth。建议由 owner 明确轮换。
+> ~~**2026-08-13 发现（配置问题）**~~ ✅ 2026-08-15 核实已解决：当前 `.env` 的
+> `JWT_SECRET` 为 44 字节（352 bits ≥ 256），Java E2E 用同一 secret 登录实测通过。
+> 若未来轮换 secret，注意 `SecretCrypto` 密钥由 JWT_SECRET SHA-256 派生，轮换后
+> 存量加密的云端 API Key / 飞书 token 需重新录入/OAuth。
 
 ### A. 环境依赖待办（需 Ollama / 嵌入模型，可用后恢复）
 
@@ -82,11 +79,13 @@
 ### B. 验收遗留（需真实服务运行 + IM 凭证）
 
 - [ ] IM 真实送达验证（飞书 / 企微 / Telegram，需真实应用凭证）
-- [ ] 全栈 E2E（需 Ollama + Java + 前端全部运行）
+- [x] 全栈 E2E ✅ 2026-08-15：Java E2E（tests/e2e-java）对真实后端+Ollama 首跑
+      68 用例全绿（2 跳过：云端/dolphin 未配置）；前端不参与（REST 黑盒）
 
 ### C. 暂停项（等触发条件）
 
-- [ ] Scheduler 轮询改事件驱动（TODO-12，任务量真正增长后再评估）
+- [x] Scheduler 事件驱动化 ✅ 2026-08-11 已落地（refresh 按最近到期唤醒 + 60s 兜底），
+      本暂停项过时，关闭
 
 ### D. 需求驱动待办（归档，有人提出需求再做）
 
@@ -1651,9 +1650,10 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 
 ### P1 记忆与上下文
 
-- [ ] G5 记忆检索优化：embedding 随记录落盘（避免每次全量重嵌入）；候选预筛
-      （userId/type/projectId/importance）再算余弦；分层记忆 working/episodic/semantic
-      （RAG_TOP_K 按层配额）；时间衰减 score = 0.7*sim + 0.2*importance + 0.1*recency。
+- [x] G5 记忆检索优化（部分）✅ 2026-08-15：embedding 随记录落盘 + 惰性重嵌/维度失配
+      自动作废（避免每次检索全量重嵌入）；候选预筛（userId/type/projectId/importance）
+      已有；时间衰减 score = 0.7*sim + 0.2*importance + 0.1*recency（24h 半衰期）。
+      剩余：分层记忆 working/episodic/semantic（RAG_TOP_K 按层配额）。
 - [ ] G6 编排升级（可后置）：planning 前置（复杂任务先出 plan）、reflection 后验、
       human-in-the-loop 审批门、circuit breaker/SLO。
 - [ ] 上下文成本：确认 Ollama `cache_prompt` 开启；`num_ctx` 按模型配置表下发；
@@ -1661,9 +1661,10 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
 
 ### P2 工程化
 
-- [ ] G7 依赖升级：前端 vite 7 / vitest 3 / vue 3.5；后端 jjwt 0.12.x、
-      HttpClient 4 → 5（或统一 JDK HttpClient）、springdoc 2.10.x、PDFBox 3.x 评估；
-      决定 spring-ai-bom（1.1.8 引入未用）去留。
+- [x] G7 依赖升级（部分）✅ 2026-08-15：HttpClient 4 → 5 完成（RestTemplate +
+      HttpClientUtil 统一 httpclient5，pom 移除 httpclient 4.5.13）。
+      剩余：前端 vite 7 / vitest 3 / vue 3.5；后端 jjwt 0.12.x、springdoc 2.10.x、
+      PDFBox 3.x 评估；spring-ai-bom 去留。
 - [x] G8 CI/CD（2026-08-13 完成，commit `ba296f7`）：
       新增 `.github/workflows/ci.yml`：backend（JDK 21 + `mvnw test`）、
       frontend（Node 22 + `npm ci` + `vitest run` + `vite build`），master push/PR 双触发；

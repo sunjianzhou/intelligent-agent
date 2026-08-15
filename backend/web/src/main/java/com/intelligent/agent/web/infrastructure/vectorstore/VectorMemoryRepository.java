@@ -33,9 +33,14 @@ public class VectorMemoryRepository implements MemoryRepository {
     public static final int DEFAULT_MAX_RECORDS = 5000;
 
     private static final double SIMILARITY_WEIGHT = 0.7;
-    private static final double IMPORTANCE_WEIGHT = 0.3;
+    // G5（2026-08-15）：时间衰减维度，score = 0.7*sim + 0.2*importance + 0.1*recency
+    private static final double RECENCY_WEIGHT = 0.1;
+    private static final double IMPORTANCE_WEIGHT_G5 = 0.2;
+    private static final double RECENCY_HALF_LIFE_MS = 24.0 * 3600_000;
 
     private final Map<String, MemoryRecord> records = new ConcurrentHashMap<>();
+    /** 记录 id → 嵌入向量缓存（G5：随记录落盘，避免每次检索全量重嵌入）。 */
+    private final Map<String, double[]> vectors = new ConcurrentHashMap<>();
     private final EmbeddingService embeddingService;
     private final Path dataDir;
     private final int maxRecords;
@@ -65,6 +70,8 @@ public class VectorMemoryRepository implements MemoryRepository {
             throw new IllegalArgumentException("record, id and userId must not be null");
         }
         records.put(record.id(), record);
+        // 内容可能变化，作废旧向量，检索时惰性重嵌
+        vectors.remove(record.id());
         evictIfNeeded();
         persist();
     }
@@ -86,23 +93,25 @@ public class VectorMemoryRepository implements MemoryRepository {
         if (candidates.isEmpty()) {
             return List.of();
         }
-        double[] queryVector = embeddingService == null
-                ? TextEmbedding.embed(query.text()) : embeddingService.embed(query.text());
-        List<String> contents = candidates.stream().map(MemoryRecord::content).toList();
-        java.util.List<double[]> vectors = embeddingService == null
-                ? contents.stream().map(TextEmbedding::embed).toList()
-                : embeddingService.embedAll(contents);
+        double[] queryVector = embedText(query.text());
+        boolean backfilled = false;
         List<Scored> scoredList = new ArrayList<>(candidates.size());
-        for (int i = 0; i < candidates.size(); i++) {
-            MemoryRecord record = candidates.get(i);
-            double similarity = embeddingService == null
-                    ? TextEmbedding.cosine(queryVector, vectors.get(i))
-                    : embeddingService.cosine(queryVector, vectors.get(i));
+        for (MemoryRecord record : candidates) {
+            double[] recordVector = vectorFor(record);
+            if (recordVector == null) {
+                recordVector = embedText(record.content());
+                vectors.put(record.id(), recordVector);
+                backfilled = true;
+            }
+            double similarity = cosine(queryVector, recordVector);
             // 召回质量：要求有语义相似度；仅当重要度极高（>=0.9，如手动置顶）时允许零相似召回
             if (similarity > 0.0 || record.importance() >= 0.9) {
                 MemoryRecord hit = bumpAccess(record);
                 scoredList.add(scored(hit, similarity));
             }
+        }
+        if (backfilled) {
+            persist();
         }
         return scoredList.stream()
                 .sorted(Comparator.comparingDouble((Scored s) -> s.score()).reversed())
@@ -131,7 +140,12 @@ public class VectorMemoryRepository implements MemoryRepository {
 
     @Override
     public void clear(String userId) {
-        records.entrySet().removeIf(entry -> entry.getValue().userId().equals(userId));
+        List<String> removedIds = records.entrySet().stream()
+                .filter(entry -> entry.getValue().userId().equals(userId))
+                .map(Map.Entry::getKey)
+                .toList();
+        removedIds.forEach(records::remove);
+        removedIds.forEach(vectors::remove);
         persist();
     }
 
@@ -143,6 +157,7 @@ public class VectorMemoryRepository implements MemoryRepository {
         }
         boolean removed = records.remove(memoryId, existing);
         if (removed) {
+            vectors.remove(memoryId);
             persist();
         }
         return removed;
@@ -170,8 +185,38 @@ public class VectorMemoryRepository implements MemoryRepository {
     }
 
     private static Scored scored(MemoryRecord record, double similarity) {
-        double score = SIMILARITY_WEIGHT * similarity + IMPORTANCE_WEIGHT * record.importance();
+        double score = SIMILARITY_WEIGHT * similarity
+                + IMPORTANCE_WEIGHT_G5 * record.importance()
+                + RECENCY_WEIGHT * recency(record);
         return new Scored(record, score);
+    }
+
+    /** 时间衰减：24h 半衰期指数，新记录 ≈1，越旧越趋近 0。 */
+    private static double recency(MemoryRecord record) {
+        long ageMs = Math.max(0, System.currentTimeMillis() - record.createdAt().toEpochMilli());
+        return Math.exp(-ageMs / RECENCY_HALF_LIFE_MS);
+    }
+
+    private double[] embedText(String text) {
+        return embeddingService == null ? TextEmbedding.embed(text) : embeddingService.embed(text);
+    }
+
+    private double[] vectorFor(MemoryRecord record) {
+        double[] cached = vectors.get(record.id());
+        if (cached == null) {
+            return null;
+        }
+        // 维度不匹配（如切换 embedding 模型/兜底方式）→ 作废重嵌
+        double[] fresh = embedText(record.content());
+        if (cached.length != fresh.length) {
+            vectors.put(record.id(), fresh);
+            return fresh;
+        }
+        return cached;
+    }
+
+    private double cosine(double[] a, double[] b) {
+        return embeddingService == null ? TextEmbedding.cosine(a, b) : embeddingService.cosine(a, b);
     }
 
     // ── 容量上限 ─────────────────────────────────────────────────────────
@@ -190,6 +235,7 @@ public class VectorMemoryRepository implements MemoryRepository {
                 .toList();
         for (String id : evict) {
             records.remove(id);
+            vectors.remove(id);
         }
         log.info("向量记忆达到上限 {}，淘汰 {} 条", maxRecords, evict.size());
     }
@@ -236,6 +282,14 @@ public class VectorMemoryRepository implements MemoryRepository {
                         MemoryRecord record = fromMap((Map<String, Object>) item);
                         if (record != null && record.id() != null) {
                             records.put(record.id(), record);
+                            Object vector = ((Map<String, Object>) item).get("vector");
+                            if (vector instanceof List) {
+                                double[] restored = new double[((List<?>) vector).size()];
+                                for (int i = 0; i < restored.length; i++) {
+                                    restored[i] = ((Number) ((List<?>) vector).get(i)).doubleValue();
+                                }
+                                vectors.put(record.id(), restored);
+                            }
                         }
                     }
                 }
@@ -246,7 +300,7 @@ public class VectorMemoryRepository implements MemoryRepository {
         }
     }
 
-    private static Map<String, Object> toMap(MemoryRecord r) {
+    private Map<String, Object> toMap(MemoryRecord r) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", r.id());
         m.put("userId", r.userId());
@@ -259,6 +313,14 @@ public class VectorMemoryRepository implements MemoryRepository {
         m.put("createdAt", r.createdAt().toString());
         m.put("updatedAt", r.updatedAt().toString());
         m.put("accessCount", r.accessCount());
+        double[] vector = vectors.get(r.id());
+        if (vector != null) {
+            List<Double> vectorList = new ArrayList<>(vector.length);
+            for (double v : vector) {
+                vectorList.add(v);
+            }
+            m.put("vector", vectorList);
+        }
         return m;
     }
 

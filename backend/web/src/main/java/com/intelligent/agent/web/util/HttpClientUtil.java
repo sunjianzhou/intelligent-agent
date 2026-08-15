@@ -1,21 +1,25 @@
 package com.intelligent.agent.web.util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.http.HttpEntity;
-import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
-import org.apache.http.util.EntityUtils;
+import org.apache.hc.client5.http.classic.methods.HttpGet;
+import org.apache.hc.client5.http.classic.methods.HttpPost;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.core5.http.HttpEntity;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.apache.hc.core5.http.io.entity.StringEntity;
+import org.apache.hc.core5.util.TimeValue;
+import org.apache.hc.core5.util.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 /**
  * 描述：
@@ -31,23 +35,23 @@ public class HttpClientUtil {
     private final CloseableHttpClient httpClient;
 
     public HttpClientUtil() {
-        // J-03 闭环（2026-08-15）：显式连接池，避免高并发下连接耗尽/反复建连
+        // J-03 闭环（2026-08-15）+ G7 统一 HTTP 栈（2026-08-15）：HttpClient 5 连接池
         PoolingHttpClientConnectionManager connectionManager =
-                new PoolingHttpClientConnectionManager();
-        connectionManager.setMaxTotal(50);
-        connectionManager.setDefaultMaxPerRoute(20);
+                PoolingHttpClientConnectionManagerBuilder.create()
+                        .setMaxConnTotal(50)
+                        .setMaxConnPerRoute(20)
+                        .build();
         RequestConfig config = RequestConfig.custom()
-                .setConnectTimeout(5000)
-                .setSocketTimeout(30000)
-                .setConnectionRequestTimeout(10000)
+                .setConnectTimeout(Timeout.ofMilliseconds(5000))
+                .setResponseTimeout(Timeout.ofMilliseconds(30000))
+                .setConnectionRequestTimeout(Timeout.ofMilliseconds(10000))
                 .build();
 
         this.httpClient = HttpClients.custom()
                 .setConnectionManager(connectionManager)
                 .setDefaultRequestConfig(config)
-                .setConnectionTimeToLive(60, java.util.concurrent.TimeUnit.SECONDS)
                 .evictExpiredConnections()
-                .evictIdleConnections(30, java.util.concurrent.TimeUnit.SECONDS)
+                .evictIdleConnections(TimeValue.ofSeconds(30))
                 .build();
     }
 
@@ -55,7 +59,7 @@ public class HttpClientUtil {
         HttpGet httpGet = new HttpGet(url);
         try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
             HttpEntity entity = response.getEntity();
-            return entity != null ? EntityUtils.toString(entity) : null;
+            return toString(entity);
         }
     }
 
@@ -65,12 +69,23 @@ public class HttpClientUtil {
 
         if (data != null) {
             String json = objectMapper.writeValueAsString(data);
-            httpPost.setEntity(new StringEntity(json, "UTF-8"));
+            httpPost.setEntity(new StringEntity(json, StandardCharsets.UTF_8));
         }
 
         try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
             HttpEntity entity = response.getEntity();
-            return entity != null ? EntityUtils.toString(entity) : null;
+            return toString(entity);
+        }
+    }
+
+    private static String toString(HttpEntity entity) throws IOException {
+        if (entity == null) {
+            return null;
+        }
+        try {
+            return EntityUtils.toString(entity);
+        } catch (org.apache.hc.core5.http.ParseException e) {
+            throw new IOException("解析 HTTP 响应失败: " + e.getMessage(), e);
         }
     }
 
