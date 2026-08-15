@@ -6,7 +6,7 @@
 # 本地基础设施备忘（含域名/tunnel/敏感 IP，不提交）
 LOCAL_INFRA.md
 
-# Python（E2E 测试套件仍为 pytest）
+# Python 残留缓存（E2E 已迁 Java，2026-08-15 起仓库零 Python）
 **/__pycache__/
 **/*.pyc
 **/*.pyo
@@ -21,6 +21,7 @@ logs/
 # Java
 backend/web/target/
 backend/web/*.iml
+tests/e2e-java/target/
 
 # 前端
 frontend/node_modules/
