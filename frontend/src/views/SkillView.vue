@@ -273,6 +273,8 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, defineComponent, h, watch } from 'vue'
 import { getSkills, createSkill, updateSkill, deleteSkill, toggleSkill, getTools } from '@/services/api'
+import { ElMessage } from 'element-plus'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 
 // ── 工具多选组件（内联，支持描述展示）───────────────────
 const ToolSelect = defineComponent({
@@ -489,13 +491,19 @@ const save = async () => {
       ? await updateSkill(editingId.value, buildPayload())
       : await createSkill(buildPayload())
     if (result?.success) { closeModal(); await load() }
-    else alert(`保存失败: ${result?.message || '未知'}`)
+    else ElMessage.error(`保存失败: ${result?.message || '未知'}`)
   } finally { saving.value = false }
 }
 
 const toggle = async (id) => { await toggleSkill(id); await load() }
 const remove = async (id) => {
-  if (!confirm('确定删除该 Skill？')) return
+  const confirmDialog = useConfirmDialogStore()
+  const ok = await confirmDialog.confirm('确定删除该 Skill？此操作不可恢复。', {
+    title: '删除确认',
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
   await deleteSkill(id); await load()
 }
 
@@ -593,7 +601,7 @@ const importFromMd = async () => {
   try {
     const result = await createSkill(parsedPreview.value)
     if (result?.success) { showImport.value = false; await load() }
-    else alert(`导入失败: ${result?.message || '未知'}`)
+    else ElMessage.error(`导入失败: ${result?.message || '未知'}`)
   } finally { saving.value = false }
 }
 
