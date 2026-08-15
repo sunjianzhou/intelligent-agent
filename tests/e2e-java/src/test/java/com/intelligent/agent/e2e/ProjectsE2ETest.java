@@ -54,10 +54,11 @@ class ProjectsE2ETest extends E2EBaseTest {
         try {
             Response r2 = client.put("/api/project/spec", Map.of(
                     "project_id", id,
-                    "spec", "# E2E Spec\n\n这是一个测试规格"));
+                    "content", "# E2E Spec\n\n这是一个测试规格"));
             assertThat(r2.status()).isEqualTo(200);
-            Response r3 = client.get("/spec?project_id=" + id);
+            Response r3 = client.get("/api/project/spec?project_id=" + id);
             assertThat(r3.status()).isEqualTo(200);
+            assertThat(client.json(r3)).containsKey("content");
         } finally {
             client.delete("/api/projects/" + id);
         }
@@ -71,7 +72,8 @@ class ProjectsE2ETest extends E2EBaseTest {
         try {
             Response r2 = client.get("/api/project/tasks?project_id=" + id);
             assertThat(r2.status()).isEqualTo(200);
-            assertThat(client.json(r2)).containsKey("tasks");
+            // Java 契约：任务树在 task_tree 字段（任务由前端/客户端持有）
+            assertThat(client.json(r2)).containsKey("task_tree");
         } finally {
             client.delete("/api/projects/" + id);
         }

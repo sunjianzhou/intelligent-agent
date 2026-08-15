@@ -100,6 +100,21 @@ public class ConversationMemoryService {
         return historyMessages(effectiveUserId(userId)).size();
     }
 
+    /** 手动触发蒸馏 + 摘要（/api/memory/distill，2026-08-15 补齐对齐 Python）。 */
+    public int distillNow(String userId) {
+        String key = effectiveUserId(userId);
+        List<ChatMessage> history = historyMessages(key);
+        int records = 0;
+        records += distiller.distill(key, null, history, memoryRepository);
+        int before = memoryRepository.count(
+                MemorySearchQuery.builder(key, "", 100000).type("summary").build());
+        distiller.summarize(key, history, memoryRepository);
+        int after = memoryRepository.count(
+                MemorySearchQuery.builder(key, "", 100000).type("summary").build());
+        records += (after - before);
+        return records;
+    }
+
     /** 某用户短期记忆消息列表（/api/memory/list 用）。 */
     public List<ChatMessage> shortTermMessages(String userId) {
         return historyMessages(effectiveUserId(userId));

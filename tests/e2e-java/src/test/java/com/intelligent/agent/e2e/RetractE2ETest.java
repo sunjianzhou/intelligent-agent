@@ -75,10 +75,14 @@ class RetractE2ETest extends E2EBaseTest {
                 "session_id", sessionId));
         assertThat(rChat.status()).isEqualTo(200);
         Map<String, Object> chat = slowClient.json(rChat);
-        assertThat(String.valueOf(chat.get("response"))).as("聊天未返回内容").isNotBlank();
+        // Java 契约：ApiResponse 包装，业务字段在 "data" 内
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = chat.get("data") instanceof Map
+                ? (Map<String, Object>) chat.get("data") : chat;
+        assertThat(String.valueOf(data.get("response"))).as("聊天未返回内容").isNotBlank();
 
-        Object userMsgId = chat.get("user_message_id");
-        Object assistantMsgId = chat.get("assistant_message_id");
+        Object userMsgId = data.get("user_message_id");
+        Object assistantMsgId = data.get("assistant_message_id");
         assertThat(userMsgId).as("缺少 user_message_id").isNotNull();
         assertThat(assistantMsgId).as("缺少 assistant_message_id").isNotNull();
 

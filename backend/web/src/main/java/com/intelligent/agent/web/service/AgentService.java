@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.intelligent.agent.web.api.chat.LocalChatService;
 import com.intelligent.agent.web.dto.request.ChatRequest;
 import com.intelligent.agent.web.dto.WebSocketMessageType;
+import com.intelligent.agent.web.domain.conversation.ConversationService;
 import com.intelligent.agent.web.ai.tool.ToolExecutor;
 import com.intelligent.agent.web.util.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -14,10 +15,13 @@ import org.springframework.web.socket.WebSocketSession;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 
 /**
@@ -34,11 +38,12 @@ public class AgentService {
     private final LocalChatService localChatService;
     private final ModelService modelService;
     private final ToolExecutor toolExecutor;
+    private final ConversationService conversationService;
 
     public AgentService(ObjectMapper objectMapper,
                         @Qualifier("streamExecutor") ExecutorService streamExecutor,
                         LocalChatService localChatService) {
-        this(objectMapper, streamExecutor, localChatService, null, null);
+        this(objectMapper, streamExecutor, localChatService, null, null, null);
     }
 
     @Autowired
@@ -46,12 +51,14 @@ public class AgentService {
                         @Qualifier("streamExecutor") ExecutorService streamExecutor,
                         LocalChatService localChatService,
                         ModelService modelService,
-                        ToolExecutor toolExecutor) {
+                        ToolExecutor toolExecutor,
+                        ConversationService conversationService) {
         this.objectMapper = objectMapper;
         this.streamExecutor = streamExecutor;
         this.localChatService = localChatService;
         this.modelService = modelService;
         this.toolExecutor = toolExecutor;
+        this.conversationService = conversationService;
     }
 
     // ── 非流式（ChatController / 飞书接入用）──────────────────
@@ -79,6 +86,13 @@ public class AgentService {
             Map<String, Object> result = new HashMap<>();
             result.put("response",   response == null ? "服务异常" : response);
             result.put("tool_calls", Collections.emptyList());
+            // 2026-08-15 补齐：会话持久化 + message_id（对齐 Python chat_router，
+            // 撤回级联依赖这些 id）
+            Map<String, String> ids = persistTurn(request, response);
+            if (ids != null) {
+                result.put("user_message_id", ids.get("user"));
+                result.put("assistant_message_id", ids.get("assistant"));
+            }
             log.info("本地聊天服务响应成功");
             return result;
         } catch (Exception e) {
@@ -109,6 +123,11 @@ public class AgentService {
                         }
                         if (WebSocketMessageType.CHAT_DONE.equals(wsMsg.get("type"))) {
                             chatDoneEmitted[0] = true;
+                            Map<String, String> ids = persistTurn(request, fullMsg.toString());
+                            if (ids != null) {
+                                wsMsg.put("user_message_id", ids.get("user"));
+                                wsMsg.put("assistant_message_id", ids.get("assistant"));
+                            }
                         }
                         if (isQuietWsEvent(event.type())) {
                             JsonUtil.sendJsonMessageQuiet(session, wsMsg);
@@ -241,6 +260,37 @@ public class AgentService {
             JsonUtil.sendJsonMessageQuiet(session, doneMsg);
             log.info("finally 补发 chat_done, requestId: {}", requestId);
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * 把一轮对话（用户消息 + 助手回复）持久化到会话历史，返回分配的 message_id。
+     * 2026-08-15 补齐：Java REST/WS 聊天此前不落库，撤回级联与历史恢复依赖它。
+     */
+    private Map<String, String> persistTurn(ChatRequest request, String answer) {
+        if (conversationService == null || request.getMessage() == null
+                || request.getMessage().isBlank()) {
+            return null;
+        }
+        String userMsgId = "msg_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        String assistantMsgId = "msg_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        List<Map<String, Object>> messages = new ArrayList<>(2);
+        Map<String, Object> userMsg = new LinkedHashMap<>();
+        userMsg.put("id", userMsgId);
+        userMsg.put("role", "user");
+        userMsg.put("content", request.getMessage());
+        Map<String, Object> assistantMsg = new LinkedHashMap<>();
+        assistantMsg.put("id", assistantMsgId);
+        assistantMsg.put("role", "assistant");
+        assistantMsg.put("content", answer == null ? "" : answer);
+        messages.add(userMsg);
+        messages.add(assistantMsg);
+        try {
+            conversationService.append(request.getUserId(), request.getSessionId(), messages);
+            return Map.of("user", userMsgId, "assistant", assistantMsgId);
+        } catch (Exception e) {
+            log.warn("会话持久化失败: {}", e.getMessage());
+            return null;
+        }
     }
 
     public ObjectMapper getObjectMapper() {

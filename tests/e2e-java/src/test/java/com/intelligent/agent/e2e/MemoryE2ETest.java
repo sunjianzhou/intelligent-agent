@@ -16,8 +16,10 @@ class MemoryE2ETest extends E2EBaseTest {
         Response r = client.get("/api/memory");
         assertThat(r.status()).isEqualTo(200);
         Map<String, Object> data = client.json(r);
-        assertThat(data.containsKey("short_term_count") || data.containsKey("long_term_count"))
-                .isTrue();
+        // Java 契约：{"stats": {"long_term": {"count": N}, "short_term": {"count": N}}}
+        assertThat(data.get("stats")).isInstanceOf(Map.class);
+        Map<?, ?> stats = (Map<?, ?>) data.get("stats");
+        assertThat(stats.containsKey("long_term") && stats.containsKey("short_term")).isTrue();
     }
 
     @Test

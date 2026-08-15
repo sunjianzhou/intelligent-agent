@@ -21,15 +21,14 @@ class ConversationsE2ETest extends E2EBaseTest {
     @Test
     void getConversationNotFound() throws Exception {
         Response r = client.get("/api/conversations/nonexistent-id-xyz");
-        assertThat(r.status()).isEqualTo(200);
-        Map<String, Object> data = client.json(r);
-        assertThat(data.get("success")).isNotEqualTo(true);
+        // Java 契约：guarded() 对不存在会话返回 404
+        assertThat(r.status()).isEqualTo(404);
     }
 
     @Test
     void deleteConversationNotFound() throws Exception {
         Response r = client.delete("/api/conversations/nonexistent-id-xyz");
-        assertThat(r.status()).isEqualTo(200);
+        assertThat(r.status()).isEqualTo(404);
     }
 
     @Test

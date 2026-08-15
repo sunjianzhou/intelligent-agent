@@ -49,7 +49,8 @@ public class ChatController {
         log.info("收到REST聊天请求: {}", request.getMessage());
         try {
             long startTime = System.currentTimeMillis();
-            String response = agentService.chat(request);
+            Map<String, Object> chatResult = agentService.chatFull(request);
+            String response = String.valueOf(chatResult.getOrDefault("response", "服务异常"));
             long endTime = System.currentTimeMillis();
 
             double responseTime = (endTime - startTime) / 1000.0;
@@ -57,6 +58,16 @@ public class ChatController {
             HashMap<String, Object> data = new HashMap<>(10);
             data.put("status", "success");
             data.put("response", response);
+            // 2026-08-15：透传会话 message_id（撤回级联/前端消息同步依赖）
+            if (chatResult.get("user_message_id") != null) {
+                data.put("user_message_id", chatResult.get("user_message_id"));
+            }
+            if (chatResult.get("assistant_message_id") != null) {
+                data.put("assistant_message_id", chatResult.get("assistant_message_id"));
+            }
+            if (chatResult.get("tool_calls") != null) {
+                data.put("tool_calls", chatResult.get("tool_calls"));
+            }
             data.put("response_time", responseTime);
             data.put("timestamp", System.currentTimeMillis());
 

@@ -6,13 +6,19 @@ import com.intelligent.agent.web.ai.memory.MemoryRepository;
 import com.intelligent.agent.web.ai.memory.MemorySearchQuery;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 记忆管理端点（本地 {@link MemoryRepository} + {@link ConversationMemoryService}）。
@@ -98,6 +104,104 @@ public class MemoryProxyController {
             results.add(toMap(record));
         }
         return ResponseEntity.ok(Map.of("results", results));
+    }
+
+    /** 会话摘要列表（2026-08-15 补齐，对齐 Python /api/memory/summaries）。 */
+    @GetMapping("/summaries")
+    public ResponseEntity<Map<String, Object>> memorySummaries(
+            @RequestParam(defaultValue = "30") int limit,
+            HttpServletRequest req) {
+        String userId = UserContext.userId(req);
+        List<Map<String, Object>> summaries = memoryRepository.list(
+                        MemorySearchQuery.builder(userId, "", Math.max(1, limit))
+                                .type("summary").build())
+                .stream().map(MemoryProxyController::toMap).toList();
+        return ResponseEntity.ok(Map.of(
+                "summaries", summaries,
+                "count", summaries.size()));
+    }
+
+    /** 记忆导出（json/markdown，2026-08-15 补齐，对齐 Python /api/memory/export）。 */
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportMemory(
+            @RequestParam(defaultValue = "json") String format,
+            HttpServletRequest req) throws IOException {
+        String userId = UserContext.userId(req);
+        List<MemoryRecord> records = memoryRepository.list(
+                MemorySearchQuery.builder(userId, "", 100_000).build());
+        String contentType;
+        String extension;
+        String content;
+        if ("markdown".equals(format)) {
+            contentType = "text/markdown;charset=UTF-8";
+            extension = "md";
+            StringBuilder sb = new StringBuilder("# 记忆导出\n\n");
+            for (MemoryRecord record : records) {
+                sb.append("- [").append(record.type() == null ? "memory" : record.type())
+                        .append("] ").append(record.content()).append('\n');
+            }
+            content = sb.toString();
+        } else {
+            contentType = "application/json;charset=UTF-8";
+            extension = "json";
+            List<Map<String, Object>> items = records.stream()
+                    .map(MemoryProxyController::toMap).toList();
+            content = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .writerWithDefaultPrettyPrinter().writeValueAsString(items);
+        }
+        String filename = "memory-export-" + Instant.now().toEpochMilli() + "." + extension;
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(MediaType.parseMediaType(contentType))
+                .body(content.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** 手动触发记忆蒸馏 + 摘要（2026-08-15 补齐，对齐 Python /api/memory/distill）。 */
+    @PostMapping("/distill")
+    public ResponseEntity<Map<String, Object>> distillMemory(HttpServletRequest req) {
+        String userId = UserContext.userId(req);
+        int records = conversationMemoryService.distillNow(userId);
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "distilled", records));
+    }
+
+    /** 批量导入记忆（2026-08-15 补齐，对齐 Python /api/memory/batch-import）。 */
+    @PostMapping("/batch-import")
+    public ResponseEntity<Map<String, Object>> batchImport(
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest req) {
+        String userId = UserContext.userId(req);
+        List<?> items = body.get("items") instanceof List
+                ? (List<?>) body.get("items") : List.of();
+        List<String> importedIds = new ArrayList<>();
+        for (Object item : items) {
+            if (!(item instanceof Map)) {
+                continue;
+            }
+            Map<?, ?> entry = (Map<?, ?>) item;
+            Object contentObj = entry.get("content");
+            String content = contentObj == null ? "" : String.valueOf(contentObj).trim();
+            if (content.isBlank() || "null".equals(content)) {
+                continue;
+            }
+            Object categoryObj = entry.get("category");
+            String category = categoryObj == null ? "" : String.valueOf(categoryObj).trim();
+            double importance = entry.get("importance") instanceof Number
+                    ? ((Number) entry.get("importance")).doubleValue() : 0.5;
+            MemoryRecord record = new MemoryRecord(
+                    "mem_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12),
+                    userId, content, null, null,
+                    category.isBlank() ? "knowledge" : category,
+                    Map.of("category", category.isBlank() ? "knowledge" : category),
+                    importance);
+            memoryRepository.upsert(record);
+            importedIds.add(record.id());
+        }
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "imported_count", importedIds.size(),
+                "memory_ids", importedIds));
     }
 
     @DeleteMapping("/{memoryId}")

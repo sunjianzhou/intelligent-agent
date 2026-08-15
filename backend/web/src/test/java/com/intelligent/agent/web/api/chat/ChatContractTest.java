@@ -65,7 +65,9 @@ class ChatContractTest {
 
     @Test
     void chatReturnsOkWithResponseString() throws Exception {
-        when(agentService.chat(any(ChatRequest.class))).thenReturn("你好");
+        when(agentService.chatFull(any(ChatRequest.class))).thenReturn(Map.of(
+                "response", "你好",
+                "tool_calls", List.of()));
 
         mockMvc.perform(post("/api/chat")
                         .requestAttr("userId", "jwt-user")
@@ -73,13 +75,31 @@ class ChatContractTest {
                         .content("{\"message\":\"hi\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.response").isString());
+                .andExpect(jsonPath("$.data.response").isString())
+                .andExpect(jsonPath("$.data.user_message_id").doesNotExist());
 
         ArgumentCaptor<ChatRequest> captor = ArgumentCaptor.forClass(ChatRequest.class);
-        verify(agentService).chat(captor.capture());
+        verify(agentService).chatFull(captor.capture());
         assertThat(captor.getValue().getUserId())
                 .as("REST chat 必须使用 JWT 用户 ID，而非请求体/空值")
                 .isEqualTo("jwt-user");
+    }
+
+    @Test
+    void chatPassesMessageIdsFromChatFull() throws Exception {
+        when(agentService.chatFull(any(ChatRequest.class))).thenReturn(Map.of(
+                "response", "你好",
+                "tool_calls", List.of(),
+                "user_message_id", "msg_user_1",
+                "assistant_message_id", "msg_assistant_1"));
+
+        mockMvc.perform(post("/api/chat")
+                        .requestAttr("userId", "jwt-user")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"message\":\"hi\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user_message_id").value("msg_user_1"))
+                .andExpect(jsonPath("$.data.assistant_message_id").value("msg_assistant_1"));
     }
 
     @Test
