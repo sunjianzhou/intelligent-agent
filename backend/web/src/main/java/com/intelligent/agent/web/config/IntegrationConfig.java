@@ -3,6 +3,7 @@ package com.intelligent.agent.web.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.intelligent.agent.web.domain.task.TaskService;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
+import com.intelligent.agent.web.ai.tool.ToolExecutor;
 import com.intelligent.agent.web.feishu.FeishuMessageSender;
 import com.intelligent.agent.web.im.RetryConfig;
 import com.intelligent.agent.web.infrastructure.scheduler.TaskSchedulerService;
@@ -16,6 +17,7 @@ import com.intelligent.agent.web.integration.wechat.WeChatChannelClient;
 import com.intelligent.agent.web.infrastructure.security.SecretCrypto;
 import com.intelligent.agent.web.wecom.WeComMessageSender;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.TaskScheduler;
@@ -88,8 +90,9 @@ public class IntegrationConfig {
     @Bean
     public TaskSchedulerService taskSchedulerService(TaskService taskService,
                                                      TaskScheduler taskScheduler,
-                                                     LlmProviderRouter llmProviderRouter) {
+                                                     LlmProviderRouter llmProviderRouter,
+                                                     ObjectProvider<ToolExecutor> toolExecutorProvider) {
         return new TaskSchedulerService(
-                taskService, Path.of(dataDir), taskScheduler, llmProviderRouter);
+                taskService, Path.of(dataDir), taskScheduler, llmProviderRouter, toolExecutorProvider);
     }
 }

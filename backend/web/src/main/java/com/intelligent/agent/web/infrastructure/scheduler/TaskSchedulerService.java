@@ -4,6 +4,10 @@ import com.intelligent.agent.web.domain.task.TaskService;
 import com.intelligent.agent.web.ai.llm.ChatMessage;
 import com.intelligent.agent.web.ai.llm.ChatTurn;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
+import com.intelligent.agent.web.ai.tool.ToolCall;
+import com.intelligent.agent.web.ai.tool.ToolExecutionContext;
+import com.intelligent.agent.web.ai.tool.ToolExecutor;
+import com.intelligent.agent.web.ai.tool.ToolResult;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -25,12 +29,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.springframework.beans.factory.ObjectProvider;
 
 /**
  * 任务调度服务（Plan 2 / Task 5）：
  * 每秒 tick，按 immediate / delay / interval / datetime / cron 计算到期任务，
- * 执行动作并更新任务状态。当前动作：log（写入 actions.log）；
- * 其他动作标记 failed（等待 Plan 3 工具注册接入）。
+ * 执行动作并更新任务状态。动作：log（写入 actions.log）、llm_generate（LLM 生成）、
+ * 任意已注册工具名（2026-08-15 补齐，注入 ToolExecutor）。
  */
 @Slf4j
 public class TaskSchedulerService {
@@ -40,6 +45,7 @@ public class TaskSchedulerService {
     private final TaskScheduler taskScheduler;
     private final Queue<Map<String, Object>> notifications = new ConcurrentLinkedQueue<>();
     private final LlmProviderRouter llmRouter;
+    private final ObjectProvider<ToolExecutor> toolExecutorProvider;
     private final ExecutorService taskExecutor;
     private final AtomicBoolean ticking = new AtomicBoolean(false);
     private ScheduledFuture<?> scheduledFuture;
@@ -55,10 +61,17 @@ public class TaskSchedulerService {
 
     public TaskSchedulerService(TaskService taskService, Path dataDir, TaskScheduler taskScheduler,
                                 LlmProviderRouter llmRouter) {
+        this(taskService, dataDir, taskScheduler, llmRouter, (ObjectProvider<ToolExecutor>) null);
+    }
+
+    public TaskSchedulerService(TaskService taskService, Path dataDir, TaskScheduler taskScheduler,
+                                LlmProviderRouter llmRouter,
+                                ObjectProvider<ToolExecutor> toolExecutorProvider) {
         this.taskService = taskService;
         this.actionLog = dataDir.resolve("actions.log");
         this.taskScheduler = taskScheduler;
         this.llmRouter = llmRouter;
+        this.toolExecutorProvider = toolExecutorProvider;
         this.taskExecutor = Executors.newFixedThreadPool(2, r -> {
             Thread t = new Thread(r, "agent-task-executor");
             t.setDaemon(true);
@@ -269,8 +282,7 @@ public class TaskSchedulerService {
                     task.put("completed_at", now);
                 }
             } else {
-                task.put("last_error", "action 未注册: " + action);
-                task.put("status", "failed");
+                executeToolAction(task, action);
             }
         } catch (Exception e) {
             log.error("任务执行失败 taskId={}: {}", task.get("id"), e.getMessage());
@@ -278,6 +290,38 @@ public class TaskSchedulerService {
             task.put("status", "failed");
         }
         taskService.saveTask(task);
+    }
+
+    /** 任意已注册工具名 action：以任务 args 作为工具参数执行，结果进入通知队列。 */
+    private void executeToolAction(Map<String, Object> task, String action) {
+        ToolExecutor toolExecutor = toolExecutorProvider == null ? null
+                : toolExecutorProvider.getIfAvailable();
+        if (toolExecutor == null || toolExecutor.definitions().stream()
+                .noneMatch(d -> d.name().equals(action))) {
+            task.put("last_error", "action 未注册: " + action);
+            task.put("status", "failed");
+            return;
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> args = task.get("args") instanceof Map
+                ? (Map<String, Object>) task.get("args") : Map.of();
+        String userId = String.valueOf(task.getOrDefault("user_id", "scheduler"));
+        ToolResult result = toolExecutor.execute(
+                ToolCall.of(action, args),
+                ToolExecutionContext.of(userId, "user"));
+        String now = Instant.now().toString();
+        if (ToolResult.SUCCESS.equals(result.status())) {
+            Object data = result.data() != null ? result.data() : "ok";
+            String text = String.valueOf(data);
+            notify(now, task, text);
+            task.put("last_result", text);
+            task.put("status", "completed");
+            task.put("completed_at", now);
+        } else {
+            task.put("last_error", "工具执行失败: "
+                    + (result.error() != null ? result.error() : result.status()));
+            task.put("status", "failed");
+        }
     }
 
     private void notify(String now, Map<String, Object> task, String message) {
