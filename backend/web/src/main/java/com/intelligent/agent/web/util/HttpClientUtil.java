@@ -9,6 +9,7 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,13 +31,23 @@ public class HttpClientUtil {
     private final CloseableHttpClient httpClient;
 
     public HttpClientUtil() {
+        // J-03 闭环（2026-08-15）：显式连接池，避免高并发下连接耗尽/反复建连
+        PoolingHttpClientConnectionManager connectionManager =
+                new PoolingHttpClientConnectionManager();
+        connectionManager.setMaxTotal(50);
+        connectionManager.setDefaultMaxPerRoute(20);
         RequestConfig config = RequestConfig.custom()
                 .setConnectTimeout(5000)
                 .setSocketTimeout(30000)
+                .setConnectionRequestTimeout(10000)
                 .build();
 
         this.httpClient = HttpClients.custom()
+                .setConnectionManager(connectionManager)
                 .setDefaultRequestConfig(config)
+                .setConnectionTimeToLive(60, java.util.concurrent.TimeUnit.SECONDS)
+                .evictExpiredConnections()
+                .evictIdleConnections(30, java.util.concurrent.TimeUnit.SECONDS)
                 .build();
     }
 
