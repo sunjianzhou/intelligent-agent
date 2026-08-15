@@ -63,9 +63,24 @@ public class JsonFileStore {
         Path path = resolve(parts);
         try {
             Files.createDirectories(path.getParent());
-            Files.writeString(path, objectMapper.writerWithDefaultPrettyPrinter()
+            // 原子写：先写同目录临时文件再 ATOMIC_MOVE，避免并发/中断产生半截 JSON；
+            // 同目录保证同一文件系统，rename 才是原子的。
+            Path tmp = path.resolveSibling(path.getFileName() + ".tmp");
+            Files.writeString(tmp, objectMapper.writerWithDefaultPrettyPrinter()
                     .writeValueAsString(data == null ? Map.of() : data), StandardCharsets.UTF_8);
+            Files.move(tmp, path, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
+            // 原子移动失败（如文件系统不支持）时回退直接写，尽量保证数据可达
+            if (Files.exists(path.resolveSibling(path.getFileName() + ".tmp"))) {
+                try {
+                    Files.move(path.resolveSibling(path.getFileName() + ".tmp"), path,
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    return;
+                } catch (IOException ignored) {
+                    // fall through to error
+                }
+            }
             throw new IllegalStateException("写入 JSON 文件失败 " + path, e);
         }
     }

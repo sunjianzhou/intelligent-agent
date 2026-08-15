@@ -43,7 +43,7 @@ public class DomainConfig {
 
     @Bean
     public TaskService taskService() {
-        return new TaskService();
+        return new TaskService(Path.of(dataDir));
     }
 
     @Bean

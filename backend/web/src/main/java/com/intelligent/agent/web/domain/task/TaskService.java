@@ -2,6 +2,10 @@ package com.intelligent.agent.web.domain.task;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -14,10 +18,12 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 任务领域服务（Plan 2 / Task 3）。
  * <p>
- * 当前为内存任务注册表：create / list / patch / delete / cancel / stats /
- * actions 与 Python simple_scheduler 的 SimpleTask.to_dict() 形状一致。
- * 真正的调度执行（延迟/间隔/定时/Cron 触发）由 Task 5 的
+ * create / list / patch / delete / cancel / stats / actions 与 Python
+ * simple_scheduler 的 SimpleTask.to_dict() 形状一致；调度执行由
  * TaskSchedulerService 接入。
+ * <p>
+ * 2026-08-15 起支持磁盘持久化：构造传入 dataDir 时启动加载
+ * {@code data/tasks.json}，每次变更原子写回（对齐 Python tasks.json 重启恢复）。
  */
 @Slf4j
 public class TaskService {
@@ -25,6 +31,17 @@ public class TaskService {
     public static final List<String> SUPPORTED_ACTIONS = List.of("log", "llm_generate");
 
     private final Map<String, Map<String, Object>> tasks = new ConcurrentHashMap<>();
+    private final Path dataDir;
+
+    /** 纯内存模式（测试/无数据目录场景）。 */
+    public TaskService() {
+        this(null);
+    }
+
+    public TaskService(Path dataDir) {
+        this.dataDir = dataDir;
+        load();
+    }
 
     public Map<String, Object> listTasks(String status, int limit) {
         List<Map<String, Object>> result = tasks.values().stream()
@@ -87,6 +104,7 @@ public class TaskService {
 
         tasks.put((String) task.get("id"), task);
         log.info("任务已创建: id={}, name={}, action={}", task.get("id"), task.get("name"), task.get("action"));
+        persist();
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("success", true);
         response.put("task", task);
@@ -114,6 +132,7 @@ public class TaskService {
             }
         }
         tasks.put(taskId, merged);
+        persist();
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("success", true);
         response.put("task", merged);
@@ -122,6 +141,7 @@ public class TaskService {
 
     public Map<String, Object> deleteTask(String taskId) {
         boolean success = tasks.remove(taskId) != null;
+        persist();
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("success", success);
         response.put("task_id", taskId);
@@ -134,6 +154,7 @@ public class TaskService {
         boolean success = task != null;
         if (success) {
             task.put("status", "cancelled");
+            persist();
         }
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("success", success);
@@ -196,6 +217,59 @@ public class TaskService {
     public void saveTask(Map<String, Object> task) {
         if (task != null && task.get("id") != null) {
             tasks.put((String) task.get("id"), task);
+            persist();
+        }
+    }
+
+    // ── 磁盘持久化（dataDir 非空时启用） ───────────────────────────────
+
+    private Path tasksFile() {
+        return dataDir.resolve("tasks.json");
+    }
+
+    private synchronized void persist() {
+        if (dataDir == null) {
+            return;
+        }
+        try {
+            Files.createDirectories(dataDir);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("tasks", new ArrayList<>(tasks.values()));
+            Path file = tasksFile();
+            Path tmp = file.resolveSibling("tasks.json.tmp");
+            Files.writeString(tmp, new com.fasterxml.jackson.databind.ObjectMapper()
+                    .writerWithDefaultPrettyPrinter().writeValueAsString(data),
+                    StandardCharsets.UTF_8);
+            Files.move(tmp, file, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            log.warn("任务持久化失败: {}", e.getMessage());
+        }
+    }
+
+    private void load() {
+        if (dataDir == null || !Files.exists(tasksFile())) {
+            return;
+        }
+        try {
+            Map<String, Object> data = new com.fasterxml.jackson.databind.ObjectMapper().readValue(
+                    Files.readString(tasksFile(), StandardCharsets.UTF_8),
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+            Object list = data.get("tasks");
+            if (list instanceof List) {
+                for (Object item : (List<?>) list) {
+                    if (item instanceof Map) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> task = (Map<String, Object>) item;
+                        if (task.get("id") != null) {
+                            tasks.put(String.valueOf(task.get("id")), task);
+                        }
+                    }
+                }
+            }
+            log.info("任务已从 {} 恢复 {} 条", tasksFile(), tasks.size());
+        } catch (Exception e) {
+            log.warn("任务加载失败（以空表启动）: {}", e.getMessage());
         }
     }
 

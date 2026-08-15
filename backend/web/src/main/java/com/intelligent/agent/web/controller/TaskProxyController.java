@@ -75,7 +75,10 @@ public class TaskProxyController {
 
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> taskStats() {
-        return ok(taskService.stats());
+        Map<String, Object> stats = taskService.stats();
+        // 2026-08-15：scheduler_running 不再硬编码 false，由装配状态如实反映
+        stats.put("scheduler_running", scheduler != null);
+        return ok(stats);
     }
 
     @GetMapping("/actions")
