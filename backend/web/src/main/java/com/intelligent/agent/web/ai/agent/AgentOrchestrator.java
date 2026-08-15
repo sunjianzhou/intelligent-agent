@@ -142,6 +142,31 @@ public class AgentOrchestrator {
             if (!memory.projectContext().isBlank()) {
                 messages.add(ChatMessage.system("[PROJECT CONTEXT]\n" + memory.projectContext()));
             }
+            // 2026-08-15 补齐：注入项目待处理任务列表（对齐 Python pending_tasks）
+            if (ctx.projectId() != null && !ctx.projectId().isBlank()
+                    && ctx.pendingTasks() != null && !ctx.pendingTasks().isEmpty()) {
+                List<Map<String, Object>> active = ctx.pendingTasks().stream()
+                        .filter(t -> {
+                            String status = String.valueOf(t.getOrDefault("status", "pending"));
+                            return "pending".equals(status) || "in_progress".equals(status);
+                        })
+                        .toList();
+                if (!active.isEmpty()) {
+                    StringBuilder taskBlock = new StringBuilder("[TASKS]\n");
+                    for (Map<String, Object> t : active) {
+                        String status = switch (String.valueOf(t.getOrDefault("status", "pending"))) {
+                            case "in_progress" -> "进行中";
+                            case "done" -> "已完成";
+                            case "blocked" -> "已阻塞";
+                            default -> "待处理";
+                        };
+                        taskBlock.append("- id=").append(t.getOrDefault("id", ""))
+                                .append(" [").append(status).append("] ")
+                                .append(t.getOrDefault("title", "")).append('\n');
+                    }
+                    messages.add(ChatMessage.system(taskBlock.toString().stripTrailing()));
+                }
+            }
             messages.addAll(memory.history());
         }
         messages.add(ChatMessage.user(ctx.message()));

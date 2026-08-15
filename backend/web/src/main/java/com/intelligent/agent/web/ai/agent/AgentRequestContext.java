@@ -1,5 +1,6 @@
 package com.intelligent.agent.web.ai.agent;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -18,6 +19,8 @@ import java.util.Map;
  * @param imageBase64 多模态图片（base64，不含 data URL 前缀；可为 null）
  * @param sceneChatType 多人会话场景标记（group / p2p；可为 null）
  * @param sceneMentioned group 场景下是否被显式 @ 提及
+ * @param pendingTasks  项目待处理任务列表（前端随请求传入，注入 [TASKS] 上下文；
+ *                      2026-08-15 补齐，对齐 Python pending_tasks）
  */
 public record AgentRequestContext(
         String userId,
@@ -32,12 +35,15 @@ public record AgentRequestContext(
         Map<String, Object> options,
         String imageBase64,
         String sceneChatType,
-        boolean sceneMentioned) {
+        boolean sceneMentioned,
+        List<Map<String, Object>> pendingTasks) {
 
     public AgentRequestContext {
         userId = userId == null ? "" : userId;
         message = message == null ? "" : message;
         options = options == null ? Map.of() : Map.copyOf(options);
+        pendingTasks = pendingTasks == null ? List.of()
+                : List.copyOf(pendingTasks.stream().filter(java.util.Objects::nonNull).toList());
     }
 
     /** 无图片/场景标记的便捷构造（保持旧调用点兼容）。 */
@@ -45,7 +51,16 @@ public record AgentRequestContext(
                                String projectId, String sessionId, boolean useTools,
                                boolean useMemory, String channel, Map<String, Object> options) {
         this(userId, message, model, persona, projectId, sessionId, useTools, useMemory,
-                channel, options, null, null, false);
+                channel, options, null, null, false, List.of());
+    }
+
+    /** 13 参便捷构造（无 pendingTasks），保持旧调用点兼容。 */
+    public AgentRequestContext(String userId, String message, String model, String persona,
+                               String projectId, String sessionId, boolean useTools,
+                               boolean useMemory, String channel, Map<String, Object> options,
+                               String imageBase64, String sceneChatType, boolean sceneMentioned) {
+        this(userId, message, model, persona, projectId, sessionId, useTools, useMemory,
+                channel, options, imageBase64, sceneChatType, sceneMentioned, List.of());
     }
 
     public static AgentRequestContext of(String userId, String message) {

@@ -24,9 +24,16 @@ import com.intelligent.agent.web.ai.tool.builtin.web.WebSearchTool;
 import com.intelligent.agent.web.ai.tool.builtin.database.DatabaseTool;
 import com.intelligent.agent.web.ai.tool.builtin.feishu.FeishuCalendarTool;
 import com.intelligent.agent.web.ai.tool.builtin.feishu.FeishuTaskTool;
+import com.intelligent.agent.web.ai.tool.builtin.SchedulerTool;
+import com.intelligent.agent.web.ai.tool.builtin.ImageGenTool;
+import com.intelligent.agent.web.ai.tool.builtin.ChannelMessageTool;
 import com.intelligent.agent.web.ai.tool.builtin.HeartRecordTool;
 import com.intelligent.agent.web.domain.role.RoleService;
+import com.intelligent.agent.web.domain.task.TaskService;
+import com.intelligent.agent.web.im.ChannelAdapterManager;
 import com.intelligent.agent.web.integration.feishu.FeishuChannelClient;
+import com.intelligent.agent.web.infrastructure.scheduler.TaskSchedulerService;
+import com.intelligent.agent.web.service.ImageService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -38,8 +45,8 @@ import java.util.List;
 
 /**
  * Agent 编排相关 Spring 装配。
- * 工具注册表当前为空（真实工具在 Plan 2 迁移时逐批注入），
- * 未配置工具时 ReAct 循环退化为纯对话。
+ * 工具注册表：内置工具 bean 在此装配（2026-08-15 共 14 个），
+ * MCP 工具经 McpToolRegistry 追加；未装配工具时 ReAct 循环退化为纯对话。
  */
 @Configuration
 public class AgentConfig {
@@ -49,7 +56,7 @@ public class AgentConfig {
         return new ToolExecutor(tools == null ? List.of() : tools);
     }
 
-    /** TODO-110 Task 1：内置工具注册（calculator/time/file/shell/web_search）。 */
+    /** TODO-110 Task 1 + 2026-08-15 补齐：内置工具注册（12 个 AgentTool bean）。 */
     @Bean
     public CalculatorTool calculatorTool() {
         return new CalculatorTool();
@@ -99,6 +106,49 @@ public class AgentConfig {
             FeishuChannelClient feishuChannelClient,
             @Value("${feishu.oauth-base-url:https://open.feishu.cn}") String feishuBase) {
         return new FeishuTaskTool(feishuChannelClient, feishuBase);
+    }
+
+    /** 2026-08-15：提醒 / 定时任务工具（对齐 Python FunctionTool 五件套）。 */
+    @Bean
+    public SchedulerTool createReminderTool(TaskService taskService,
+                                            TaskSchedulerService taskSchedulerService) {
+        return new SchedulerTool(SchedulerTool.CREATE_REMINDER, taskService, taskSchedulerService);
+    }
+
+    @Bean
+    public SchedulerTool createPeriodicReminderTool(TaskService taskService,
+                                                    TaskSchedulerService taskSchedulerService) {
+        return new SchedulerTool(SchedulerTool.CREATE_PERIODIC_REMINDER, taskService, taskSchedulerService);
+    }
+
+    @Bean
+    public SchedulerTool createOnetimeAiTaskTool(TaskService taskService,
+                                                 TaskSchedulerService taskSchedulerService) {
+        return new SchedulerTool(SchedulerTool.CREATE_ONETIME_AI_TASK, taskService, taskSchedulerService);
+    }
+
+    @Bean
+    public SchedulerTool createPeriodicAiTaskTool(TaskService taskService,
+                                                  TaskSchedulerService taskSchedulerService) {
+        return new SchedulerTool(SchedulerTool.CREATE_PERIODIC_AI_TASK, taskService, taskSchedulerService);
+    }
+
+    @Bean
+    public SchedulerTool listTasksTool(TaskService taskService,
+                                       TaskSchedulerService taskSchedulerService) {
+        return new SchedulerTool(SchedulerTool.LIST_TASKS, taskService, taskSchedulerService);
+    }
+
+    /** 2026-08-15：聊天内图片生成（ComfyUI），对齐 Python ImageGenerationTool。 */
+    @Bean
+    public ImageGenTool imageGenTool(ImageService imageService) {
+        return new ImageGenTool(imageService);
+    }
+
+    /** 2026-08-15：统一 IM 发消息工具，对齐 Python ChannelMessageTool。 */
+    @Bean
+    public ChannelMessageTool channelMessageTool(ChannelAdapterManager channelAdapterManager) {
+        return new ChannelMessageTool(channelAdapterManager);
     }
 
     @Bean
