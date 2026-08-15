@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 
 /**
@@ -38,7 +39,10 @@ public class TaskProxyController {
     }
 
     @PostMapping("/create")
-    public ResponseEntity<Map<String, Object>> createTask(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<Map<String, Object>> createTask(@RequestBody Map<String, Object> body,
+                                                          HttpServletRequest httpRequest) {
+        // 2026-08-15：任务归属真实用户（JWT），通知按用户分发，不再全局广播
+        body.put("user_id", UserContext.userId(httpRequest));
         ResponseEntity<Map<String, Object>> resp = ok(taskService.createTask(body));
         notifyScheduler();
         return resp;

@@ -16,6 +16,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -212,7 +213,13 @@ public class WebSocketController extends TextWebSocketHandler {
         }
     }
 
-    /** 每 5 秒轮询本地调度通知队列，有通知时广播给所有在线 WS 会话。 */
+    /**
+     * 每 5 秒轮询本地调度通知队列。
+     * <p>
+     * 2026-08-15：通知按 user_id 分发——系统级（无 user_id）广播给所有在线会话；
+     * 用户级只推给该用户自己的会话；目标用户不在线时重新入队，等待其上线后再推。
+     * 此前全局广播会造成多用户通知串台。
+     */
     @Scheduled(fixedDelay = 5000)
     public void pushPendingNotifications() {
         if (sessions.isEmpty()) return;
@@ -220,16 +227,65 @@ public class WebSocketController extends TextWebSocketHandler {
                 ? List.of() : taskSchedulerService.pollNotifications();
         if (notifications.isEmpty()) return;
 
-        Map<String, Object> push = new HashMap<>();
-        push.put("type",          WebSocketMessageType.NOTIFICATION);
-        push.put("notifications", notifications);
-        push.put("count",         notifications.size());
-        push.put("timestamp",     LocalDateTime.now().toString());
+        // 按会话 userId 分组（握手时 JwtHandshakeInterceptor 写入 session 属性）
+        Map<String, List<WebSocketSession>> sessionsByUser = new HashMap<>();
+        for (WebSocketSession session : sessions.values()) {
+            if (!session.isOpen()) continue;
+            Object uid = session.getAttributes().get("userId");
+            sessionsByUser.computeIfAbsent(
+                    uid == null ? "" : String.valueOf(uid), k -> new ArrayList<>()).add(session);
+        }
+        if (sessionsByUser.isEmpty()) {
+            taskSchedulerService.requeue(notifications);
+            return;
+        }
 
-        sessions.values().stream()
-                .filter(WebSocketSession::isOpen)
-                .forEach(s -> JsonUtil.sendJsonMessageQuiet(s, push));
-        log.info("推送 {} 条通知给 {} 个在线会话", notifications.size(), sessions.size());
+        List<Map<String, Object>> systemNotifications = new ArrayList<>();
+        Map<String, List<Map<String, Object>>> userNotifications = new HashMap<>();
+        for (Map<String, Object> n : notifications) {
+            Object uid = n.get("user_id");
+            if (uid == null || String.valueOf(uid).isBlank()) {
+                systemNotifications.add(n);
+            } else {
+                userNotifications.computeIfAbsent(String.valueOf(uid),
+                        k -> new ArrayList<>()).add(n);
+            }
+        }
+
+        // 系统级通知：广播到所有在线会话
+        if (!systemNotifications.isEmpty()) {
+            Map<String, Object> push = new HashMap<>();
+            push.put("type",          WebSocketMessageType.NOTIFICATION);
+            push.put("notifications", systemNotifications);
+            push.put("count",         systemNotifications.size());
+            push.put("timestamp",     LocalDateTime.now().toString());
+            sessions.values().stream()
+                    .filter(WebSocketSession::isOpen)
+                    .forEach(s -> JsonUtil.sendJsonMessageQuiet(s, push));
+        }
+
+        // 用户级通知：只推给该用户自己的会话；不在线则重新入队
+        List<Map<String, Object>> undelivered = new ArrayList<>();
+        int deliveredUsers = 0;
+        for (Map.Entry<String, List<Map<String, Object>>> entry : userNotifications.entrySet()) {
+            List<WebSocketSession> userSessions = sessionsByUser.get(entry.getKey());
+            if (userSessions == null || userSessions.isEmpty()) {
+                undelivered.addAll(entry.getValue());
+                continue;
+            }
+            deliveredUsers++;
+            Map<String, Object> push = new HashMap<>();
+            push.put("type",          WebSocketMessageType.NOTIFICATION);
+            push.put("notifications", entry.getValue());
+            push.put("count",         entry.getValue().size());
+            push.put("timestamp",     LocalDateTime.now().toString());
+            userSessions.forEach(s -> JsonUtil.sendJsonMessageQuiet(s, push));
+        }
+        if (!undelivered.isEmpty()) {
+            taskSchedulerService.requeue(undelivered);
+        }
+        log.info("通知分发: 系统 {} 条, 用户 {} 人, 未送达重入队 {} 条",
+                systemNotifications.size(), deliveredUsers, undelivered.size());
     }
 
     @Override

@@ -325,10 +325,30 @@ public class TaskSchedulerService {
     }
 
     private void notify(String now, Map<String, Object> task, String message) {
-        notifications.add(Map.of(
-                "message", message,
-                "timestamp", now,
-                "task_id", String.valueOf(task.getOrDefault("id", ""))));
+        String userId = str(task.get("user_id"));
+        if (userId == null || userId.isBlank()) {
+            Object argsUserId = task.get("args") instanceof Map
+                    ? ((Map<?, ?>) task.get("args")).get("user_id") : null;
+            userId = argsUserId == null ? null : String.valueOf(argsUserId);
+        }
+        // 2026-08-15：通知带 user_id（null = 系统级，广播到所有会话），
+        // WS 控制器按会话 userId 过滤分发
+        Map<String, Object> entry = new java.util.LinkedHashMap<>();
+        entry.put("message", message);
+        entry.put("timestamp", now);
+        entry.put("task_id", String.valueOf(task.getOrDefault("id", "")));
+        if (userId != null && !userId.isBlank()) {
+            entry.put("user_id", userId);
+        }
+        notifications.add(entry);
+    }
+
+    /** 未被任何在线会话接收的通知重新入队（等待目标用户上线）。 */
+    public void requeue(List<Map<String, Object>> undelivered) {
+        if (undelivered == null || undelivered.isEmpty()) {
+            return;
+        }
+        undelivered.stream().filter(java.util.Objects::nonNull).forEach(notifications::add);
     }
 
     private void appendLog(String timestamp, String message) {

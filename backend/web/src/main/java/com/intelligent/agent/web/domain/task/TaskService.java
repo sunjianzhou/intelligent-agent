@@ -64,6 +64,9 @@ public class TaskService {
                 ? "task_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8) : id);
         task.put("name", str(body.get("name")));
         task.put("description", str(body.getOrDefault("description", "")));
+        // 2026-08-15：任务归属用户（REST 创建时由控制器从 JWT 注入；
+        // 无归属的任务通知按系统级广播）
+        task.put("user_id", body.get("user_id") == null ? null : str(body.get("user_id")));
         task.put("action", str(body.getOrDefault("action", "log")));
         task.put("args", body.getOrDefault("args", Map.of()));
         task.put("schedule_type", str(body.getOrDefault("schedule_type", "immediate")));
