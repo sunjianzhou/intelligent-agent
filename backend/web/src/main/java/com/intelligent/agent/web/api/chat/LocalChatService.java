@@ -45,7 +45,7 @@ public class LocalChatService {
                 request.getUserId(),
                 request.getMessage(),
                 resolveModel(request),
-                null,
+                request.getPersona(),
                 request.getProjectId(),
                 request.getSessionId(),
                 Boolean.TRUE.equals(request.getUseTools()),
@@ -54,7 +54,8 @@ public class LocalChatService {
                 Map.of(),
                 request.getImageBase64(),
                 request.getSceneChatType(),
-                Boolean.TRUE.equals(request.getSceneMentioned()));
+                Boolean.TRUE.equals(request.getSceneMentioned()),
+                request.getPendingTasks());
     }
 
     /** 请求显式指定模型优先；否则按用户偏好解析（ModelService），确保 per-user 模型切换生效。 */

@@ -8,21 +8,28 @@ import com.intelligent.agent.web.service.AgentService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import reactor.core.publisher.Flux;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -44,13 +51,16 @@ class ChatContractTest {
     @Mock
     private AgentService agentService;
 
+    @Mock
+    private LocalChatService localChatService;
+
     private MockMvc mockMvc;
     private final ObjectMapper mapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new ChatController(agentService, null, mapper)).build();
+                new ChatController(agentService, localChatService, mapper)).build();
     }
 
     @Test
@@ -58,11 +68,38 @@ class ChatContractTest {
         when(agentService.chat(any(ChatRequest.class))).thenReturn("你好");
 
         mockMvc.perform(post("/api/chat")
+                        .requestAttr("userId", "jwt-user")
                         .contentType(APPLICATION_JSON)
                         .content("{\"message\":\"hi\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.response").isString());
+
+        ArgumentCaptor<ChatRequest> captor = ArgumentCaptor.forClass(ChatRequest.class);
+        verify(agentService).chat(captor.capture());
+        assertThat(captor.getValue().getUserId())
+                .as("REST chat 必须使用 JWT 用户 ID，而非请求体/空值")
+                .isEqualTo("jwt-user");
+    }
+
+    @Test
+    void streamBindsUserIdFromJwtAttribute() throws Exception {
+        when(localChatService.stream(any(ChatRequest.class))).thenReturn(Flux.empty());
+        MvcResult result = mockMvc.perform(post("/api/chat/stream")
+                        .requestAttr("userId", "feishu:ou_jwt")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"message\":\"hi\",\"use_tools\":false,\"use_memory\":false}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<ChatRequest> captor = ArgumentCaptor.forClass(ChatRequest.class);
+        verify(localChatService).stream(captor.capture());
+        assertThat(captor.getValue().getUserId())
+                .as("SSE 流式聊天必须使用 JWT 用户 ID")
+                .isEqualTo("feishu:ou_jwt");
     }
 
     @Test

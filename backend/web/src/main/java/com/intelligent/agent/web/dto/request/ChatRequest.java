@@ -43,6 +43,9 @@ public class ChatRequest {
     @JsonProperty("model")
     private String model;
 
+    /** 请求指定的角色名/ID；为空时按用户激活角色（CLI !persona 与前端选择器共用）。 */
+    private String persona;
+
     /** 多模态图片（base64，不含 data URL 前缀；非多模态模型时忽略；上限 10MB 原始图片 ≈ 13.3MB base64）*/
     @JsonProperty("image_base64")
     @Size(max = 14_000_000, message = "图片大小不能超过 10MB")

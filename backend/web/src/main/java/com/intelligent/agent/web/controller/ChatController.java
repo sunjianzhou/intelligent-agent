@@ -14,6 +14,7 @@ import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.HashMap;
 import java.util.Map;
@@ -40,7 +41,11 @@ public class ChatController {
     }
 
     @PostMapping("/chat")
-    public ResponseEntity<ApiResponse<HashMap>> chat(@Valid @RequestBody ChatRequest request) {
+    public ResponseEntity<ApiResponse<HashMap>> chat(@Valid @RequestBody ChatRequest request,
+                                                     HttpServletRequest httpRequest) {
+        // 真实用户 ID 一律取 JWT（JwtAuthFilter 写入 request attribute），
+        // 不信任请求体/客户端传入的身份（REST 路径此前 userId 恒为 null → 所有用户共享 "default" 记忆）。
+        request.setUserId(UserContext.userId(httpRequest));
         log.info("收到REST聊天请求: {}", request.getMessage());
         try {
             long startTime = System.currentTimeMillis();
@@ -69,7 +74,9 @@ public class ChatController {
 
     /** SSE 流式聊天（CLI 契约 /api/chat/stream）。 */
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<ServerSentEvent<String>> stream(@Valid @RequestBody ChatRequest request) {
+    public Flux<ServerSentEvent<String>> stream(@Valid @RequestBody ChatRequest request,
+                                                HttpServletRequest httpRequest) {
+        request.setUserId(UserContext.userId(httpRequest));
         return localChatService.stream(request)
                 .map(event -> ServerSentEvent.<String>builder()
                         .event(event.type())
