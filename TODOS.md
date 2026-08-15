@@ -136,21 +136,29 @@
 
 ### P2 架构 / 体验
 
-- [ ] 通知 per-user 分发：通知项带 user_id，WS 只推当前用户（当前全局广播）
+- [x] 通知 per-user 分发：任务创建时注入 JWT user_id → 通知带 user_id →
+      WS 按会话 userId 过滤推送；目标用户不在线时重新入队等待上线；系统级通知广播
+      ✅ 2026-08-15（TaskService/TaskProxyController/TaskSchedulerService/WebSocketController
+      + WebSocketControllerTest 4 用例）
 - [x] 移除 docker-compose 临时 `LOGGING_LEVEL_COM_LARK_OAPI=DEBUG` ✅ 2026-08-15
 - [x] `SkillView` 残留 2 处 `alert()` + 1 处 `confirm()` 改 `ElMessage` /
       `useConfirmDialogStore`（违反禁止原生弹窗约定）✅ 2026-08-15
 - [x] `TaskService.stats()` 的 `scheduler_running` 硬编码 false 修正（控制器注入调度器状态）✅ 2026-08-15
 - [x] `AgentConfig` 过期注释（"工具注册表当前为空"）清理 ✅ 2026-08-15
-- [ ] J-03 闭环：`RestTemplate`/`HttpClientUtil` 显式连接池（Apache Pooling 或 JDK HttpClient）
+- [x] J-03 闭环：`RestTemplate` 换 HttpClient 5 连接池（max 50/route 20 + 驱逐），
+      `HttpClientUtil` 显式 PoolingHttpClientConnectionManager（TTL 60s + 空闲驱逐）
+      ✅ 2026-08-15
 - [ ] 前端大视图拆分：`ChatView.vue` 93KB / `TasksView` 44KB / `MemoryView` 39KB 等
       （P3 大项，按需推进）
-- [ ] E2E 去留决策：`tests/e2e`（17 个 pytest 文件）保留（仅测 Java）或迁 Java 集成测试
+- [ ] E2E 去留决策：`tests/e2e`（17 个 pytest 文件）保留（仅测 Java）或迁 Java 集成测试。
+      建议保留：它们是测试而非 agent 实现，删除 Python 后仍需黑盒回归；若要求仓库零 Python，
+      再评估迁 Java 集成测试（中等工作量）
 - [ ] 清理 `__pycache__` / `.pytest_cache` 残留（已 gitignore，沙箱策略拦截递归删除，
-      可手动删除或留待清理）
+      可手动删除或留待清理；不影响任何构建/测试）
 
 > **2026-08-15 推进记录**：P0 4 项 + P1 5 项 + P2 4 项完成，全量测试
-> 后端 312（57 类）+ client 12 + 前端 14 全绿。
+> 后端 316（58 类）+ client 12 + 前端 14 全绿；P2 通知分发 + 连接池闭环后
+> 后端 316（58 类）全绿。
 
 ---
 
