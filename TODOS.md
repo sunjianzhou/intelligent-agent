@@ -4,7 +4,12 @@
 
 ---
 
-## 当前待办总览（2026-08-11 更新）
+## 当前待办总览（2026-08-15 更新）
+
+> **2026-08-15 架构审查产出**：新增「Java 迁移收尾」清单（P0 安全/数据 4 项、
+> P1 功能等价 5 项、P2 架构/体验 8 项），见下文专节。核查结论：Python 源码已全删
+> （仅 tests/e2e 为 pytest 测试），但 LLM 工具从 22 个降到 9 个、任务无持久化、
+> REST 聊天 userId 未绑定 JWT，需补齐后再做"彻底删除"决策。
 
 > **迁移队列状态**：TODO-110 Task 1~6 已全部落地（Task 5 三项环境依赖项已于 2026-08-11 Ollama 就绪后完成）；
 > 全量测试 284 用例绿（0 失败）。
@@ -90,6 +95,62 @@
 ### E. 可选小项
 
 - [ ] 飞书群聊表情回应（TODO-81 遗留：emoji 消息类型已具备，缺业务判断）
+
+---
+
+## Java 迁移收尾（2026-08-15 架构审查产出）
+
+> **来源**：2026-08-15 全仓架构审查（HA / 高并发 / 性能 / 易用性 / 可维护性
+> + Python→Java 功能等价核查）。结论：架构切换已完成（55 测试类 / 300 用例绿），
+> 但功能等价存在缺口（Python 22 个 LLM 工具 → Java 9 个），逐项补齐，每项独立提交。
+
+### P0 安全 / 数据（先做）
+
+- [x] REST 聊天 userId 绑定 JWT：`ChatController.chat/stream` 用 `UserContext.userId(req)`
+      覆盖 `ChatRequest.userId`（现为 transient 恒 null → 所有 REST/CLI 用户共享 "default"
+      记忆/角色/缓存）；WS/飞书/企微路径已正确；补契约测试 ✅ 2026-08-15（ChatController + ChatContractTest）
+- [x] CLI 每消息 persona 透传：`ChatRequest` 增 `persona` 字段 → `AgentRequestContext`
+      （`BackendClient` 已发送但被 Jackson 静默忽略）✅ 2026-08-15
+- [x] 任务持久化：`TaskService` 落盘 `data/tasks.json`（原子写 + 启动加载 + 变更写回），
+      对齐 Python tasks.json；`JsonFileStore.write` 改原子写（temp + ATOMIC_MOVE）
+      ✅ 2026-08-15（TaskServicePersistenceTest 4 用例）
+- [x] Docker 数据卷：`docker-compose` backend 挂载 data 命名卷，重建容器不丢
+      会话/角色/记忆/图片/技能/配置 ✅ 2026-08-15
+
+### P1 功能等价（LLM 工具层 + 调度器）
+
+- [x] 调度器任意工具 action：`TaskSchedulerService` 注入 `ToolExecutor`（ObjectProvider
+      打破循环依赖），`action` = 已注册工具名时执行并通知
+      ✅ 2026-08-15（TaskSchedulerServiceTest +2 用例）
+- [x] reminder / 任务 AgentTool：`create_reminder` / `create_periodic_reminder` /
+      `create_periodic_ai_task` / `create_onetime_ai_task` / `list_tasks`
+      （委托 TaskService + TaskSchedulerService.refresh；前端 websocket.js 已特殊展示这两个工具名）
+      ✅ 2026-08-15（SchedulerTool + SchedulerToolTest 5 用例）
+- [x] `image_generation` AgentTool：委托 `ImageService.generate`（ComfyUI），
+      恢复聊天内生成图片能力；超时放宽到 600s ✅ 2026-08-15（ImageGenTool）
+- [x] `channel_message` AgentTool：委托 `ChannelAdapterManager` 路由到
+      feishu/wecom/telegram/web，恢复跨渠道发消息能力 ✅ 2026-08-15（ChannelMessageTool）
+- [x] `pending_tasks` 上下文注入：`AgentRequestContext` 增 pendingTasks →
+      `AgentOrchestrator.initialMessages` 注入任务列表（前端已发送、后端丢弃）
+      ✅ 2026-08-15
+
+### P2 架构 / 体验
+
+- [ ] 通知 per-user 分发：通知项带 user_id，WS 只推当前用户（当前全局广播）
+- [x] 移除 docker-compose 临时 `LOGGING_LEVEL_COM_LARK_OAPI=DEBUG` ✅ 2026-08-15
+- [x] `SkillView` 残留 2 处 `alert()` + 1 处 `confirm()` 改 `ElMessage` /
+      `useConfirmDialogStore`（违反禁止原生弹窗约定）✅ 2026-08-15
+- [x] `TaskService.stats()` 的 `scheduler_running` 硬编码 false 修正（控制器注入调度器状态）✅ 2026-08-15
+- [x] `AgentConfig` 过期注释（"工具注册表当前为空"）清理 ✅ 2026-08-15
+- [ ] J-03 闭环：`RestTemplate`/`HttpClientUtil` 显式连接池（Apache Pooling 或 JDK HttpClient）
+- [ ] 前端大视图拆分：`ChatView.vue` 93KB / `TasksView` 44KB / `MemoryView` 39KB 等
+      （P3 大项，按需推进）
+- [ ] E2E 去留决策：`tests/e2e`（17 个 pytest 文件）保留（仅测 Java）或迁 Java 集成测试
+- [ ] 清理 `__pycache__` / `.pytest_cache` 残留（已 gitignore，沙箱策略拦截递归删除，
+      可手动删除或留待清理）
+
+> **2026-08-15 推进记录**：P0 4 项 + P1 5 项 + P2 4 项完成，全量测试
+> 后端 312（57 类）+ client 12 + 前端 14 全绿。
 
 ---
 
