@@ -198,7 +198,17 @@ public class KnowledgeService {
                     if (sentence.isBlank()) {
                         continue;
                     }
-                    if (current.length() + sentence.length() <= CHUNK_SIZE) {
+                    if (sentence.length() > CHUNK_SIZE) {
+                        // 2026-08-15：超长单句（无标点长文本）硬切分，避免单块超上下文预算
+                        if (current.length() > 0) {
+                            chunks.add(current.toString().trim());
+                            current = new StringBuilder();
+                        }
+                        for (int pos = 0; pos < sentence.length(); pos += CHUNK_SIZE) {
+                            chunks.add(sentence.substring(pos,
+                                    Math.min(sentence.length(), pos + CHUNK_SIZE)));
+                        }
+                    } else if (current.length() + sentence.length() <= CHUNK_SIZE) {
                         current.append(sentence);
                     } else {
                         if (current.length() > 0) {

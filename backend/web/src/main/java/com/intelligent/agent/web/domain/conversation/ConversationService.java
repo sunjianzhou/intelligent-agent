@@ -121,7 +121,9 @@ public class ConversationService {
         return result;
     }
 
-    public Map<String, Object> append(String userId, String sessionId, List<Map<String, Object>> messages) {
+    /** 读-改-写同一会话文件，synchronized 防并发丢更新（单实例部署）。 */
+    public synchronized Map<String, Object> append(String userId, String sessionId,
+                                                   List<Map<String, Object>> messages) {
         String effectiveSessionId = sessionId == null || sessionId.isBlank()
                 ? UUID.randomUUID().toString() : sessionId;
         if (messages == null || messages.isEmpty()) {
@@ -165,7 +167,9 @@ public class ConversationService {
         return result;
     }
 
-    public Map<String, Object> retract(String userId, String sessionId, List<String> requestedIds) {
+    /** 读-改-写同一会话文件，synchronized 防并发丢更新（单实例部署）。 */
+    public synchronized Map<String, Object> retract(String userId, String sessionId,
+                                                    List<String> requestedIds) {
         List<String> dedup = new ArrayList<>(new LinkedHashSet<>(
                 requestedIds == null ? List.of() : requestedIds));
         if (dedup.size() > MAX_RETRACT_BATCH) {

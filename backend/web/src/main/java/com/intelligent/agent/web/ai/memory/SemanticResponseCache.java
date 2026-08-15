@@ -146,7 +146,10 @@ public class SemanticResponseCache {
             return;
         }
         entries.entrySet().stream()
-                .sorted(java.util.Comparator.comparing(e -> e.getValue().createdAt()))
+                // createdAt 同毫秒时按 key 决胜，保证淘汰确定性（2026-08-15）
+                .sorted(java.util.Comparator
+                        .comparing((Map.Entry<String, CacheEntry> e) -> e.getValue().createdAt())
+                        .thenComparing(Map.Entry::getKey))
                 .limit(excess)
                 .forEach(e -> entries.remove(e.getKey(), e.getValue()));
     }

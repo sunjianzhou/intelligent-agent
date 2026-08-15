@@ -170,6 +170,16 @@
 > 后端 316（58 类）全绿。第二轮：工具补齐至 20 个（含 store_memory/search_memories/
 > system_info/advanced_calculator + 上下文架构调整），后端 324（60 类）全绿；
 > E2E 迁移 Java 完成，**仓库零 Python**（git 跟踪无任何 .py）。
+>
+> **2026-08-15 第三轮（E2E 首跑 + 测试补充）**：
+> - Java E2E 对真实后端+Ollama 首跑 68 用例全绿（2 跳过：云端/dolphin 未配置）。
+>   首跑发现 12 个不符：11 个是 pytest 旧断言 vs Java 真实契约（已按真实契约修正），
+>   1 个是真实迁移缺口——`/api/memory/{summaries,export,distill,batch-import}` 前端在调但 405，
+>   已补齐实现；另修复 REST/WS 聊天不落库、无 message_id 的缺口（对齐 Python chat_router，
+>   撤回级联依赖）。
+> - 测试补充（后端 325→342，65 类）：SemanticResponseCache（5）、MemoryProxy 新端点契约（5）、
+>   ConversationService 并发写（2，发现并修复丢更新竞态）、AgentService 聊天持久化（1）、
+>   KnowledgeService 分块（4，发现并修复超长单句不切分）。淘汰确定性 tiebreak 修复。
 
 ---
 
