@@ -27,6 +27,9 @@ import com.intelligent.agent.web.ai.tool.builtin.feishu.FeishuTaskTool;
 import com.intelligent.agent.web.ai.tool.builtin.SchedulerTool;
 import com.intelligent.agent.web.ai.tool.builtin.ImageGenTool;
 import com.intelligent.agent.web.ai.tool.builtin.ChannelMessageTool;
+import com.intelligent.agent.web.ai.tool.builtin.MemoryTool;
+import com.intelligent.agent.web.ai.tool.builtin.SystemInfoTool;
+import com.intelligent.agent.web.ai.tool.builtin.AdvancedCalculatorTool;
 import com.intelligent.agent.web.ai.tool.builtin.HeartRecordTool;
 import com.intelligent.agent.web.domain.role.RoleService;
 import com.intelligent.agent.web.domain.task.TaskService;
@@ -149,6 +152,29 @@ public class AgentConfig {
     @Bean
     public ChannelMessageTool channelMessageTool(ChannelAdapterManager channelAdapterManager) {
         return new ChannelMessageTool(channelAdapterManager);
+    }
+
+    /** 2026-08-15：显式记忆工具（store_memory / search_memories），对齐 Python FunctionTool。 */
+    @Bean
+    public MemoryTool storeMemoryTool(VectorMemoryRepository vectorMemoryRepository) {
+        return new MemoryTool(MemoryTool.STORE_MEMORY, vectorMemoryRepository);
+    }
+
+    @Bean
+    public MemoryTool searchMemoriesTool(VectorMemoryRepository vectorMemoryRepository) {
+        return new MemoryTool(MemoryTool.SEARCH_MEMORIES, vectorMemoryRepository);
+    }
+
+    /** 2026-08-15：系统信息工具，对齐 Python system_info。 */
+    @Bean
+    public SystemInfoTool systemInfoTool(SystemResourceService systemResourceService) {
+        return new SystemInfoTool(systemResourceService);
+    }
+
+    /** 2026-08-15：高级计算器（单位换算），对齐 Python AdvancedCalculatorTool。 */
+    @Bean
+    public AdvancedCalculatorTool advancedCalculatorTool() {
+        return new AdvancedCalculatorTool();
     }
 
     @Bean

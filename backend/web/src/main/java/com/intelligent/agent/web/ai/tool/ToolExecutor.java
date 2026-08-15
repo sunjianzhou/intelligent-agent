@@ -66,7 +66,7 @@ public class ToolExecutor {
             Object result;
             if (definition.timeout() != null) {
                 CompletableFuture<Object> future = CompletableFuture.supplyAsync(
-                        () -> tool.execute(call.arguments()), timeoutExecutor);
+                        () -> tool.execute(call.arguments(), context), timeoutExecutor);
                 try {
                     result = future.get(definition.timeout().toMillis(), TimeUnit.MILLISECONDS);
                 } catch (TimeoutException e) {
@@ -75,7 +75,7 @@ public class ToolExecutor {
                             + definition.timeout().toMillis() + "ms: " + call.name());
                 }
             } else {
-                result = tool.execute(call.arguments());
+                result = tool.execute(call.arguments(), context);
             }
             long elapsedMs = (System.nanoTime() - start) / 1_000_000;
             return new ToolResult(ToolResult.SUCCESS, result, null, elapsedMs);

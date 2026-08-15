@@ -2,6 +2,7 @@ package com.intelligent.agent.web.ai.tool.builtin;
 
 import com.intelligent.agent.web.ai.tool.AgentTool;
 import com.intelligent.agent.web.ai.tool.ToolDefinition;
+import com.intelligent.agent.web.ai.tool.ToolExecutionContext;
 import com.intelligent.agent.web.domain.task.TaskService;
 import com.intelligent.agent.web.infrastructure.scheduler.TaskSchedulerService;
 
@@ -104,26 +105,34 @@ public class SchedulerTool implements AgentTool {
 
     @Override
     public Object execute(Map<String, Object> arguments) {
+        return execute(arguments, null);
+    }
+
+    /** 2026-08-15：任务归属执行上下文中的用户，提醒通知按用户分发。 */
+    @Override
+    public Object execute(Map<String, Object> arguments, ToolExecutionContext context) {
+        String userId = context == null || context.userId() == null || context.userId().isBlank()
+                ? null : context.userId();
         switch (name) {
             case CREATE_REMINDER: {
                 String message = str(arguments.get("message"));
                 int seconds = intOr(arguments.get("remind_in_seconds"), 60);
-                return create(message, "log", "delay", seconds, 0, "⏰ " + message);
+                return create(userId, message, "log", "delay", seconds, 0, "⏰ " + message);
             }
             case CREATE_PERIODIC_REMINDER: {
                 String message = str(arguments.get("message"));
                 int interval = intOr(arguments.get("interval_seconds"), 3600);
-                return create(message, "log", "interval", 0, interval, "⏰ " + message);
+                return create(userId, message, "log", "interval", 0, interval, "⏰ " + message);
             }
             case CREATE_ONETIME_AI_TASK: {
                 String prompt = str(arguments.get("prompt"));
                 int seconds = intOr(arguments.get("remind_in_seconds"), 60);
-                return create(prompt, "llm_generate", "delay", seconds, 0, prompt);
+                return create(userId, prompt, "llm_generate", "delay", seconds, 0, prompt);
             }
             case CREATE_PERIODIC_AI_TASK: {
                 String prompt = str(arguments.get("prompt"));
                 int interval = intOr(arguments.get("interval_seconds"), 3600);
-                return create(prompt, "llm_generate", "interval", 0, interval, prompt);
+                return create(userId, prompt, "llm_generate", "interval", 0, interval, prompt);
             }
             default: { // list_tasks
                 int limit = intOr(arguments.get("limit"), 50);
@@ -145,7 +154,7 @@ public class SchedulerTool implements AgentTool {
         }
     }
 
-    private Object create(String content, String action, String scheduleType,
+    private Object create(String userId, String content, String action, String scheduleType,
                           int delaySeconds, int intervalSeconds, String taskName) {
         if (content == null || content.isBlank()) {
             return "创建失败: 内容不能为空";
@@ -154,6 +163,9 @@ public class SchedulerTool implements AgentTool {
         body.put("name", taskName.length() > 50 ? taskName.substring(0, 50) : taskName);
         body.put("action", action);
         body.put("schedule_type", scheduleType);
+        if (userId != null) {
+            body.put("user_id", userId);
+        }
         body.put("args", Map.of("message", content));
         if ("delay".equals(scheduleType)) {
             body.put("delay_seconds", Math.max(1, delaySeconds));

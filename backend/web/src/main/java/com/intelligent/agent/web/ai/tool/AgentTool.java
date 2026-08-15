@@ -11,4 +11,16 @@ public interface AgentTool {
     ToolDefinition definition();
 
     Object execute(Map<String, Object> arguments);
+
+    /**
+     * 带执行上下文的入口（2026-08-15 架构调整）：需要 userId / role 的工具
+     * （store_memory / search_memories / create_reminder 等）覆写此方法；
+     * 无状态工具沿用默认桥接到 {@link #execute(Map)}。
+     *
+     * @param arguments 工具参数
+     * @param context   单次请求执行上下文（userId / role / 轮次）
+     */
+    default Object execute(Map<String, Object> arguments, ToolExecutionContext context) {
+        return execute(arguments);
+    }
 }

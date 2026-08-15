@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.ai.tool.builtin;
 
 import com.intelligent.agent.web.domain.task.TaskService;
+import com.intelligent.agent.web.ai.tool.ToolExecutionContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -84,5 +85,17 @@ class SchedulerToolTest {
 
         assertThat(String.valueOf(result)).contains("失败");
         assertThat(taskService.allTasks()).isEmpty();
+    }
+
+    @Test
+    void createReminderCarriesContextUserId() {
+        TaskService taskService = new TaskService(tempDir);
+        SchedulerTool tool = new SchedulerTool(
+                SchedulerTool.CREATE_REMINDER, taskService, null);
+
+        tool.execute(Map.of("message", "给 alice 的提醒", "remind_in_seconds", 60),
+                ToolExecutionContext.of("alice", "user"));
+
+        assertThat(taskService.allTasks().get(0).get("user_id")).isEqualTo("alice");
     }
 }
