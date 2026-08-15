@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
@@ -30,16 +31,32 @@ public class ToolExecutor {
     }
 
     public ToolExecutor(List<AgentTool> tools, int maxRounds) {
-        this.tools = tools == null ? Map.of() : tools.stream()
-                .filter(Objects::nonNull)
-                .collect(Collectors.toUnmodifiableMap(
-                        t -> t.definition().name(), t -> t, (a, b) -> a));
+        this.tools = new ConcurrentHashMap<>();
         this.maxRounds = maxRounds;
+        if (tools != null) {
+            for (AgentTool tool : tools) {
+                register(tool);
+            }
+        }
         this.timeoutExecutor = Executors.newCachedThreadPool(r -> {
             Thread t = new Thread(r, "tool-executor");
             t.setDaemon(true);
             return t;
         });
+    }
+
+    /** 运行期注册工具（G2：MCP 服务器连接成功后动态加入）。 */
+    public void register(AgentTool tool) {
+        if (tool != null && tool.definition() != null && tool.definition().name() != null) {
+            tools.put(tool.definition().name(), tool);
+        }
+    }
+
+    /** 运行期移除工具（G2：MCP 服务器断开时清理）。 */
+    public void unregister(String name) {
+        if (name != null) {
+            tools.remove(name);
+        }
     }
 
     public ToolResult execute(ToolCall call, ToolExecutionContext context) {

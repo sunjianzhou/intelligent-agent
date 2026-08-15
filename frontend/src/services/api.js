@@ -298,3 +298,17 @@ export const getTrace       = (requestId) =>
   request(`${BASE}/traces/${encodeURIComponent(requestId)}`)
 export const deleteTrace    = (requestId) =>
   request(`${BASE}/traces/${encodeURIComponent(requestId)}`, { method: 'DELETE' })
+
+// ── MCP 服务器（G2）───────────────────────────────────────
+export const listMcpServers    = () => request(`${BASE}/mcp/servers`)
+export const getMcpServer      = (id) => request(`${BASE}/mcp/servers/${encodeURIComponent(id)}`)
+export const createMcpServer   = (data) =>
+  request(`${BASE}/mcp/servers`, { method: 'POST', body: JSON.stringify(data) })
+export const updateMcpServer   = (id, data) =>
+  request(`${BASE}/mcp/servers/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) })
+export const deleteMcpServer   = (id) =>
+  request(`${BASE}/mcp/servers/${encodeURIComponent(id)}`, { method: 'DELETE' })
+export const connectMcpServer  = (id) =>
+  request(`${BASE}/mcp/servers/${encodeURIComponent(id)}/connect`, { method: 'POST' })
+export const disconnectMcpServer = (id) =>
+  request(`${BASE}/mcp/servers/${encodeURIComponent(id)}/disconnect`, { method: 'POST' })

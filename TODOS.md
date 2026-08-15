@@ -1633,12 +1633,14 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
         历史消息序列化、并行顺序/超时/轮次上限、编排器原生调用与并行时序。
       全量 296 用例绿（0 失败）；真机冒烟（Ollama qwen2.5:7b + SSE /api/chat/stream）：
       工具轮发出 `tool_calls_done`（calculator/17*23），结果回传后流式作答，链路贯通。
-- [ ] G2 真实 MCP 客户端：
-      最小实现 streamable HTTP/stdio 传输（或引入 Spring AI MCP client）；
-      `McpToolRegistry` 从 name→executor 桩改为"连接管理器"（每服务器 session，
-      工具动态注册进 ToolExecutor）；/admin/mcp 从 API Key 配置升级为服务器 CRUD；
-      工具输出按不可信数据处理（8K 截断 + 注入防护）；验收：接一个社区 MCP
-      服务器并在聊天中真实调用。
+- [x] G2 真实 MCP 客户端（HTTP 传输，核心）✅ 2026-08-15：
+      `McpClient`（HTTP JSON-RPC：initialize/tools/list/tools/call，Bearer + session id，
+      JSON/SSE 响应兼容）+ `McpConnectionManager`（服务器配置持久化 + apiKey 加密 +
+      启动自动连接 + 工具动态注册进 ToolExecutor + 断开清理 + 重名跳过）；
+      `/api/mcp/servers` CRUD + connect/disconnect；前端 MCPView 新增服务器管理卡片。
+      测试：McpConnectionManager 4（真实 mock HTTP 服务器）+ McpController 3 + E2E 1。
+      剩余：stdio 传输（npx 类服务器）、MCP session 池化复用、工具输出 8K 截断 +
+      注入防护（McpAgentTool 结果已字符串化，截断待补）。
 - [ ] G3 LLM 评估体系：
       `backend/web/src/test/eval/` 建 golden 用例集（用户消息 → 期望工具调用/答案要点）；
       LLM-as-judge 按 rubric 打分（0-10）；`mvn -Peval` 运行 + 结果 JSONL 落盘；

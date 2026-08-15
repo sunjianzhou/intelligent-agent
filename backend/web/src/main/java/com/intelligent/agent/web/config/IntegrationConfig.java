@@ -12,9 +12,11 @@ import com.intelligent.agent.web.integration.ChannelRouter;
 import com.intelligent.agent.web.integration.comfyui.ComfyUiClient;
 import com.intelligent.agent.web.integration.feishu.FeishuChannelClient;
 import com.intelligent.agent.web.integration.mcp.McpToolRegistry;
+import com.intelligent.agent.web.integration.mcp.McpConnectionManager;
 import com.intelligent.agent.web.integration.telegram.TelegramChannelClient;
 import com.intelligent.agent.web.integration.wechat.WeChatChannelClient;
 import com.intelligent.agent.web.infrastructure.security.SecretCrypto;
+import com.intelligent.agent.web.ai.tool.ToolExecutor;
 import com.intelligent.agent.web.wecom.WeComMessageSender;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
@@ -80,6 +82,13 @@ public class IntegrationConfig {
     @Bean
     public McpToolRegistry mcpToolRegistry() {
         return new McpToolRegistry();
+    }
+
+    /** G2：MCP 连接管理器（服务器 CRUD + 动态工具注册 + 启动自动连接）。 */
+    @Bean
+    public McpConnectionManager mcpConnectionManager(SecretCrypto secretCrypto,
+                                                     ToolExecutor toolExecutor) {
+        return new McpConnectionManager(Path.of(dataDir), secretCrypto, toolExecutor);
     }
 
     @Bean

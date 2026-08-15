@@ -1,7 +1,75 @@
 <template>
   <div class="mcp-view">
     <div class="toolbar">
-      <span class="page-desc">系统资源配置（并发 / 缓存 / 记忆上限）</span>
+      <span class="page-desc">MCP 服务器 · 系统资源配置</span>
+    </div>
+
+    <!-- MCP 服务器（G2） -->
+    <div class="config-card">
+      <div class="config-title">
+        <i class="fas fa-plug" /> MCP 服务器
+        <button class="rc-save-btn" style="margin-left:auto" @click="openServerModal()">
+          <i class="fas fa-plus" /> 新增服务器
+        </button>
+      </div>
+      <div class="config-hint">HTTP JSON-RPC 传输；连接成功后其工具自动进入 LLM 工具集</div>
+
+      <div v-if="servers.length === 0" class="server-empty">
+        尚未配置 MCP 服务器
+      </div>
+      <div v-else class="server-list">
+        <div v-for="server in servers" :key="server.id" class="server-row">
+          <div class="server-main">
+            <span class="server-name">{{ server.name }}</span>
+            <span class="server-url">{{ server.base_url }}</span>
+            <span class="server-tools" v-if="server.tool_count > 0">{{ server.tool_count }} 工具</span>
+          </div>
+          <span class="server-status" :class="server.connected ? 'st-on' : 'st-off'">
+            {{ server.connected ? '已连接' : '未连接' }}
+          </span>
+          <div class="server-actions">
+            <button v-if="!server.connected" class="act-btn" @click="connect(server.id)">
+              <i class="fas fa-plug" /> 连接
+            </button>
+            <button v-else class="act-btn" @click="disconnect(server.id)">
+              <i class="fas fa-unlink" /> 断开
+            </button>
+            <button class="act-btn" @click="openServerModal(server)">
+              <i class="fas fa-edit" /> 编辑
+            </button>
+            <button class="act-btn danger" @click="remove(server.id)">
+              <i class="fas fa-trash" /> 删除
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 服务器编辑弹层 -->
+    <div v-if="serverModal" class="server-modal-mask" @click.self="serverModal = false">
+      <div class="server-modal">
+        <div class="server-modal-title">
+          {{ serverEdit.id ? '编辑 MCP 服务器' : '新增 MCP 服务器' }}
+          <button class="modal-close" @click="serverModal = false">&times;</button>
+        </div>
+        <div class="server-form">
+          <label>名称 <input v-model="serverEdit.name" class="db-input" placeholder="如 GitHub MCP" /></label>
+          <label>Base URL <input v-model="serverEdit.base_url" class="db-input" placeholder="https://example.com/mcp" /></label>
+          <label>API Key（可选）
+            <input v-model="serverEdit.api_key" class="db-input" type="password" placeholder="留空则不发送鉴权头" />
+          </label>
+          <label class="server-check">
+            <input type="checkbox" v-model="serverEdit.enabled" /> 启用（启动时自动连接）
+          </label>
+        </div>
+        <div class="server-modal-foot">
+          <button class="act-btn" @click="serverModal = false">取消</button>
+          <button class="rc-save-btn" :disabled="serverSaving" @click="saveServer">
+            <i v-if="serverSaving" class="fas fa-circle-notch fa-spin" />
+            <i v-else class="fas fa-save" /> 保存
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- 系统资源配置 -->
@@ -141,7 +209,74 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getRuntimeConfig, updateRuntimeConfig } from '@/services/api'
+import {
+  getRuntimeConfig, updateRuntimeConfig,
+  listMcpServers, createMcpServer, updateMcpServer,
+  deleteMcpServer, connectMcpServer, disconnectMcpServer,
+} from '@/services/api'
+
+// ── MCP 服务器（G2） ──────────────────────────────────────
+const servers      = ref([])
+const serverModal  = ref(false)
+const serverSaving = ref(false)
+const serverEdit   = ref({ name: '', base_url: '', api_key: '', enabled: true })
+
+const loadServers = async () => {
+  const res = await listMcpServers()
+  servers.value = res?.servers || []
+}
+
+const openServerModal = (server) => {
+  serverEdit.value = server
+    ? { id: server.id, name: server.name, base_url: server.base_url,
+        api_key: '', enabled: server.enabled }
+    : { name: '', base_url: '', api_key: '', enabled: true }
+  serverModal.value = true
+}
+
+const saveServer = async () => {
+  if (!serverEdit.value.name || !serverEdit.value.base_url) {
+    ElMessage({ message: '名称与 Base URL 必填', type: 'warning', duration: 2000 })
+    return
+  }
+  serverSaving.value = true
+  try {
+    const payload = { ...serverEdit.value }
+    if (!payload.api_key) delete payload.api_key
+    const res = serverEdit.value.id
+      ? await updateMcpServer(serverEdit.value.id, payload)
+      : await createMcpServer(payload)
+    if (res?.success) {
+      ElMessage({ message: '已保存', type: 'success', duration: 1500 })
+      serverModal.value = false
+      await loadServers()
+    } else {
+      ElMessage({ message: res?.message || '保存失败', type: 'error', duration: 3000 })
+    }
+  } finally {
+    serverSaving.value = false
+  }
+}
+
+const connect = async (id) => {
+  const res = await connectMcpServer(id)
+  if (res?.success) {
+    ElMessage({ message: `已连接，注册 ${res.tool_count || 0} 个工具`, type: 'success', duration: 2500 })
+  } else {
+    ElMessage({ message: res?.message || '连接失败', type: 'error', duration: 3500 })
+  }
+  await loadServers()
+}
+
+const disconnect = async (id) => {
+  await disconnectMcpServer(id)
+  await loadServers()
+}
+
+const remove = async (id) => {
+  await deleteMcpServer(id)
+  await loadServers()
+}
 
 // ── 系统资源配置 ──────────────────────────────────────────
 const rcEdit   = ref({})
@@ -173,6 +308,7 @@ const saveRuntimeConfig = async () => {
 
 onMounted(() => {
   loadRcConfig()
+  loadServers()
 })
 </script>
 
@@ -288,6 +424,52 @@ onMounted(() => {
 .rc-save-btn:hover:not(:disabled) { opacity: 0.85; }
 .rc-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
+/* MCP 服务器 */
+.server-empty { font-size: 0.85rem; color: #aaa; padding: 12px 0; }
+.server-list { display: flex; flex-direction: column; gap: 8px; }
+.server-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  border: 1px solid #eef0f4; border-radius: 10px; padding: 10px 14px;
+}
+.server-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 180px; }
+.server-name { font-size: 0.9rem; font-weight: 600; color: #333; }
+.server-url { font-size: 0.76rem; color: #999; word-break: break-all; }
+.server-tools {
+  font-size: 0.7rem; color: #7c3aed; background: #faf5ff;
+  padding: 1px 8px; border-radius: 10px; align-self: flex-start;
+}
+.server-status {
+  font-size: 0.75rem; font-weight: 600; padding: 2px 10px; border-radius: 10px;
+}
+.st-on { background: #d1fae5; color: #065f46; }
+.st-off { background: #f3f4f6; color: #6b7280; }
+.server-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.act-btn {
+  display: flex; align-items: center; gap: 4px; font-size: 0.78rem;
+  border: 1px solid #e0e3e8; background: white; color: #555;
+  border-radius: 6px; padding: 5px 10px; cursor: pointer; transition: all 0.15s;
+}
+.act-btn:hover { border-color: #667eea; color: #667eea; }
+.act-btn.danger:hover { border-color: #dc2626; color: #dc2626; }
+.server-modal-mask {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+}
+.server-modal {
+  width: min(480px, 92vw); background: white; border-radius: 12px; padding: 18px 20px;
+}
+.server-modal-title {
+  font-size: 0.95rem; font-weight: 600; color: #333;
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;
+}
+.modal-close { background: none; border: none; font-size: 1.2rem; color: #aaa; cursor: pointer; }
+.server-form { display: flex; flex-direction: column; gap: 10px; }
+.server-form label {
+  display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem; color: #555;
+}
+.server-form .server-check { flex-direction: row; align-items: center; gap: 8px; }
+.server-modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
 /* 数据库配置 */
 .db-status {
   margin-left: auto;
@@ -334,6 +516,13 @@ onMounted(() => {
 [data-theme="dark"] .rc-group-title { color: #b0b1bb; border-color: #4a4b52; }
 [data-theme="dark"] .rc-field label { color: #a0a1ab; }
 [data-theme="dark"] .rc-num { background: #2c2d32; border-color: #4a4b52; color: #c1c2c5; }
+[data-theme="dark"] .server-row { border-color: #3a3b42; }
+[data-theme="dark"] .server-name { color: #e0e1e4; }
+[data-theme="dark"] .server-url { color: #8c8d96; }
+[data-theme="dark"] .act-btn { background: #2c2d32; border-color: #4a4b52; color: #a0a1ab; }
+[data-theme="dark"] .server-modal { background: #2c2d32; }
+[data-theme="dark"] .server-modal-title { color: #e0e1e4; }
+[data-theme="dark"] .server-form label { color: #a0a1ab; }
 [data-theme="dark"] .db-field label { color: #a0a1ab; }
 [data-theme="dark"] .db-input { background: #383940; border-color: #4a4b52; color: #c1c2c5; }
 [data-theme="dark"] .db-select { background: #383940; border-color: #4a4b52; color: #c1c2c5; }
