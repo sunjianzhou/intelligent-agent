@@ -462,7 +462,7 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 | Java 后端测试 | `mvnw test`（~270 个） | ReAct/分支检测、LLM provider 契约、记忆/蒸馏/缓存、角色/会话/项目/任务领域、工具、调度、IM 通道、迁移校验、E2E 契约（MockMvc）等 |
 | Backend 单元测试 | JUnit 5 | WebSocket 消息序列化、JWT 工具类、JSON 工具类 |
 | Frontend 单元测试 | Vitest | JWT 处理逻辑等关键工具函数 |
-| E2E 端到端测试 | pytest + httpx | 从客户端发起 HTTP 请求打通 Java:8080 全链路，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知/消息撤回 |
+| E2E 端到端测试 | JUnit + JDK HttpClient（tests/e2e-java） | 从客户端发起 HTTP 请求打通 Java:8080 全链路，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知/消息撤回 |
 
 ### 离线与移动端体验
 
@@ -505,13 +505,14 @@ intelligent_agent/
 │   ├── ReplCommand.java            交互式 REPL
 │   └── SessionStore.java           会话持久化（JSON 文件）
 │
-├── tests/e2e/                      端到端测试套件（pytest + httpx，仅测 Java 后端）
-│   ├── conftest.py                 公共 fixture：Java 服务探活、JWT 鉴权、slow_client
-│   ├── test_auth.py                认证（登录/登出/无 token 鉴权）
-│   ├── test_health.py              服务健康检测
-│   ├── test_chat.py                3 个聊天维度（云端/本地/dolphin 无限制）
-│   ├── test_memory.py              记忆增删改查、语义搜索、导出、提炼
-│   ├── test_tasks.py               调度任务 CRUD + 取消
+├── tests/e2e-java/                 端到端测试套件（JUnit + JDK HttpClient，仅测 Java 后端）
+│   ├── ApiClient.java              公共 HTTP 客户端：探活、JWT 登录、REST 请求
+│   ├── E2EBaseTest.java            基类：后端不可达整类跳过
+│   ├── AuthE2ETest.java            认证（登录/登出/无 token 鉴权）
+│   ├── HealthE2ETest.java          服务健康检测
+│   ├── ChatE2ETest.java            3 个聊天维度（云端/本地/dolphin 无限制）
+│   ├── MemoryE2ETest.java          记忆增删改查、语义搜索、导出、提炼
+│   ├── TasksE2ETest.java           调度任务 CRUD + 取消
 │   ├── test_projects.py            项目 CRUD + Spec + 任务列表
 │   ├── test_roles.py               角色列表/激活/停用
 │   ├── test_skills.py              Skill CRUD + toggle
@@ -707,8 +708,8 @@ cd backend/web
 ./mvnw test
 ./mvnw package
 
-# E2E（需 backend + frontend + Ollama 运行）
-cd tests/e2e && pytest -v
+# E2E（需 backend + Ollama 运行）
+cd backend/web && ./mvnw.cmd -f ../../tests/e2e-java/pom.xml test
 
 # Frontend
 cd frontend

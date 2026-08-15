@@ -66,7 +66,7 @@ intelligent_agent/
 ├── backend/web/    Spring Boot 网关
 ├── frontend/       Vue 3 SPA
 ├── client/         Java CLI 客户端（Java 21 + Picocli，连接 backend:8080）
-├── tests/e2e/      端到端测试（pytest + httpx，仅测 Java 后端；Python Agent 已退役）
+├── tests/e2e-java/ 端到端测试（JUnit + JDK HttpClient，仅测 Java 后端；替代已退役的 pytest E2E）
 ├── docker-compose.yml
 ├── CLAUDE.md       Claude Code 项目指令
 ├── TODOS.md        待办事项（含已完成标记）
@@ -469,7 +469,7 @@ Python CLI 已于 2026-08-08 随 Agent 一起退役。
 ## 九、当前运行状态（2026-07-09）
 
 - **已提交到 GitHub**：所有修改均已推送 master 分支
-- **测试覆盖**：Java 后端全量 268 用例绿（0 失败）；E2E 为 pytest + httpx（仅测 Java 后端）
+- **测试覆盖**：Java 后端全量 324 用例绿（0 失败）；E2E 为 JUnit 黑盒（tests/e2e-java，仅测 Java 后端）
 - **全局默认模型**：`qwen2.5:7b`（所有渠道统一；embedding 用 `nomic-embed-text`；云端配置按需在 `/admin/models` 激活）
 - **Python 环境**：Python Agent/CLI 已于 2026-08-08 退役，无 Python 运行时依赖
 - **Ollama keep_alive**：`-1`（永久常驻显存，避免冷启动延迟）
@@ -513,7 +513,7 @@ cd frontend && npm run dev                          # 前端 dev server
 
 # 测试
 cd backend/web && mvnw test                         # Java 后端全量单元/契约测试（~270 个）
-cd tests/e2e && pytest -v                           # E2E 测试（需 backend + frontend + Ollama 运行）
+cd backend/web && ./mvnw.cmd -f ../../tests/e2e-java/pom.xml test   # Java E2E（需 backend + Ollama 运行）
 
 # Docker 全栈（按需选 profile）
 docker compose up -d                                            # backend + frontend

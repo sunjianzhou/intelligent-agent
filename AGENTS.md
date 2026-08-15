@@ -64,13 +64,13 @@ npm run test        # vitest run
 npm run test:watch
 ```
 
-### E2E tests (`tests/e2e/`, requires backend + frontend + Ollama running)
+### E2E tests (`tests/e2e-java/`, requires backend + Ollama running)
 
-The E2E suite itself is still written in Python (pytest + httpx) but targets the Java backend
-only — it no longer talks to any Python service.
+Java E2E suite (JUnit + JDK HttpClient, 2026-08-15 起替代退役的 Python pytest E2E) —
+black-box REST tests against the Java backend only; backend unreachable → classes skip.
 
 ```bash
-cd tests/e2e && pytest -v
+cd backend/web && ./mvnw.cmd -f ../../tests/e2e-java/pom.xml test
 ```
 
 ### Full stack startup order

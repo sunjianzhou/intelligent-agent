@@ -133,6 +133,15 @@
 - [x] `pending_tasks` 上下文注入：`AgentRequestContext` 增 pendingTasks →
       `AgentOrchestrator.initialMessages` 注入任务列表（前端已发送、后端丢弃）
       ✅ 2026-08-15
+- [x] `store_memory` / `search_memories` 显式记忆工具（`MemoryTool`，userId 取自
+      ToolExecutionContext）✅ 2026-08-15（MemoryToolTest 3 用例）
+- [x] `system_info` 工具（`SystemInfoTool`）✅ 2026-08-15
+- [x] `advanced_calculator` 单位换算工具（`AdvancedCalculatorTool`，
+      10 种换算与 Python 一致）✅ 2026-08-15（AdvancedCalculatorToolTest 4 用例）
+
+> **2026-08-15 架构调整**：`AgentTool` 新增带 `ToolExecutionContext` 的执行入口
+> （默认桥接到无上下文版本，全部既有工具兼容）；SchedulerTool 据此把聊天创建的
+> 提醒/定时任务归属到真实用户，通知按用户分发。
 
 ### P2 架构 / 体验
 
@@ -150,15 +159,17 @@
       ✅ 2026-08-15
 - [ ] 前端大视图拆分：`ChatView.vue` 93KB / `TasksView` 44KB / `MemoryView` 39KB 等
       （P3 大项，按需推进）
-- [ ] E2E 去留决策：`tests/e2e`（17 个 pytest 文件）保留（仅测 Java）或迁 Java 集成测试。
-      建议保留：它们是测试而非 agent 实现，删除 Python 后仍需黑盒回归；若要求仓库零 Python，
-      再评估迁 Java 集成测试（中等工作量）
+- [x] E2E 迁 Java：`tests/e2e-java`（JUnit + JDK HttpClient，16 个场景测试类，
+      覆盖原 pytest 68 用例全部场景；后端不可达整类跳过）；`tests/e2e`（pytest）已删除，
+      CI 手动 E2E job 改为 Java 套件 ✅ 2026-08-15
 - [ ] 清理 `__pycache__` / `.pytest_cache` 残留（已 gitignore，沙箱策略拦截递归删除，
       可手动删除或留待清理；不影响任何构建/测试）
 
 > **2026-08-15 推进记录**：P0 4 项 + P1 5 项 + P2 4 项完成，全量测试
 > 后端 316（58 类）+ client 12 + 前端 14 全绿；P2 通知分发 + 连接池闭环后
-> 后端 316（58 类）全绿。
+> 后端 316（58 类）全绿。第二轮：工具补齐至 20 个（含 store_memory/search_memories/
+> system_info/advanced_calculator + 上下文架构调整），后端 324（60 类）全绿；
+> E2E 迁移 Java 完成，**仓库零 Python**（git 跟踪无任何 .py）。
 
 ---
 

@@ -61,13 +61,13 @@ npm run build
 npm run test
 ```
 
-### E2E tests (`tests/e2e/`, requires backend + frontend + Ollama running)
+### E2E tests (`tests/e2e-java/`, requires backend + Ollama running)
 
-The E2E suite itself is still written in Python (pytest + httpx) but targets the Java backend
-only — it no longer talks to any Python service.
+Java E2E suite（JUnit + JDK HttpClient，2026-08-15 替代退役的 Python pytest E2E）：
+黑盒 REST 测试，仅测 Java 后端；后端不可达时整类跳过。
 
 ```bash
-cd tests/e2e && pytest -v
+cd backend/web && ./mvnw.cmd -f ../../tests/e2e-java/pom.xml test
 ```
 
 ## Architecture
