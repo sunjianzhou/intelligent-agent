@@ -1671,8 +1671,14 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       剩余：分层记忆 working/episodic/semantic（RAG_TOP_K 按层配额）。
 - [ ] G6 编排升级（可后置）：planning 前置（复杂任务先出 plan）、reflection 后验、
       human-in-the-loop 审批门、circuit breaker/SLO。
-- [ ] 上下文成本：确认 Ollama `cache_prompt` 开启；`num_ctx` 按模型配置表下发；
-      soul/heart/rules 大 system prompt 静态预拼接 + 变更检测。
+- [x] 上下文成本 ✅ 2026-08-17（commit 5752d98）：
+      - Ollama 请求默认带 `cache_prompt: true`（`OLLAMA_CACHE_PROMPT` 可关）；
+      - `num_ctx` 按模型配置表下发（`OLLAMA_NUM_CTX_BY_MODEL`，如
+        `{"qwen2.5:7b":16384}`），优先级：请求显式指定 > 模型表 > 全局默认；
+      - `SystemPromptBuilder.buildStatic` + `PromptService` 静态底座缓存，
+        key=(channel, maxContextTokens, soulVersion)，SoulLoader 热重载自增版本号驱动失效；
+        请求路径只追加 persona/whisper/tool_overlay，段序与直接 build 完全一致（契约测试覆盖）。
+      全量后端 371 测试全绿。
 
 ### P2 工程化
 
@@ -1685,8 +1691,11 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       frontend（Node 22 + `npm ci` + `vitest run` + `vite build`），master push/PR 双触发；
       E2E（需 Ollama + 后端）为 `workflow_dispatch` 手动 job，不进默认门。
       本地已验证全部命令：后端 296 用例绿、前端 14 用例绿、构建通过。
-- [ ] 后续轮：图片生成 P3（ComfyUI 热重载/LoRA/FLUX）、飞书群聊表情回应、
-      Telegram bot 真实送达验收。
+- [ ] 后续轮：图片生成 P3（ComfyUI 热重载/LoRA/FLUX）、Telegram bot 真实送达验收。
+- [ ] runtime 配置接线缺口（2026-08-17 排查发现）：`/api/config/runtime` 的
+      `ollama_num_ctx` / `ollama_max_tokens` / `ollama_temperature` / `chat_timeout`
+      等只保存展示，未注入 `AgentRequestContext.options` 到达 LLM provider，
+      UI 滑块当前为 no-op；需决定按请求注入还是并入模型配置表。
 
 ### 环境问题记录（2026-08-13 排查，与项目代码无关）
 
