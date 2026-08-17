@@ -1651,10 +1651,18 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       测试：McpConnectionManager 4（真实 mock HTTP 服务器）+ McpController 3 + E2E 1。
       剩余：stdio 传输（npx 类服务器）、MCP session 池化复用、工具输出 8K 截断 +
       注入防护（McpAgentTool 结果已字符串化，截断待补）。
-- [ ] G3 LLM 评估体系：
-      `backend/web/src/test/eval/` 建 golden 用例集（用户消息 → 期望工具调用/答案要点）；
-      LLM-as-judge 按 rubric 打分（0-10）；`mvn -Peval` 运行 + 结果 JSONL 落盘；
-      CI 先跑 1-2 周建基线，再决定是否开"分数低于阈值 block merge"门。
+- [x] G3 LLM 评估体系（v1 基线版）✅ 2026-08-17（commit 9b4bfb0）：
+      `backend/web/src/test/eval/EvalSuite.java`（@Tag("eval") + SpringBootTest）加载
+      `src/test/resources/eval/golden-cases.json`（8 个用例：计算/单位换算/时间/常识/
+      记忆/网络搜索/人格/群聊静默），走真实 AgentService + Ollama 推理，LLM-as-judge
+      按 rubric 打分（0-10，temperature=0），结果 JSONL 落盘
+      `target/eval-results/eval-<ts>.jsonl`；`mvn -Peval test` 只跑评估，
+      默认 `mvn test` 通过 surefire excludedGroups=eval 排除。
+      首跑基线：8 用例 0 错误、平均 6.13 分，暴露 3 个真实问题：
+      ① calc-001 模型对原生 tool_calls 结果回应错乱（qwen2.5:7b 工具循环健壮性）；
+      ② advanced_calculator 缺 km→m 换算且模型把内部选项泄露给用户；
+      ③ 模型用错工具名（datetime vs time）。
+      剩余：跑 1-2 周基线后决定是否开 `-Deval.min-score` 门槛（已实现参数化）。
 - [x] G4 可观测性（核心）✅ 2026-08-15：`AgentRunTrace`（requestId → spans：
       llm_call/tool_call/rag/memory/cache，含耗时/成败/模型/工具参数摘要，截断防敏感）；
       落盘 `data/traces/`（原子写 + 500 条容量淘汰 + userId 隔离）；`/api/traces`
