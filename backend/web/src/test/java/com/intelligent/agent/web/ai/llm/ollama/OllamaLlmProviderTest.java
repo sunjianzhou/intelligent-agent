@@ -218,4 +218,71 @@ class OllamaLlmProviderTest {
         String body = request.getBody().readUtf8();
         assertThat(body).contains("\"keep_alive\":\"1h\"");
     }
+
+    @Test
+    void sendsCachePromptByDefault() throws Exception {
+        server.enqueue(new MockResponse()
+                .setBody("{\"message\":{\"content\":\"ok\"},\"done\":true}")
+                .setHeader("Content-Type", "application/json"));
+        provider.complete(ChatTurn.of("qwen2.5:7b", List.of(ChatMessage.user("hi")))).block();
+
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getBody().readUtf8()).contains("\"cache_prompt\":true");
+    }
+
+    @Test
+    void cachePromptCanBeDisabled() throws Exception {
+        server.enqueue(new MockResponse()
+                .setBody("{\"message\":{\"content\":\"ok\"},\"done\":true}")
+                .setHeader("Content-Type", "application/json"));
+        OllamaLlmProvider noCache = new OllamaLlmProvider(
+                server.url("/").toString(), "qwen2.5:7b",
+                OllamaOptions.defaults(), Duration.ofSeconds(10), false, Map.of());
+        noCache.complete(ChatTurn.of("qwen2.5:7b", List.of(ChatMessage.user("hi")))).block();
+
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getBody().readUtf8()).contains("\"cache_prompt\":false");
+    }
+
+    @Test
+    void numCtxResolvedFromModelConfigTable() throws Exception {
+        server.enqueue(new MockResponse()
+                .setBody("{\"message\":{\"content\":\"ok\"},\"done\":true}")
+                .setHeader("Content-Type", "application/json"));
+        server.enqueue(new MockResponse()
+                .setBody("{\"message\":{\"content\":\"ok\"},\"done\":true}")
+                .setHeader("Content-Type", "application/json"));
+        OllamaLlmProvider tableProvider = new OllamaLlmProvider(
+                server.url("/").toString(), "qwen2.5:7b",
+                new OllamaOptions(0.7, 2048, 0.9, 40, 1.1, 4096, -1, "-1"),
+                Duration.ofSeconds(10), true, Map.of("qwen2.5:7b", 16384));
+
+        // 命中表格 → 16384
+        tableProvider.complete(ChatTurn.of("qwen2.5:7b", List.of(ChatMessage.user("hi")))).block();
+        RecordedRequest hit = server.takeRequest();
+        assertThat(hit.getBody().readUtf8()).contains("\"num_ctx\":16384");
+
+        // 未命中表格 → 全局默认 4096
+        tableProvider.complete(ChatTurn.of("llama3.1:8b", List.of(ChatMessage.user("hi")))).block();
+        RecordedRequest miss = server.takeRequest();
+        assertThat(miss.getBody().readUtf8()).contains("\"num_ctx\":4096");
+    }
+
+    @Test
+    void explicitTurnNumCtxOverridesModelTable() throws Exception {
+        server.enqueue(new MockResponse()
+                .setBody("{\"message\":{\"content\":\"ok\"},\"done\":true}")
+                .setHeader("Content-Type", "application/json"));
+        OllamaLlmProvider tableProvider = new OllamaLlmProvider(
+                server.url("/").toString(), "qwen2.5:7b",
+                new OllamaOptions(0.7, 2048, 0.9, 40, 1.1, 4096, -1, "-1"),
+                Duration.ofSeconds(10), true, Map.of("qwen2.5:7b", 16384));
+
+        ChatTurn turn = new ChatTurn("u1", "qwen2.5:7b",
+                List.of(ChatMessage.user("hi")), Map.of("num_ctx", 8192));
+        tableProvider.complete(turn).block();
+
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getBody().readUtf8()).contains("\"num_ctx\":8192");
+    }
 }

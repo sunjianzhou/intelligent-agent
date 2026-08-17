@@ -13,6 +13,10 @@ ai:
       repeat-penalty: ${OLLAMA_REPEAT_PENALTY:1.1}
       num-ctx: ${OLLAMA_NUM_CTX:4096}
       num-gpu: ${OLLAMA_NUM_GPU:-1}
+      # 前缀缓存：同一 system prompt 前缀复用 KV cache（默认开）
+      cache-prompt: ${OLLAMA_CACHE_PROMPT:true}
+      # 按模型名下发 num_ctx 的配置表，如 {"qwen2.5:7b":16384,"llama3.1:8b":8192}
+      num-ctx-by-model: ${OLLAMA_NUM_CTX_BY_MODEL:{}}
       keep-alive: ${OLLAMA_KEEP_ALIVE:-1}
       timeout: ${OLLAMA_TIMEOUT:600s}
     cloud:

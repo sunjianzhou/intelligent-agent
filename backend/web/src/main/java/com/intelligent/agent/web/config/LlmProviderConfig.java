@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Configuration;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * LLM provider 与路由器的 Spring 装配。
@@ -31,11 +32,13 @@ public class LlmProviderConfig {
             @Value("${ai.llm.ollama.num-ctx:4096}") int numCtx,
             @Value("${ai.llm.ollama.num-gpu:-1}") int numGpu,
             @Value("${ai.llm.ollama.keep-alive:-1}") String keepAlive,
+            @Value("${ai.llm.ollama.cache-prompt:true}") boolean cachePrompt,
+            @Value("#{${ai.llm.ollama.num-ctx-by-model:{}}}") Map<String, Integer> numCtxByModel,
             @Value("${ai.llm.ollama.timeout:600s}") Duration timeout) {
         return new OllamaLlmProvider(baseUrl, model,
                 new OllamaOptions(temperature, maxTokens, topP, topK,
                         repeatPenalty, numCtx, numGpu, keepAlive),
-                timeout);
+                timeout, cachePrompt, numCtxByModel);
     }
 
     @Bean

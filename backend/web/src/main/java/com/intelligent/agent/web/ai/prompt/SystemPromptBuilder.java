@@ -45,6 +45,70 @@ public class SystemPromptBuilder {
         String ch = channel == null || channel.isBlank() ? "web" : channel;
         boolean imChannel = EXCLUDED_CHANNELS.contains(ch);
 
+        List<String> sections = staticSections(soul, ch, imChannel, maxContextTokens);
+
+        if (role != null) {
+            sections.add(buildPersona(role));
+        }
+
+        if (!soul.whisper().isBlank() && !imChannel) {
+            sections.add(wrap("【私密档案】", soul.whisper()));
+        }
+
+        if (toolOverlay != null && !toolOverlay.isBlank()) {
+            sections.add(toolOverlay.strip());
+        }
+
+        return join(sections);
+    }
+
+    /**
+     * 静态底座：仅由 soul 文件决定的部分（灵魂/身份/用户/记忆/心证/铁律/自检），
+     * 不含 persona / whisper / tool_overlay。供 PromptService 按
+     * (channel, maxContextTokens, soulVersion) 预拼接缓存，请求路径只做轻量追加。
+     */
+    public String buildStatic(SoulData soul, String channel, int maxContextTokens) {
+        if (soul == null) {
+            return FALLBACK;
+        }
+        String ch = channel == null || channel.isBlank() ? "web" : channel;
+        boolean imChannel = EXCLUDED_CHANNELS.contains(ch);
+        return join(staticSections(soul, ch, imChannel, maxContextTokens));
+    }
+
+    /**
+     * 在缓存的静态底座上追加 persona / whisper / tool_overlay，产出完整 system prompt。
+     * 与 {@link #build} 的段落顺序完全一致，仅当 staticBase 由 buildStatic 生成时等价。
+     */
+    public String assemble(String staticBase, Map<String, Object> role, String toolOverlay,
+                           SoulData soul, String channel) {
+        if (staticBase == null || staticBase.isBlank()) {
+            return build(soul, role, toolOverlay, channel, 0);
+        }
+        String ch = channel == null || channel.isBlank() ? "web" : channel;
+        boolean imChannel = EXCLUDED_CHANNELS.contains(ch);
+
+        List<String> sections = new ArrayList<>();
+        sections.add(staticBase);
+
+        if (role != null) {
+            sections.add(buildPersona(role));
+        }
+
+        if (soul != null && !soul.whisper().isBlank() && !imChannel) {
+            sections.add(wrap("【私密档案】", soul.whisper()));
+        }
+
+        if (toolOverlay != null && !toolOverlay.isBlank()) {
+            sections.add(toolOverlay.strip());
+        }
+
+        return join(sections);
+    }
+
+    /** 静态段：灵魂/身份/用户/记忆 + 心证(IM 排除) + 铁律(隐私分层) + 自检。 */
+    private static List<String> staticSections(SoulData soul, String ch, boolean imChannel,
+                                               int maxContextTokens) {
         List<String> sections = new ArrayList<>();
         sections.add(wrap("【灵魂核心】", soul.soul()));
         sections.add(wrap("【身份】", soul.identity()));
@@ -64,23 +128,12 @@ public class SystemPromptBuilder {
 
         sections.add(wrap("【自检铁规】", soul.heartbeat()));
 
-        if (role != null) {
-            sections.add(buildPersona(role));
-        }
+        return sections;
+    }
 
-        if (!soul.whisper().isBlank() && !imChannel) {
-            sections.add(wrap("【私密档案】", soul.whisper()));
-        }
-
-        if (toolOverlay != null && !toolOverlay.isBlank()) {
-            sections.add(toolOverlay.strip());
-        }
-
+    private static String join(List<String> sections) {
         String result = String.join(SEP, sections.stream().filter(s -> !s.isBlank()).toList());
-        if (result.isBlank()) {
-            return FALLBACK;
-        }
-        return result;
+        return result.isBlank() ? FALLBACK : result;
     }
 
     /**

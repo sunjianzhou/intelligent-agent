@@ -77,6 +77,28 @@ class SystemPromptBuilderTest {
                 .isEqualTo("你是一个有帮助的AI助手，请用中文回答。");
     }
 
+    @Test
+    void assembleWithStaticBase_equalsDirectBuild() {
+        Map<String, Object> role = roleJson();
+        for (String channel : List.of("web", "feishu_im")) {
+            String direct = builder.build(soul(), role, "tool-overlay", channel, 8000);
+            String staticBase = builder.buildStatic(soul(), channel, 8000);
+            String assembled = builder.assemble(staticBase, role, "tool-overlay", soul(), channel);
+            assertThat(assembled).isEqualTo(direct);
+            assertThat(staticBase).contains("【主人铁律】").doesNotContain("tool-overlay");
+        }
+    }
+
+    @Test
+    void staticBaseDiffersByChannel() {
+        String web = builder.buildStatic(soul(), "web", 8000);
+        String im  = builder.buildStatic(soul(), "feishu_im", 8000);
+        assertThat(web).contains("【心证铁卷】");
+        assertThat(im).doesNotContain("【心证铁卷】");
+        // 静态底座不含 whisper/tool_overlay（assemble 阶段才追加）
+        assertThat(web).doesNotContain("【私密档案】").doesNotContain("tool-overlay");
+    }
+
     private static Map<String, Object> roleJson() {
         Map<String, Object> role = new LinkedHashMap<>();
         role.put("role_id", "luna_companion");

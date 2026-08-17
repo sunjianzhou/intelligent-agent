@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 提示词编排服务（Task 3）：把 soul 层 + 角色配置 + 工具指令 + 模型覆盖层
@@ -35,6 +36,12 @@ public class PromptService {
     private final String defaultModel;
     private final int maxContextTokens;
 
+    /** 静态底座缓存：key = (channel, maxContextTokens, soulVersion)，soul 热重载后版本号变化自动失效。 */
+    private final Map<StaticBaseKey, String> staticBaseCache = new ConcurrentHashMap<>();
+
+    private record StaticBaseKey(String channel, int maxContextTokens, long soulVersion) {
+    }
+
     public PromptService(SoulLoader soulLoader,
                          SystemPromptBuilder builder,
                          ToolExecutor toolExecutor,
@@ -59,7 +66,11 @@ public class PromptService {
         Map<String, Object> role = resolveRole(ctx);
         String toolOverlay = ctx.useTools() && toolExecutor != null
                 ? buildToolOverlay(toolExecutor.definitions()) : "";
-        String prompt = builder.build(soulLoader.data(), role, toolOverlay, channel, maxContextTokens);
+        // 静态底座（soul/heart/rules 等）按 soulVersion 预拼接缓存，变更检测由 SoulLoader.reload() 驱动
+        StaticBaseKey key = new StaticBaseKey(channel, maxContextTokens, soulLoader.version());
+        String staticBase = staticBaseCache.computeIfAbsent(key,
+                k -> builder.buildStatic(soulLoader.data(), channel, maxContextTokens));
+        String prompt = builder.assemble(staticBase, role, toolOverlay, soulLoader.data(), channel);
 
         String model = effectiveModel(ctx);
         if (isTextToolModel(model)) {

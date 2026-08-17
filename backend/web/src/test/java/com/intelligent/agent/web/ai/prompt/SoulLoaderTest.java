@@ -57,11 +57,19 @@ class SoulLoaderTest {
         writeRequiredFiles(tempDir);
         SoulLoader loader = new SoulLoader(tempDir);
         assertThat(loader.data().rules()).isEmpty();
+        long v0 = loader.version();
 
         Files.writeString(tempDir.resolve("rules.md"), "### RULE-001: 测试", StandardCharsets.UTF_8);
         loader.reload();
 
         assertThat(loader.data().rules()).contains("RULE-001");
+        assertThat(loader.version()).isEqualTo(v0 + 1);
+    }
+
+    @Test
+    void versionStartsAtZero() {
+        SoulLoader loader = new SoulLoader(Path.of("../../soul"));
+        assertThat(loader.version()).isZero();
     }
 
     @Test

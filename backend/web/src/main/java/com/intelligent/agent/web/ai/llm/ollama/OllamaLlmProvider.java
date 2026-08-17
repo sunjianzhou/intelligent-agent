@@ -31,13 +31,25 @@ public class OllamaLlmProvider extends AbstractHttpLlmProvider {
     private final String baseUrl;
     private final String defaultModel;
     private final OllamaOptions defaultOptions;
+    private final boolean cachePrompt;
+    private final Map<String, Integer> numCtxByModel;
 
     public OllamaLlmProvider(String baseUrl, String defaultModel,
                              OllamaOptions defaultOptions, Duration timeout) {
+        this(baseUrl, defaultModel, defaultOptions, timeout, true, Map.of());
+    }
+
+    /** @param cachePrompt    请求级 cache_prompt（Ollama 前缀缓存，降低重复 system prompt 成本）
+     *  @param numCtxByModel  按模型名下发 num_ctx 的配置表（未命中时回退默认值） */
+    public OllamaLlmProvider(String baseUrl, String defaultModel,
+                             OllamaOptions defaultOptions, Duration timeout,
+                             boolean cachePrompt, Map<String, Integer> numCtxByModel) {
         super(timeout);
         this.baseUrl = stripTrailingSlash(baseUrl);
         this.defaultModel = defaultModel;
         this.defaultOptions = defaultOptions == null ? OllamaOptions.defaults() : defaultOptions;
+        this.cachePrompt = cachePrompt;
+        this.numCtxByModel = numCtxByModel == null ? Map.of() : Map.copyOf(numCtxByModel);
     }
 
     @Override
@@ -117,7 +129,9 @@ public class OllamaLlmProvider extends AbstractHttpLlmProvider {
             payload.put("messages", toMessages(turn));
             payload.put("stream", stream);
             payload.put("keep_alive", keepAliveValue());
-            payload.put("options", resolveOptions(turn));
+            // Ollama 前缀缓存：同一 system prompt 前缀复用 KV cache，降低长上下文成本
+            payload.put("cache_prompt", cachePrompt);
+            payload.put("options", resolveOptions(turn, resolveModel(turn)));
             if (tools != null && !tools.isEmpty()) {
                 payload.put("tools", ToolSchemas.toPayload(tools));
             }
@@ -207,7 +221,7 @@ public class OllamaLlmProvider extends AbstractHttpLlmProvider {
         return Map.of();
     }
 
-    private Map<String, Object> resolveOptions(ChatTurn turn) {
+    private Map<String, Object> resolveOptions(ChatTurn turn, String model) {
         Map<String, Object> raw = turn.options();
         Map<String, Object> options = new LinkedHashMap<>();
         options.put("temperature", number(raw, "temperature", defaultOptions.temperature()));
@@ -215,10 +229,27 @@ public class OllamaLlmProvider extends AbstractHttpLlmProvider {
         options.put("top_k", integer(raw, "top_k", defaultOptions.topK()));
         options.put("num_predict", integer(raw, "max_tokens", defaultOptions.maxTokens()));
         options.put("repeat_penalty", number(raw, "repeat_penalty", defaultOptions.repeatPenalty()));
-        options.put("num_ctx", integer(raw, "num_ctx", defaultOptions.numCtx()));
+        options.put("num_ctx", resolveNumCtx(raw, model));
         if (defaultOptions.numGpu() >= 0) {
             options.put("num_gpu", integer(raw, "num_gpu", defaultOptions.numGpu()));
         }
         return options;
+    }
+
+    /** num_ctx 优先级：请求显式指定 > 模型配置表 > 全局默认。
+     *  表格支持形如 {@code qwen2.5:7b=16384} 的精确模型名匹配。 */
+    private int resolveNumCtx(Map<String, Object> raw, String model) {
+        Object ctxRaw = raw.get("num_ctx");
+        if (ctxRaw != null) {
+            try {
+                return ctxRaw instanceof Number n ? n.intValue() : Integer.parseInt(String.valueOf(ctxRaw).trim());
+            } catch (NumberFormatException ignored) {
+                // 非法值回退到默认
+            }
+        }
+        if (model != null && numCtxByModel.containsKey(model)) {
+            return numCtxByModel.get(model);
+        }
+        return defaultOptions.numCtx();
     }
 }

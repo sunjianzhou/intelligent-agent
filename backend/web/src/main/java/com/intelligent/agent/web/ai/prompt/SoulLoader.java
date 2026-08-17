@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 灵魂文件加载器（对齐 Python SoulLoader v1.1）。
@@ -32,6 +33,8 @@ public class SoulLoader {
     private final int maxTotalChars;
 
     private volatile SoulData data;
+    /** 内容版本号：reload() 时自增，供 PromptService 静态预拼接缓存做变更检测。 */
+    private final AtomicLong version = new AtomicLong();
 
     public SoulLoader(Path soulDir) {
         this(soulDir, DEFAULT_MAX_FILE_SIZE, DEFAULT_MAX_TOTAL_CHARS);
@@ -52,9 +55,14 @@ public class SoulLoader {
         return data;
     }
 
+    public long version() {
+        return version.get();
+    }
+
     /** 热重载：运行时调用，无需重启服务。 */
     public synchronized SoulData reload() {
         this.data = load();
+        this.version.incrementAndGet();
         return data;
     }
 
