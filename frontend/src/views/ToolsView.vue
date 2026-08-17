@@ -190,6 +190,7 @@ onMounted(loadTools)
   align-items: flex-start;
   gap: 14px;
   transition: all 0.2s;
+  min-height: 118px; /* 与两行描述 + 头部一致的视觉高度，避免行内卡片参差 */
 }
 .tool-card:hover {
   border-color: #c5caf5;
@@ -228,6 +229,10 @@ onMounted(loadTools)
 .tool-description {
   font-size: 0.83rem; color: #666;
   line-height: 1.5; margin: 0 0 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .tool-category-badge {

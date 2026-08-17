@@ -73,7 +73,10 @@ const login = async () => {
   display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 8px;
 }
 .login-logo i  { font-size: 2.5rem; color: var(--color-primary); }
-.login-logo h1 { font-size: 1.5rem; color: #333; font-weight: 600; margin: 0; }
+.login-logo h1 {
+  font-size: 1.5rem; color: #333; font-weight: 700; margin: 0;
+  letter-spacing: 0.08em; text-indent: 0.08em; /* 抵消字距造成的视觉偏移，保持居中 */
+}
 .form-group { display: flex; flex-direction: column; gap: 6px; }
 .form-group label { font-size: 0.88rem; color: #555; font-weight: 500; }
 .form-group input {

@@ -88,6 +88,7 @@ watch(isConnected, (connected) => {
   align-items: center;
   gap: 10px;
   font-weight: 600;
+  letter-spacing: 0.02em;
 }
 .header-left .page-title i { color: var(--color-primary); }
 

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { isTokenExpired } from '@/utils/jwt'
 
 const TOKEN_KEY = 'agent_token'
 const USER_KEY  = 'agent_user'
@@ -9,7 +10,8 @@ export const useAuthStore = defineStore('auth', () => {
   const username = ref(localStorage.getItem(USER_KEY)  || '')
   const error    = ref('')
 
-  const isLoggedIn = computed(() => !!token.value)
+  // 同时校验过期时间：过期 token 不应再渲染应用外壳，避免"登录页套在壳里"的假象
+  const isLoggedIn = computed(() => !!token.value && !isTokenExpired(token.value))
 
   const login = async (user, pass) => {
     error.value = ''

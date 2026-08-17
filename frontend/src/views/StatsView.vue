@@ -24,23 +24,23 @@
 
     <!-- 概览卡片 -->
     <div class="overview-row" v-if="stats">
-      <div class="ov-card accent-primary">
+      <div class="ov-card">
         <div class="ov-val">{{ stats.total }}</div>
         <div class="ov-label">总对话数</div>
       </div>
-      <div class="ov-card like accent-success">
+      <div class="ov-card like">
         <div class="ov-val">{{ stats.likes }}</div>
         <div class="ov-label">👍 点赞</div>
       </div>
-      <div class="ov-card dislike accent-danger">
+      <div class="ov-card dislike">
         <div class="ov-val">{{ stats.dislikes }}</div>
         <div class="ov-label">👎 点踩</div>
       </div>
-      <div class="ov-card rate accent-primary">
+      <div class="ov-card rate">
         <div class="ov-val" :class="rateColorClass">{{ stats.like_rate }}%</div>
         <div class="ov-label">满意率</div>
       </div>
-      <div class="ov-card time accent-warn">
+      <div class="ov-card time">
         <div class="ov-val" :style="{ color: responseTimeColor }">{{ stats.avg_response_time }}s</div>
         <div class="ov-label">平均响应</div>
       </div>
@@ -410,11 +410,8 @@ onMounted(load)
 .ov-card {
   background: white; border-radius: 12px; border: 0.5px solid #e8eaed;
   padding: 16px; text-align: center;
+  border-top: 2px solid var(--color-primary);
 }
-.ov-card.accent-primary { border-top: 3px solid var(--color-primary); }
-.ov-card.accent-success { border-top: 3px solid #43a047; }
-.ov-card.accent-danger  { border-top: 3px solid #ef4444; }
-.ov-card.accent-warn    { border-top: 3px solid #f57c00; }
 .ov-val   { font-size: 1.8rem; font-weight: 600; color: #333; }
 .ov-label { font-size: 0.82rem; color: #888; margin-top: 4px; }
 .ov-card.like    .ov-val { color: #43a047; }

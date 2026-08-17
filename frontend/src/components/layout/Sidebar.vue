@@ -151,6 +151,8 @@ const isActive = computed(() => (name) => route.name === name)
 }
 .logo h1 {
   font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   display: flex;
   align-items: center;
   justify-content: center;

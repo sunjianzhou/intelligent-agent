@@ -71,6 +71,12 @@ const router = createRouter({ history: createWebHistory(), routes })
 router.beforeEach((to, from, next) => {
   document.title = to.meta.title ? `${to.meta.title} - 智能体` : '智能体'
 
+  // 已登录（有效 token）访问 /login：直接送回主界面，避免登录页套在应用外壳里
+  if (to.name === 'login') {
+    const token = localStorage.getItem('agent_token')
+    if (token && !isTokenExpired(token)) { next({ name: 'chat' }); return }
+  }
+
   if (to.meta.public) { next(); return }
 
   const token = localStorage.getItem('agent_token')

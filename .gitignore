@@ -8,6 +8,7 @@ LOCAL_INFRA.md
 
 # Python 残留缓存（E2E 已迁 Java，2026-08-15 起仓库零 Python）
 **/__pycache__/
+**/.pytest_cache/
 **/*.pyc
 **/*.pyo
 
