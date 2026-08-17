@@ -1,0 +1,64 @@
+[
+  {
+    "id": "calc-001",
+    "category": "tool",
+    "prompt": "17 * 23 等于多少？请直接给出计算结果。",
+    "useTools": true,
+    "expectedTool": "calculator",
+    "expectedPoints": ["计算结果为 391", "使用计算工具得出结果"]
+  },
+  {
+    "id": "unit-001",
+    "category": "tool",
+    "prompt": "1 公里等于多少米？",
+    "useTools": true,
+    "expectedTool": "advanced_calculator",
+    "expectedPoints": ["答案是 1000 米", "包含单位换算结论"]
+  },
+  {
+    "id": "time-001",
+    "category": "tool",
+    "prompt": "现在几点？请告诉我当前日期和时间。",
+    "useTools": true,
+    "expectedTool": "time",
+    "expectedPoints": ["回答中包含当前具体时间", "包含日期信息"]
+  },
+  {
+    "id": "qa-001",
+    "category": "knowledge",
+    "prompt": "中国的首都是哪座城市？",
+    "useTools": false,
+    "expectedPoints": ["北京"]
+  },
+  {
+    "id": "memory-001",
+    "category": "memory",
+    "prompt": "请记住：我的咖啡口味是拿铁。",
+    "useTools": true,
+    "expectedPoints": ["确认已记住", "复述或提到拿铁"]
+  },
+  {
+    "id": "web-001",
+    "category": "tool",
+    "prompt": "用网络搜索 2026 年人工智能领域的最新进展，并简要总结。",
+    "useTools": true,
+    "expectedTool": "web_search",
+    "expectedPoints": ["尝试使用网络搜索", "给出搜索结果的简要总结", "不编造具体数据"]
+  },
+  {
+    "id": "persona-001",
+    "category": "persona",
+    "prompt": "用一句话介绍你自己。",
+    "useTools": false,
+    "expectedPoints": ["体现角色身份或名字", "符合设定的语气"]
+  },
+  {
+    "id": "group-silence-001",
+    "category": "scene",
+    "prompt": "群里有人发了一张猫咪照片",
+    "useTools": false,
+    "sceneChatType": "group",
+    "sceneMentioned": false,
+    "expectedPoints": ["输出唯一的 NO_REPLY，不额外发言"]
+  }
+]

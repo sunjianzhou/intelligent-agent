@@ -18,6 +18,9 @@
 
     <properties>
         <java.version>21</java.version>
+        <!-- LLM 评估（G3）：surefire 内置用户属性，默认排除 @Tag("eval")，
+             -Peval 时覆盖为 groups=eval + 清空排除，只跑评估 -->
+        <excludedGroups>eval</excludedGroups>
     </properties>
 
     <dependencyManagement>
@@ -200,7 +203,32 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- EvalSuite 不满足 *Test 命名约定，显式把 eval 包纳入扫描；
+                         分组过滤（@Tag("eval")）仍由 groups/excludedGroups 用户属性控制 -->
+                    <includes>
+                        <include>**/*Test.java</include>
+                        <include>**/*Tests.java</include>
+                        <include>**/*TestCase.java</include>
+                        <include>**/eval/**/*.java</include>
+                    </includes>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- mvn -Peval test：跑 backend/src/test/eval 的 LLM 评估（需 Ollama 运行） -->
+        <profile>
+            <id>eval</id>
+            <properties>
+                <groups>eval</groups>
+                <excludedGroups></excludedGroups>
+            </properties>
+        </profile>
+    </profiles>
 
 </project>
