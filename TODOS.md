@@ -93,7 +93,11 @@
 
 ### E. 可选小项
 
-- [ ] 飞书群聊表情回应（TODO-81 遗留：emoji 消息类型已具备，缺业务判断）
+- [x] 飞书群聊表情回应（TODO-81 遗留：emoji 消息类型已具备，缺业务判断）
+      ✅ 2026-08-17（commit d3ef1c3）：`FeishuMessageSender.sendReaction` 接入飞书
+      reactions API；业务判断——群聊收到纯表情消息回点同一表情（不再送 LLM 原始 JSON），
+      模型判定 NO_REPLY 时回点 👍 轻量回应；`feishu.emoji-reaction-enabled` 开关
+      （默认开）。飞书测试 61 个全绿。
 
 ---
 
