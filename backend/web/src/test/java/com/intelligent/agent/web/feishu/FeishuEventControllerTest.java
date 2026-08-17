@@ -101,6 +101,50 @@ class FeishuEventControllerTest {
     }
 
     @Test
+    void routeEvent_groupChatNoReply_sendsThumbsUpReactionInsteadOfSilence() throws Exception {
+        Map<String, Object> noReplyResult = new HashMap<>();
+        noReplyResult.put("response", "NO_REPLY");
+        noReplyResult.put("assistant_message_id", "aid-3");
+        when(agentService.chatFull(any(ChatRequest.class))).thenReturn(noReplyResult);
+
+        String event = buildImMessageEvent("ou_grp3", "oc_group3", "随便聊聊", "group",
+                "text", "om_grp3", "{\\\"text\\\":\\\"随便聊聊\\\"}");
+        controller.routeEvent(event);
+        Thread.sleep(500);
+
+        verify(agentService, timeout(1000)).chatFull(any());
+        verify(sender, timeout(1000)).sendReaction("om_grp3", "THUMBSUP");
+        verify(sender, never()).sendInteractive(eq("oc_group3"), any());
+        verify(recallBridge, never()).register(any(), any());
+    }
+
+    @Test
+    void routeEvent_groupEmojiMessage_echoesReactionAndSkipsLlm() throws Exception {
+        String event = buildImMessageEvent("ou_emoji", "oc_emoji1", null, "group",
+                "emoji", "om_emoji1", "{\\\"emoji_type\\\":\\\"SMILE\\\",\\\"emoji\\\":\\\"😄\\\"}");
+        controller.routeEvent(event);
+        Thread.sleep(500);
+
+        verify(sender, timeout(1000)).sendReaction("om_emoji1", "SMILE");
+        verify(agentService, never()).chatFull(any());
+        verify(sender, never()).sendText(any(), contains("思考中"));
+        verify(sender, never()).sendInteractive(any(), any());
+    }
+
+    @Test
+    void routeEvent_groupEmojiMessage_reactionDisabled_runsNormalFlow() throws Exception {
+        controller.getConfig().setEmojiReactionEnabled(false);
+
+        String event = buildImMessageEvent("ou_emoji2", "oc_emoji2", null, "group",
+                "emoji", "om_emoji2", "{\\\"emoji_type\\\":\\\"SMILE\\\"}");
+        controller.routeEvent(event);
+        Thread.sleep(500);
+
+        verify(agentService, timeout(1000)).chatFull(any());
+        verify(sender, never()).sendReaction(any(), any());
+    }
+
+    @Test
     void routeEvent_p2pChat_stillSendsThinkingFirst() throws Exception {
         String event = buildImMessageEvent("ou_p2p", "oc_p2p1", "你好", "p2p");
         controller.routeEvent(event);
@@ -126,7 +170,14 @@ class FeishuEventControllerTest {
     }
 
     private String buildImMessageEvent(String openId, String chatId, String text, String chatType) {
-        String contentEscaped = "{\\\"text\\\":\\\"" + text + "\\\"}";
+        return buildImMessageEvent(openId, chatId, text, chatType, "text",
+                "om_" + chatId, "{\\\"text\\\":\\\"" + text + "\\\"}");
+    }
+
+    private String buildImMessageEvent(String openId, String chatId, String text,
+                                       String chatType, String msgType, String messageId,
+                                       String rawContentJson) {
+        String contentEscaped = rawContentJson;
         return "{"
             + "\"schema\":\"2.0\","
             + "\"header\":{\"event_type\":\"im.message.receive_v1\"},"
@@ -134,7 +185,8 @@ class FeishuEventControllerTest {
             +   "\"sender\":{\"sender_id\":{\"open_id\":\"" + openId + "\"}},"
             +   "\"message\":{\"chat_id\":\"" + chatId + "\","
             +              "\"chat_type\":\"" + chatType + "\","
-            +              "\"msg_type\":\"text\","
+            +              "\"msg_type\":\"" + msgType + "\","
+            +              "\"message_id\":\"" + messageId + "\","
             +              "\"content\":\"" + contentEscaped + "\"}"
             + "}"
             + "}";

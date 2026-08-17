@@ -146,6 +146,40 @@ public class FeishuMessageSender {
         }
     }
 
+    /** 给指定消息添加表情回复（TODO-81 群聊表情回应）。
+     *  POST /open-apis/im/v1/messages/{message_id}/reactions
+     *  需应用具备 im:message 或 im:message.reactions:write_only 权限。
+     *  返回表情回复 ID（reaction_id）；失败抛异常由调用方决定降级。 */
+    public String sendReaction(String messageId, String emojiType) {
+        String url = feishuBase + "/open-apis/im/v1/messages/" + messageId + "/reactions";
+        String token = getTenantAccessToken();
+
+        Map<String, String> reactionType = new HashMap<>();
+        reactionType.put("emoji_type", emojiType);
+        Map<String, Object> body = new HashMap<>();
+        body.put("reaction_type", reactionType);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAcceptCharset(Collections.singletonList(StandardCharsets.UTF_8));
+
+        ResponseEntity<String> res = restTemplate.exchange(
+                url, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
+        if (!res.getStatusCode().is2xxSuccessful()) {
+            throw new RuntimeException("飞书添加表情回复 API 返回 " + res.getStatusCode() + ": " + res.getBody());
+        }
+
+        try {
+            Map<?, ?> json = objectMapper.readValue(res.getBody(), Map.class);
+            Map<?, ?> data = (Map<?, ?>) json.get("data");
+            return data != null ? (String) data.get("reaction_id") : null;
+        } catch (Exception e) {
+            log.warn("解析飞书 reaction_id 失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
     private String sendWithRetry(String chatId, String msgType, Object content) {
         Exception lastEx = null;
         for (int i = 0; i < 3; i++) {

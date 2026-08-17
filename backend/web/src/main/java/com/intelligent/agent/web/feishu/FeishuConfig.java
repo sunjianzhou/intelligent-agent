@@ -22,6 +22,11 @@ public class FeishuConfig {
      *  飞书开放平台「凭证与基础信息」页可查看应用的 open_id。*/
     private String botOpenId = "";
 
+    /** 群聊表情回应总开关（TODO-81 遗留补齐）：
+     *  开启后，群聊收到纯表情消息会回点同一表情（不再送 LLM），
+     *  模型判定 NO_REPLY 时用 👍 表情轻量回应代替纯静默。*/
+    private boolean emojiReactionEnabled = true;
+
     /** 5 线程 + 有界队列 100 + CallerRunsPolicy，与主 streamExecutor 完全隔离 */
     @Bean(name = "feishuStreamExecutor", destroyMethod = "shutdown")
     public ExecutorService feishuStreamExecutor() {
@@ -55,4 +60,6 @@ public class FeishuConfig {
     public void setVerificationToken(String verificationToken) { this.verificationToken = verificationToken; }
     public String getBotOpenId() { return botOpenId; }
     public void setBotOpenId(String botOpenId) { this.botOpenId = botOpenId; }
+    public boolean isEmojiReactionEnabled() { return emojiReactionEnabled; }
+    public void setEmojiReactionEnabled(boolean emojiReactionEnabled) { this.emojiReactionEnabled = emojiReactionEnabled; }
 }

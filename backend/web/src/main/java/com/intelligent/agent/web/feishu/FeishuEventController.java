@@ -64,13 +64,20 @@ public class FeishuEventController {
             Map<?, ?> message = (Map<?, ?>) event.get("message");
             String chatId     = (String) message.get("chat_id");
             String chatType   = (String) message.get("chat_type"); // "p2p" / "group"
+            String msgType    = (String) message.get("msg_type");
+            String messageId  = (String) message.get("message_id");
 
             String contentStr = (String) message.get("content");
             String text;
+            String emojiType  = null;
             try {
                 Map<?, ?> contentMap = objectMapper.readValue(contentStr, Map.class);
                 Object textObj = contentMap.get("text");
                 text = textObj != null ? (String) textObj : contentStr;
+                Object emojiObj = contentMap.get("emoji_type");
+                if (emojiObj != null && !String.valueOf(emojiObj).trim().isEmpty()) {
+                    emojiType = String.valueOf(emojiObj);
+                }
             } catch (Exception e) {
                 text = contentStr;
             }
@@ -81,11 +88,24 @@ public class FeishuEventController {
             // 仍会把消息送进 LLM，由 [GROUP SCENE] 规则决定是否真正回复（NO_REPLY 时静默丢弃）。
             boolean quietProbe = isGroup && !mentioned;
 
+            // TODO-81 业务判断：群聊收到纯表情消息 → 回点同一表情作为轻量回应，
+            // 不再把原始 content JSON 当文本送进 LLM，也不发「思考中」占位。
+            if (isGroup && "emoji".equals(msgType) && config.isEmojiReactionEnabled()) {
+                try {
+                    sender.sendReaction(messageId, emojiType != null ? emojiType : "THUMBSUP");
+                    log.debug("飞书群聊表情消息已回点 {}，chatId={}", emojiType, chatId);
+                } catch (Exception e) {
+                    log.warn("飞书群聊表情消息回应失败，chatId={}: {}", chatId, e.getMessage());
+                }
+                return;
+            }
+
             String userId = "feishu:" + openId;
             final String finalText     = text;
             final String finalUserId   = userId;
             final String finalChatId   = chatId;
             final String finalChatType = chatType;
+            final String finalMessageId = messageId;
             final boolean finalMentioned  = mentioned;
             final boolean finalQuietProbe = quietProbe;
 
@@ -111,6 +131,16 @@ public class FeishuEventController {
                     String reply = String.valueOf(result.getOrDefault("response", ""));
                     if (NO_REPLY_SENTINEL.equals(reply.trim())) {
                         log.debug("飞书群聊静默：模型判定无需发言，chatId={}", finalChatId);
+                        // 轻量表情回应代替纯静默（TODO-81）：给用户"已读"反馈又不刷屏
+                        if ("group".equals(finalChatType) && config.isEmojiReactionEnabled()
+                                && finalMessageId != null) {
+                            try {
+                                sender.sendReaction(finalMessageId, "THUMBSUP");
+                            } catch (Exception e) {
+                                log.warn("飞书群聊 NO_REPLY 表情回应失败，chatId={}: {}",
+                                        finalChatId, e.getMessage());
+                            }
+                        }
                         return;
                     }
                     String assistantMessageId = (String) result.get("assistant_message_id");
@@ -131,6 +161,8 @@ public class FeishuEventController {
             log.error("routeEvent 解析失败（跳过本条，不影响 WS 连接）: {}", e.getMessage());
         }
     }
+
+    FeishuConfig getConfig() { return config; }
 
     /** 判断群聊消息的 mentions 列表中是否包含机器人自身。
      *  未配置 {@code feishu.bot-open-id} 时退化为"群里有人被 @ 就当作可能 @ 了机器人"的低精度启发式。*/

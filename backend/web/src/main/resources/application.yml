@@ -118,6 +118,7 @@ feishu:
   encrypt-key: ${FEISHU_ENCRYPT_KEY:}
   verification-token: ${FEISHU_VERIFICATION_TOKEN:}
   bot-open-id: ${FEISHU_BOT_OPEN_ID:}
+  emoji-reaction-enabled: ${FEISHU_EMOJI_REACTION_ENABLED:true}
   # OAuth 回调地址（生产为公网 HTTPS 地址）；测试可注入 mock base
   oauth-base-url: ${FEISHU_OAUTH_BASE_URL:https://open.feishu.cn}
   redirect-uri: ${FEISHU_REDIRECT_URI:}

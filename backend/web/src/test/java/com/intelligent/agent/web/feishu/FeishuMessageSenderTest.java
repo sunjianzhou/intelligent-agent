@@ -143,6 +143,33 @@ class FeishuMessageSenderTest {
                 .isInstanceOf(RuntimeException.class);
     }
 
+    @Test
+    void sendReaction_postsToReactionsApi_andReturnsReactionId() throws Exception {
+        server.enqueue(tokenResponse("tok-react", 7200));
+        server.enqueue(new MockResponse()
+                .setBody("{\"code\":0,\"data\":{\"reaction_id\":\"rc_123\"}}")
+                .setResponseCode(200));
+
+        String reactionId = sender.sendReaction("om_msg1", "THUMBSUP");
+
+        assertThat(reactionId).isEqualTo("rc_123");
+        server.takeRequest();  // token 请求
+        RecordedRequest req = server.takeRequest(2, TimeUnit.SECONDS);
+        assertThat(req).isNotNull();
+        assertThat(req.getMethod()).isEqualTo("POST");
+        assertThat(req.getPath()).contains("/im/v1/messages/om_msg1/reactions");
+        assertThat(req.getBody().readUtf8()).contains("\"emoji_type\":\"THUMBSUP\"");
+    }
+
+    @Test
+    void sendReaction_throwsOnApiError() throws Exception {
+        server.enqueue(tokenResponse("tok-react-err", 7200));
+        server.enqueue(new MockResponse().setResponseCode(400).setBody("{\"code\":231001,\"msg\":\"invalid emoji\"}"));
+
+        assertThatThrownBy(() -> sender.sendReaction("om_msg1", "NOT_A_REAL_EMOJI"))
+                .isInstanceOf(RuntimeException.class);
+    }
+
     private MockResponse tokenResponse(String token, int expire) {
         return new MockResponse()
                 .setBody("{\"code\":0,\"tenant_access_token\":\"" + token
