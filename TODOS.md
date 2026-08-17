@@ -161,8 +161,8 @@
 - [x] E2E 迁 Java：`tests/e2e-java`（JUnit + JDK HttpClient，16 个场景测试类，
       覆盖原 pytest 68 用例全部场景；后端不可达整类跳过）；`tests/e2e`（pytest）已删除，
       CI 手动 E2E job 改为 Java 套件 ✅ 2026-08-15
-- [ ] 清理 `__pycache__` / `.pytest_cache` 残留（已 gitignore，沙箱策略拦截递归删除，
-      可手动删除或留待清理；不影响任何构建/测试）
+- [x] 清理 `__pycache__` / `.pytest_cache` 残留 ✅ 2026-08-17：目录已不存在（早前已清），
+      补上 `.gitignore` 缺失的 `**/.pytest_cache/` 规则（commit 244dbaf）
 
 > **2026-08-15 推进记录**：P0 4 项 + P1 5 项 + P2 4 项完成，全量测试
 > 后端 316（58 类）+ client 12 + 前端 14 全绿；P2 通知分发 + 连接池闭环后
@@ -204,12 +204,15 @@
       每次生成都要先滚参数列。→ 生成按钮 sticky 在参数面板底部，或移到右上角。
       （layout · ImageView）✅ 2026-08-13 修复：gen-btn `position:sticky; bottom:0`
       常驻面板底部（实测 y 791→660 可见）（commit d62e6e8）。
-- [ ] D-04 全局字体为系统栈（PingFang/雅黑/system），品牌/标题无字体层级，整体“无设计观点”。
+- [x] D-04 全局字体为系统栈（PingFang/雅黑/system），品牌/标题无字体层级，整体“无设计观点”。
       → 品牌 H1 加重字重/字距，或引入开源中文显示字体（思源黑体子集）仅用于标题。
-      （typography · main.css body）
-- [ ] D-05 登录页仍显示完整应用侧栏（220px 导航可见），表单只在主内容区居中（x=606），
+      （typography · main.css body）✅ 2026-08-17 修复：侧栏/登录 Logo 700 + 0.04~0.08em
+      字距，页面标题加 0.02em 字距；无新增字体资产（commit 244dbaf）
+- [x] D-05 登录页仍显示完整应用侧栏（220px 导航可见），表单只在主内容区居中（x=606），
       视觉像“未登录却进了应用壳”。→ 登录页独立全屏布局或隐藏侧栏。
-      （layout · LoginView / 外壳）
+      （layout · LoginView / 外壳）✅ 2026-08-17 修复：`isLoggedIn` 增加 token 过期校验；
+      有效登录态访问 `/login` 由路由守卫重定向 `/chat`；未登录时 App 外壳不渲染
+      （实测 /login 仅登录卡片，无侧栏；/admin/tools→/login 自动回 /chat，commit 244dbaf）
 - [x] D-06 暗色主题滚动条未适配：`::-webkit-scrollbar-track` 固定 #f1f1f1，
       暗色下滚动条轨道刺眼。→ 改用 CSS 变量。
       （interaction · main.css）✅ 2026-08-13 修复：滚动条颜色 token 化，深浅主题各一组（commit bfa57ef）。
@@ -228,16 +231,19 @@
 - [x] D-10 间距偏离 4px 刻度：chat 建议卡片 gap 10px（应为 8/12）、header padding 24px 与
       内容 padding 20px 错位 4px（标题 244 vs 内容 240）。→ 统一到刻度。
       ✅ 2026-08-13 修复：suggestion gap 10→12px、header padding 24→20px 与内容对齐（commit 6b474d3/4dcffc5）。
-- [ ] D-11 管理后台卡片密度高：admin-system/stat 4-5 张 246px 卡片并排，工具管理 3 列卡片高度
+- [x] D-11 管理后台卡片密度高：admin-system/stat 4-5 张 246px 卡片并排，工具管理 3 列卡片高度
       不一（268 vs 169），呈 dashboard 卡片马赛克。→ 改表格/分组或统一高度。
+      ✅ 2026-08-17 修复：统计概览卡去除彩色顶边/数值马赛克，统一 2px 主色顶边 + 等高；
+      工具卡描述 2 行截断 + min-height，行内等高（实测 94px / 118px 统一，commit 244dbaf）
 - [x] D-12 chat 空态「🐬 无限制模式」用 emoji 当设计元素（AI slop 模式）。→ 换图标或纯文字 badge。
       ✅ 2026-08-13 修复：emoji → `fa-lock-open` 图标（commit 6b474d3）。
-- [ ] D-13 MCP 配置页为 1244px 单张长卡片（内部大量滚动）；且与 G2 升级方向（服务器 CRUD）
-      重叠，可并入 G2 一并重做。
+- [x] D-13 MCP 配置页为 1244px 单张长卡片（内部大量滚动）；且与 G2 升级方向（服务器 CRUD）
+      重叠，可并入 G2 一并重做。✅ 2026-08-17 确认：G2（commit 34be463）已将页面重构为
+      MCP 服务器列表 + 分组配置卡片，单张长卡问题不复存在，随 G2 关闭
 
 > 基线分（主观）：Design C / AI Slop B-。2026-08-13 已修复 D-01/02/03/06/07/08/09/10/12
-> （6 个 style commit），余下 D-04（字体资产决策）、D-05（登录页结构）、D-11（卡片改表格）、
-> D-13（并入 G2）待做。
+> （6 个 style commit）；2026-08-17 补完 D-04/D-05/D-11（commit 244dbaf），D-13 随 G2 关闭，
+> 设计审计 13 项全部收口。
 
 ---
 
