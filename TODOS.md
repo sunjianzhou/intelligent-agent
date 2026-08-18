@@ -1700,10 +1700,16 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       E2E（需 Ollama + 后端）为 `workflow_dispatch` 手动 job，不进默认门。
       本地已验证全部命令：后端 296 用例绿、前端 14 用例绿、构建通过。
 - [ ] 后续轮：图片生成 P3（ComfyUI 热重载/LoRA/FLUX）、Telegram bot 真实送达验收。
-- [ ] runtime 配置接线缺口（2026-08-17 排查发现）：`/api/config/runtime` 的
-      `ollama_num_ctx` / `ollama_max_tokens` / `ollama_temperature` / `chat_timeout`
-      等只保存展示，未注入 `AgentRequestContext.options` 到达 LLM provider，
-      UI 滑块当前为 no-op；需决定按请求注入还是并入模型配置表。
+- [x] runtime 配置接线缺口（2026-08-17 排查发现）✅ 2026-08-18（commit `b0b07b7`）：
+      按请求注入（决定：不入模型配置表）——`LocalChatService` 把已保存的 runtime 配置
+      映射进 `AgentRequestContext.options`（temperature / max_tokens / num_ctx /
+      chat_timeout），Ollama 与云端 provider 按请求读 `chat_timeout` 覆盖 HTTP 超时；
+      优先级：请求显式参数（未来 ChatRequest.options）> 已保存 runtime 配置 >
+      模型配置表（仅 num_ctx）> application.yml 默认值。前端保存改为只提交有改动的键，
+      未保存前模型表 / 默认值完全不受影响（避免"保存任意配置把 num_ctx=4096 覆盖模型表"）。
+      新增 8 个测试（ConfigRuntimeService 3 / LocalChatService 2 / Ollama 2 / 云端 1）；
+      全量后端 379 用例绿、前端 14 用例绿、构建通过。
+      剩余（未在本项处理）：`tool_result_max_chars` / `inference_concurrency` 仍为展示态。
 
 ### 环境问题记录（2026-08-13 排查，与项目代码无关）
 
