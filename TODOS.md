@@ -166,7 +166,13 @@
       ChatHistoryPanel（样式原样随迁）；TasksView 1119→872 行：抽出 TaskCard
       （展示辅助函数随迁，now 由父传入）；MemoryView 1001→918 行：抽出 MemoryCard。
       模板/样式原样迁移、行为零变化；前端 14 用例绿 + 构建通过。
-      剩余可继续拆：ChatView 消息行/输入区、TasksView 弹窗、MemoryView 文件面板。
+      第二轮拆分 ✅ 2026-08-18（commit `53365e9` + `bf35c13`）：
+      ChatView 2052→1243 行（抽 ChatMessageRow——气泡/反馈/复制/CoT，
+      ChatInputBar——输入框/图片附件/工具条/导出菜单，顺手修掉反馈失败路径
+      引用未声明 feedbacks 的潜在 bug）；TasksView 873→382 行
+      （抽 TaskCreateModal / TaskEditModal，表单与 Cron 校验随迁）；
+      MemoryView 919→713 行（抽 MemoryFilesPanel，上传/列表/删除自包含）。
+      前端 14 用例绿 + 构建通过。
 - [x] E2E 迁 Java：`tests/e2e-java`（JUnit + JDK HttpClient，16 个场景测试类，
       覆盖原 pytest 68 用例全部场景；后端不可达整类跳过）；`tests/e2e`（pytest）已删除，
       CI 手动 E2E job 改为 Java 套件 ✅ 2026-08-15
