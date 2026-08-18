@@ -23,137 +23,20 @@
       />
 
       <!-- 消息气泡 -->
-      <div
+      <ChatMessageRow
         v-for="(msg, index) in messages"
         :key="msg.id != null ? msg.id : index"
-        class="message-row"
-        :class="[msg.role, { 'retract-mode': retractMode && canRetract(msg) }]"
-        @click="retractMode && canRetract(msg) ? toggleRetractSelect(msg) : null"
-      >
-        <!-- 撤回模式勾选框 -->
-        <div v-if="retractMode && canRetract(msg)" class="retract-checkbox" @click.stop="toggleRetractSelect(msg)">
-          <i :class="selectedRetractIds.has(msg.id) ? 'fas fa-check-square' : 'far fa-square'" />
-        </div>
-        <!-- 已撤回占位条 -->
-        <div v-if="msg.isRetracted" class="retracted-placeholder">
-          <i class="fas fa-rotate-left" /> 该消息已被撤回
-        </div>
-        <!-- 工具调用卡片 -->
-        <template v-if="!msg.isRetracted && msg.role === 'tool_calls'">
-          <div class="tool-calls-card">
-            <div class="tool-calls-title">
-              <i class="fas fa-tools" /> 本轮调用了 {{ msg.toolCalls.length }} 个工具
-              <!-- 任务创建后显示快捷入口 -->
-              <router-link v-if="msg.taskCreated" to="/admin/tasks" class="task-view-link">
-                <i class="fas fa-tasks" /> 查看任务管理
-              </router-link>
-            </div>
-            <div
-              v-for="(tc, i) in msg.toolCalls"
-              :key="i"
-              class="tool-call-item"
-              :class="tc.success ? 'success' : 'fail'"
-            >
-              <span class="tool-name"><i class="fas fa-cube" /> {{ tc.tool }}</span>
-              <span class="tool-status">
-                <i :class="tc.success ? 'fas fa-check' : 'fas fa-times'" />
-                {{ tc.success ? '成功' : '失败' }}
-              </span>
-              <details v-if="tc.result" class="tool-result-details">
-                <summary class="tool-result-summary">查看结果</summary>
-                <pre class="tool-result">{{ formatToolResult(tc.result) }}</pre>
-              </details>
-            </div>
-          </div>
-        </template>
-
-        <!-- 普通消息（头像 + 气泡） -->
-        <template v-else-if="!msg.isRetracted">
-          <div v-if="msg.role !== 'user'" class="avatar">
-            <i :class="msg.notif ? 'fas fa-bell' : msg.role === 'system' ? 'fas fa-info-circle' : 'fas fa-robot'"></i>
-          </div>
-          <div class="bubble-wrap" :class="{ 'search-match': searchMatches.includes(index), 'search-current': searchMatches[searchCurrentIdx] === index }">
-            <div class="bubble" :class="[msg.role, { 'notif': msg.notif }]">
-              <!-- CoT 思维过程（仅 assistant 气泡，有 thinkingText 时才显示）-->
-              <details
-                v-if="msg.role === 'assistant' && msg.thinkingText"
-                class="cot-block"
-                :open="msg.isStreaming"
-              >
-                <summary class="cot-summary">
-                  <i class="fas fa-brain cot-icon" />
-                  <span>思维过程</span>
-                  <i v-if="msg.isStreaming" class="fas fa-circle-notch fa-spin cot-spin" />
-                  <span v-else class="cot-len">{{ msg.thinkingText.length }} 字</span>
-                </summary>
-                <div
-                  class="cot-content"
-                  v-html="renderMarkdown(msg.thinkingText, msg.isStreaming)"
-                />
-              </details>
-              <!-- 正式回答 -->
-              <div
-                v-if="msg.role === 'assistant'"
-                class="md-content"
-                v-html="renderMarkdown(msg.content, msg.isStreaming) + (msg.isStreaming ? '<span class=\'cursor\'>▍</span>' : '')"
-              />
-              <!-- user 气泡图片预览（多模态消息） -->
-              <img
-                v-if="msg.role === 'user' && msg.imagePreview"
-                :src="msg.imagePreview"
-                class="msg-img-thumb"
-                alt="附图"
-              />
-              <span v-if="msg.role !== 'assistant'" v-html="highlightSearch(msg.content, searchKeyword)"></span>
-              <!-- 定时通知气泡底部跳转链接 -->
-              <router-link v-if="msg.notif" to="/admin/tasks" class="notif-task-link">
-                <i class="fas fa-tasks" /> 查看任务管理
-              </router-link>
-            </div>
-            <div class="meta">
-              <span class="time">{{ formatTime(msg.timestamp) }}</span>
-              <span v-if="msg.responseTime" class="response-time">
-                {{ msg.responseTime.toFixed(2) }}s
-              </span>
-            </div>
-            <!-- ── 悬停操作栏（复制/点赞/踩）── -->
-            <div v-if="msg.role === 'assistant' && !msg.isStreaming && msg.content"
-                 class="bubble-actions">
-              <button class="bact-btn" title="复制" @click="copyMessage(msg.content)">
-                <i class="fas fa-copy" />
-              </button>
-              <button
-                class="bact-btn"
-                title="有帮助"
-                :class="{ active: getFeedback(msg, index) === 'like' }"
-                :disabled="!!getFeedback(msg, index)"
-                @click="submitFeedback(msg, index, 'like')"
-              >
-                <i class="fas fa-thumbs-up" />
-              </button>
-              <button
-                class="bact-btn dislike"
-                title="没帮助"
-                :class="{ active: getFeedback(msg, index) === 'dislike' }"
-                :disabled="!!getFeedback(msg, index)"
-                @click="submitFeedback(msg, index, 'dislike')"
-              >
-                <i class="fas fa-thumbs-down" />
-              </button>
-              <button
-                class="bact-btn"
-                title="从此处分支对话"
-                @click="branchFromMessage(index)"
-              >
-                <i class="fas fa-code-branch" />
-              </button>
-            </div>
-          </div>
-          <div v-if="msg.role === 'user'" class="avatar user-avatar">
-            <i class="fas fa-user"></i>
-          </div>
-        </template>
-      </div>
+        :msg="msg"
+        :index="index"
+        :retract-mode="retractMode"
+        :selected-retract-ids="selectedRetractIds"
+        :search-keyword="searchKeyword"
+        :is-search-match="searchMatches.includes(index)"
+        :is-search-current="searchMatches[searchCurrentIdx] === index"
+        :messages="messages"
+        @toggle-retract="toggleRetractSelect"
+        @branch="branchFromMessage"
+      />
 
       <!-- 思考中指示器（含已等待秒数） -->
       <div v-if="isThinking" class="message-row assistant">
@@ -280,115 +163,31 @@
     </div>
 
     <!-- 输入区 -->
-    <div class="input-area">
-      <!-- 移动端：角色/模型选择徽章（点击弹出底部抽屉） -->
-      <div class="mobile-config-chips">
-        <button
-          class="mobile-chip mobile-chip-role"
-          :aria-label="`当前角色：${activeRoleName}`"
-          @click="showRoleModelSheet = true"
-        >
-          <i class="fas fa-id-card" aria-hidden="true" />
-          <span>{{ activeRoleName }}</span>
-        </button>
-        <button
-          class="mobile-chip mobile-chip-model"
-          :aria-label="`当前模型：${currentModel || '默认'}`"
-          @click="showRoleModelSheet = true"
-        >
-          <i class="fas fa-robot" aria-hidden="true" />
-          <span>{{ currentModel || '默认' }}</span>
-        </button>
-      </div>
-      <!-- 图片附件预览 -->
-      <div v-if="attachedImagePreview" class="attached-img-row">
-        <img :src="attachedImagePreview" class="attached-thumb" />
-        <button class="attached-remove" @click="clearAttachedImage" title="移除图片">
-          <i class="fas fa-times" />
-        </button>
-      </div>
-      <div class="input-wrap" :class="{ 'input-wrap-thinking': isThinking || isStreaming, 'input-wrap-disconnected': !isConnected }">
-        <textarea
-          ref="inputRef"
-          v-model="inputText"
-          class="chat-input"
-          :placeholder="isThinking ? '正在思考，请稍候...' : isStreaming ? '正在生成回答...' : !isConnected ? '未连接到服务器' : '输入消息，Enter 发送，Shift+Enter 换行...'"
-          :disabled="!isConnected || isThinking || isStreaming"
-          rows="1"
-          @keydown="handleKeydown"
-          @input="autoResize"
-          @paste="onPasteImage"
-        />
-        <!-- 附图按钮 -->
-        <label class="attach-btn" title="附上图片（支持粘贴）"
-               :class="{ 'attach-active': attachedImagePreview, 'attach-loading': isReadingImage }"
-               :style="isReadingImage ? 'pointer-events:none;opacity:0.5' : ''">
-          <i :class="isReadingImage ? 'fas fa-circle-notch fa-spin' : 'fas fa-image'" />
-          <input type="file" accept="image/*" style="display:none" :disabled="isReadingImage" @change="onAttachImageFile" />
-        </label>
-        <!-- 停止生成按钮（流式输出时显示）+ 脉冲动画 -->
-        <button v-if="isStreaming || isThinking" class="stop-btn stop-btn-pulse" title="点击停止生成" @click="cancelStreaming">
-          <i class="fas fa-stop" />
-        </button>
-        <button v-else class="send-btn" :disabled="!canSend" @click="sendMessage">
-          <i class="fas fa-paper-plane"></i>
-        </button>
-      </div>
-      <div class="input-meta">
-        <span v-if="!isConnected" class="hint warn">
-          <i class="fas fa-exclamation-circle"></i> 未连接，请检查后端服务
-        </span>
-        <span v-else-if="isThinking" class="hint">
-          <i class="fas fa-circle-notch fa-spin"></i> 正在思考...
-        </span>
-        <span v-else-if="isStreaming" class="hint">
-          <i class="fas fa-circle-notch fa-spin"></i> 正在生成...
-          <span class="hint-tip">（点击右侧停止按钮可中止）</span>
-        </span>
-        <span v-else class="hint">
-          已连接 · {{ modelStatus }}
-          <span v-if="projectStore.activeProject" class="project-badge" @click="router.push('/project')">
-            <i class="fas fa-folder-open" /> {{ projectStore.activeProject.title }}
-          </span>
-        </span>
-        <div class="input-meta-right">
-          <!-- Token 用量指示（WANT-001） -->
-          <span v-if="messages.length > 0" class="token-indicator"
-                :style="{ color: tokenColor }"
-                :class="{ 'token-warn': tokenWarning }"
-                :title="`估算 token 用量: ${estimatedTokens}/${CTX_LIMIT}`">
-            <i class="fas fa-database" style="font-size:0.7rem" />
-            {{ estimatedTokens }}/{{ CTX_LIMIT }}
-          </span>
-
-          <!-- 会话操作工具条：历史 / 导出 / 撤回 / 清空（水平排列，右下角） -->
-          <div class="input-toolbar">
-            <button class="toolbar-btn" :class="{ active: showHistory }" title="查看历史会话" @click="toggleHistory">
-              <i class="fas fa-history" />
-            </button>
-            <div class="toolbar-export-wrap" v-if="messages.length > 0">
-              <button class="toolbar-btn" title="导出对话" @click.stop="showExportMenu = !showExportMenu">
-                <i class="fas fa-download" />
-              </button>
-              <div v-if="showExportMenu" class="export-menu" @click.stop>
-                <button @click="exportChat('md'); showExportMenu = false">
-                  <i class="fab fa-markdown" /> Markdown
-                </button>
-                <button @click="exportChat('txt'); showExportMenu = false">
-                  <i class="fas fa-file-alt" /> TXT
-                </button>
-              </div>
-            </div>
-            <button v-if="messages.length > 0" class="toolbar-btn" :class="{ active: retractMode }" title="撤回消息" @click.stop="toggleRetractMode">
-              <i class="fas fa-rotate-left" />
-            </button>
-            <button v-if="messages.length > 0" class="toolbar-btn toolbar-btn-danger" title="清空对话" @click.stop="handleClearChat">
-              <i class="fas fa-trash-alt" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <ChatInputBar
+      ref="inputBarRef"
+      :is-connected="isConnected"
+      :is-thinking="isThinking"
+      :is-streaming="isStreaming"
+      :model-status="modelStatus"
+      :current-model="currentModel"
+      :active-role-name="activeRoleName"
+      :show-history="showHistory"
+      :retract-mode="retractMode"
+      :messages-count="messages.length"
+      :estimated-tokens="estimatedTokens"
+      :ctx-limit="CTX_LIMIT"
+      :token-color="tokenColor"
+      :token-warning="tokenWarning"
+      :project-title="projectStore.activeProject?.title || ''"
+      @send="handleSend"
+      @cancel-stream="cancelStreaming"
+      @toggle-history="toggleHistory"
+      @export="exportChat"
+      @toggle-retract-mode="toggleRetractMode"
+      @clear-chat="handleClearChat"
+      @open-role-model-sheet="showRoleModelSheet = true"
+      @project-click="router.push('/project')"
+    />
 
     <!-- 移动端：角色 + 模型选择底部抽屉 -->
     <BottomSheet v-model="showRoleModelSheet" title="角色与模型">
@@ -443,15 +242,12 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { renderMarkdown, highlightSearch } from '@/utils/markdown'
 import { ElMessage } from 'element-plus'
 import { useWebSocketStore }    from '@/stores/websocket'
-import { useAuthStore }         from '@/stores/auth'
 import { useLocalSessionStore } from '@/stores/localSession'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useProjectStore }      from '@/stores/project'
 import {
-  submitFeedback as apiFeedback,
   listConversations, getConversation, deleteConversation,
   branchConversation as apiBranchConversation,
   retractMessages as apiRetractMessages,
@@ -466,6 +262,8 @@ import BottomSheet from '@/components/common/BottomSheet.vue'
 import ChatSearchBar    from '@/components/chat/ChatSearchBar.vue'
 import ChatEmptyState   from '@/components/chat/ChatEmptyState.vue'
 import ChatHistoryPanel from '@/components/chat/ChatHistoryPanel.vue'
+import ChatMessageRow   from '@/components/chat/ChatMessageRow.vue'
+import ChatInputBar     from '@/components/chat/ChatInputBar.vue'
 
 // ── Store ──────────────────────────────────────────────────
 const router       = useRouter()
@@ -544,63 +342,9 @@ const closeConfigDropdown = (e) => {
 }
 
 // ── 本地状态 ───────────────────────────────────────────────
-const inputText            = ref('')
 const isThinking           = ref(false)
 const messageListRef       = ref(null)
-// 多模态图片附件
-const attachedImageB64     = ref(null)   // 纯 base64 字符串（去掉 data URL 前缀）
-const attachedImagePreview = ref(null)   // Data URL 用于本地显示缩略图
-const isReadingImage       = ref(false)  // FileReader 进行中时禁用附图按钮
-
-const IMAGE_MAX_BYTES = 5 * 1024 * 1024  // 5 MB 上限
-
-const _readImageFile = (file) => {
-  if (!file || !file.type.startsWith('image/')) return
-  if (file.size > IMAGE_MAX_BYTES) {
-    ElMessage({ message: '图片大小不能超过 5MB', type: 'warning', duration: 2500 })
-    return
-  }
-  isReadingImage.value = true
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    const dataUrl = e.target.result             // "data:image/png;base64,xxxx"
-    attachedImagePreview.value = dataUrl
-    // 去掉 "data:image/xxx;base64," 前缀，只保留纯 base64
-    const comma = dataUrl.indexOf(',')
-    attachedImageB64.value = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
-    isReadingImage.value = false
-  }
-  reader.onerror = () => {
-    ElMessage({ message: '图片读取失败，请重试', type: 'error', duration: 2500 })
-    isReadingImage.value = false
-  }
-  reader.readAsDataURL(file)
-}
-
-const onAttachImageFile = (e) => {
-  const file = e.target.files?.[0]
-  if (file) _readImageFile(file)
-}
-
-const clearAttachedImage = () => {
-  attachedImageB64.value = null
-  attachedImagePreview.value = null
-}
-
-const onPasteImage = (e) => {
-  const items = e.clipboardData?.items
-  if (!items) return
-  for (const item of items) {
-    if (item.type.startsWith('image/')) {
-      const file = item.getAsFile()
-      if (file) {
-        e.preventDefault()
-        _readImageFile(file)
-      }
-      break
-    }
-  }
-}
+const inputBarRef          = ref(null)
 
 // ── 推理等待计时器 ─────────────────────────────────────────
 const thinkingSeconds  = ref(0)
@@ -635,11 +379,6 @@ const estimatedTokens = computed(() => {
   const words = (allText.match(/[a-zA-Z0-9]+/g) || []).length
   return Math.round(cjk * 1.5 + words)
 })
-const formatToolResult = (result) => {
-  if (!result) return ''
-  const s = typeof result === 'string' ? result : JSON.stringify(result)
-  try { return JSON.stringify(JSON.parse(s), null, 2) } catch { return s }
-}
 
 const tokenPct     = computed(() => Math.min(100, Math.round(estimatedTokens.value / CTX_LIMIT.value * 100)))
 const tokenColor   = computed(() => tokenPct.value >= 90 ? '#e53935' : tokenPct.value >= 70 ? '#f57c00' : '#aaa')
@@ -704,91 +443,8 @@ const closeSearch = () => {
 const openSearch = () => {
   showSearch.value = true
 }
-const inputRef       = ref(null)
 
 // ── 计算属性 ───────────────────────────────────────────────
-const canSend = computed(() =>
-  isConnected.value &&
-  !isThinking.value &&
-  !isStreaming.value &&
-  inputText.value.trim().length > 0
-)
-
-// ── 点赞/踩 ───────────────────────────────────────────────
-const authStore   = useAuthStore()
-// 从 localStorage 恢复已评记录，key 用 request_id 或消息内容 hash
-const FEEDBACK_KEY = 'agent_feedback_map'
-
-const loadFeedbackMap = () => {
-  try {
-    return JSON.parse(localStorage.getItem(FEEDBACK_KEY) || '{}')
-  } catch {
-    return {}
-  }
-}
-
-const feedbackMap = ref(loadFeedbackMap())
-
-const saveFeedbackMap = () => {
-  localStorage.setItem(FEEDBACK_KEY, JSON.stringify(feedbackMap.value))
-}
-
-const copyMessage = async (content) => {
-  try {
-    await navigator.clipboard.writeText(content)
-    ElMessage({ message: '已复制', type: 'success', duration: 1200 })
-  } catch {
-    ElMessage.error('复制失败，请手动选择文本')
-  }
-}
-
-const submitFeedback = async (msg, index, rating) => {
-  const key = getMsgKey(msg)
-  if (feedbackMap.value[key]) return
-
-  feedbackMap.value[key] = rating
-  saveFeedbackMap()
-
-  const userMsg = [...messages.value]
-    .slice(0, index)
-    .reverse()
-    .find(m => m.role === 'user')
-
-  // 从当前回复前的 tool_calls 消息中收集工具名称（BUG-004）
-  const toolsUsed = messages.value
-    .slice(0, index + 1)
-    .filter(m => m.role === 'tool_calls')
-    .flatMap(m => (m.toolCalls || []).map(tc => tc.tool))
-
-  // 截取 response 前 200 字符，过滤掉系统提示词前缀（BUG-003）
-  let responseText = msg.content || ''
-  const sysPromptMarkers = ['请用中文回答', '你是一个有帮助的AI助手', 'You are a helpful']
-  for (const marker of sysPromptMarkers) {
-    const idx = responseText.indexOf(marker)
-    if (idx !== -1 && idx < 200) {
-      // 系统提示词泄漏到响应头部，找到第一个换行后的真实内容
-      const realStart = responseText.indexOf('\n\n', idx)
-      if (realStart !== -1) responseText = responseText.slice(realStart + 2)
-    }
-  }
-  responseText = responseText.slice(0, 200)
-
-  try {
-    await apiFeedback({
-      username:        authStore.username || 'admin',
-      message:         userMsg?.content  || '',
-      response:        responseText,
-      rating,
-      response_time:   msg.responseTime  || null,
-      tools_used:      toolsUsed,
-      skill_triggered: null,
-      request_id:      null,
-    })
-  } catch (e) {
-    ElMessage({ message: '反馈提交失败，请重试', type: 'error', duration: 2500 })
-    feedbacks.value[index] = null  // 重置按钮状态，允许用户再次提交
-  }
-}
 
 // scrollToBottom 使用 rAF 节流：每帧最多执行一次，避免每个 token 都排队 nextTick
 let _scrollRafId = null
@@ -801,28 +457,12 @@ const scrollToBottom = () => {
   })
 }
 
-const autoResize = () => {
-  const el = inputRef.value
-  if (!el) return
-  el.style.height = 'auto'
-  el.style.height = Math.min(el.scrollHeight, 160) + 'px'
-}
-
 const fillSuggestion = (text) => {
-  inputText.value = text
-  nextTick(() => {
-    inputRef.value?.focus()
-    autoResize()
-  })
+  inputBarRef.value?.fillSuggestion(text)
 }
 
 // ── 发送逻辑 ───────────────────────────────────────────────
-const sendMessage = () => {
-  const text = inputText.value.trim()
-  if (!text || !canSend.value) return
-
-  const imgPreview = attachedImagePreview.value
-  const imgB64     = attachedImageB64.value
+const handleSend = (text, imgB64, imgPreview) => {
   const userMsg = {
     id: genId(), role: 'user', content: text, timestamp: new Date(),
     _backendIdConfirmed: false,
@@ -833,10 +473,6 @@ const sendMessage = () => {
     role: 'user', content: text, timestamp: new Date().toISOString(),
     ...(imgB64 ? { images_b64: [imgB64] } : {}),
   })
-
-  inputText.value = ''
-  nextTick(() => { if (inputRef.value) inputRef.value.style.height = 'auto' })
-  clearAttachedImage()
 
   isThinking.value = true
 
@@ -858,19 +494,6 @@ watch(messages, (msgs) => {
   }
   _lastMsgLen = msgs.length
 })
-
-const handleKeydown = (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault()
-    sendMessage()
-  }
-}
-
-const getMsgKey = (msg) =>
-  msg.id != null
-    ? msg.id
-    : (msg.content || '').slice(0, 80) + '_' + (msg.timestamp instanceof Date ? msg.timestamp.getTime() : (msg.timestamp || 0))
-const getFeedback = (msg) => feedbackMap.value[getMsgKey(msg)]
 
 // ── 对话导出 ──────────────────────────────────────────────
 const exportChat = (format = 'md') => {
@@ -923,8 +546,6 @@ const exportChat = (format = 'md') => {
   a.click()
   URL.revokeObjectURL(url)
 }
-
-const showExportMenu = ref(false)
 
 // 新开对话：清空显示 + 开新会话，保留 AI 后端记忆
 const handleNewConversation = async () => {
@@ -1016,13 +637,6 @@ const confirmRetract = async () => {
   } finally {
     retractMode.value = false
     selectedRetractIds.value = new Set()
-  }
-}
-
-// 点击其他地方关闭菜单（UX-009：选择器与模板中类名一致）
-const closeExportMenu = (e) => {
-  if (!e.target.closest('.export-float') && !e.target.closest('.export-menu')) {
-    showExportMenu.value = false
   }
 }
 
@@ -1211,15 +825,12 @@ onMounted(async () => {
   }
 
   scrollToBottom()
-  inputRef.value?.focus()
-  document.addEventListener('click', closeExportMenu)
   document.addEventListener('click', closeConfigDropdown)
   document.addEventListener('keydown', handleGlobalKey)
   loadRoleConfig()
 })
 
 onUnmounted(() => {
-  document.removeEventListener('click', closeExportMenu)
   document.removeEventListener('click', closeConfigDropdown)
   document.removeEventListener('keydown', handleGlobalKey)
   stopThinkingTimer()
@@ -1229,21 +840,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* 搜索命中的气泡 */
-.bubble-wrap.search-match .bubble { outline: 2px solid #ffe082; }
-.bubble-wrap.search-current .bubble { outline: 2px solid #f57c00; }
-:deep(.search-hl) { background: #fff176; color: var(--color-text); border-radius: 2px; padding: 0 1px; }
-
 /* ── 工具调用卡片 ────────────────────────────────────────── */
-.tool-calls-card {
-  max-width: 80%;
-  background: #f0f4ff;
-  border: 1px solid #d0d9f5;
-  border-radius: var(--radius-md);
-  padding: 10px 14px;
-  font-size: 0.85rem;
-  margin: 0 auto;
-}
 .tool-calls-title {
   font-weight: 500;
   color: #4a5568;
@@ -1253,20 +850,6 @@ onUnmounted(() => {
   gap: 6px;
 }
 .tool-calls-title i { color: var(--color-primary); }
-.task-view-link {
-  margin-left: auto;
-  font-size: 0.8rem;
-  color: var(--color-primary);
-  text-decoration: none;
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 2px var(--space-2);
-  border: 1px solid #c7d2f5;
-  border-radius: var(--radius-md);
-  white-space: nowrap;
-}
-.task-view-link:hover { background: #eef0ff; }
 .tool-call-item {
   display: flex;
   flex-direction: column;
@@ -1295,8 +878,6 @@ onUnmounted(() => {
 }
 .tool-name i { color: var(--color-primary); font-size: 0.8rem; }
 .tool-status { font-size: 0.82rem; }
-.tool-call-item.success .tool-status { color: var(--color-success); }
-.tool-call-item.fail    .tool-status { color: var(--color-danger); }
 .tool-call-item.running .tool-status { color: var(--color-primary); }
 .tool-running-card {
   max-width: 80%;
@@ -1307,29 +888,6 @@ onUnmounted(() => {
   font-size: 0.85rem;
   margin: 0 auto;
   opacity: 0.9;
-}
-.tool-result {
-  width: 100%;
-  font-size: 0.8rem;
-  color: #718096;
-  background: var(--color-surface);
-  border-radius: 4px;
-  padding: var(--space-1) var(--space-2);
-  margin-top: var(--space-1);
-  word-break: break-all;
-}
-
-/* ── 光标动画 ─────────────────────────────────────────────── */
-.cursor {
-  display: inline-block;
-  animation: blink 0.8s step-end infinite;
-  color: var(--color-primary);
-  font-size: 1rem;
-  vertical-align: middle;
-}
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0; }
 }
 
 /* ── 整体布局 ─────────────────────────────────────────────── */
@@ -1418,25 +976,6 @@ onUnmounted(() => {
   padding: 10px 14px;
 }
 
-/* ── Markdown 内容 ────────────────────────────────────────── */
-.md-content :deep(p)            { margin: 0 0 var(--space-2); }
-.md-content :deep(p:last-child) { margin-bottom: 0; }
-.md-content :deep(pre)          { background: #f6f8fa; border-radius: var(--radius-sm); padding: var(--space-3); overflow-x: auto; margin: var(--space-2) 0; }
-.md-content :deep(code)         { font-family: 'Fira Code', Consolas, monospace; font-size: 0.88em; }
-.md-content :deep(p > code)     { background: #f0f0f0; padding: 2px 5px; border-radius: 4px; }
-.md-content :deep(ul),
-.md-content :deep(ol)           { padding-left: 20px; margin: 6px 0; }
-.md-content :deep(li)           { margin-bottom: 2px; }
-.md-content :deep(blockquote)   { border-left: 3px solid var(--color-primary); margin: var(--space-2) 0; padding: var(--space-1) var(--space-3); color: var(--color-text-secondary); background: #f8f8ff; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
-.md-content :deep(table)        { border-collapse: collapse; width: 100%; margin: var(--space-2) 0; font-size: 0.9em; }
-.md-content :deep(th),
-.md-content :deep(td)           { border: 1px solid #ddd; padding: 6px 10px; }
-.md-content :deep(th)           { background: #f0f0f0; font-weight: 500; }
-.md-content :deep(a)            { color: var(--color-primary); }
-.md-content :deep(h1),
-.md-content :deep(h2),
-.md-content :deep(h3)           { margin: 10px 0 6px; font-weight: 500; }
-
 /* ── 思考中动画 ───────────────────────────────────────────── */
 .thinking-bubble { display: flex; align-items: center; gap: 5px; padding: var(--space-3) var(--space-4); }
 .dot {
@@ -1460,164 +999,6 @@ onUnmounted(() => {
   min-width: 2.5em;
 }
 
-/* ── 时间 / 响应时间 ──────────────────────────────────────── */
-.meta          { display: flex; align-items: center; gap: var(--space-2); }
-.time          { font-size: 0.75rem; color: var(--color-text-muted); }
-.response-time { font-size: 0.75rem; color: var(--color-text-muted); }
-
-/* ── 输入区 ───────────────────────────────────────────────── */
-.input-area { border-top: 1px solid var(--color-border); background: var(--color-surface); padding: var(--space-3) var(--space-4); }
-.input-wrap {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) 10px;
-  transition: border-color 0.2s;
-}
-.input-wrap:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(59,130,246,0.18); }
-.input-wrap-thinking    { border-color: var(--color-primary); background: #f0f6ff; }
-.input-wrap-disconnected{ border-color: #f0a0a0; background: #fff8f8; }
-.chat-input {
-  flex: 1;
-  border: none;
-  background: transparent;
-  resize: none;
-  font-size: 0.93rem;
-  line-height: 1.5;
-  color: var(--color-text);
-  outline: none;
-  max-height: 160px;
-  overflow-y: auto;
-  font-family: inherit;
-}
-.chat-input::placeholder     { color: var(--color-text-muted); }
-.chat-input:disabled         { opacity: 0.7; cursor: not-allowed; }
-.input-wrap-thinking .chat-input::placeholder { color: var(--color-primary); font-style: italic; }
-.input-wrap-disconnected .chat-input::placeholder { color: #e57373; }
-
-/* ── 图片附件 ─────────────────────────────────────────────── */
-.attached-img-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 6px var(--space-1) 2px;
-}
-.attached-thumb {
-  max-height: 80px;
-  max-width: 120px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border);
-  object-fit: contain;
-}
-.attached-remove {
-  background: none;
-  border: none;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  font-size: 0.8rem;
-  padding: 3px 5px;
-  border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
-  line-height: 1;
-}
-.attached-remove:hover { color: #e53935; background: #fce4e4; }
-.attach-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.85rem;
-  flex-shrink: 0;
-  transition: all 0.15s;
-}
-.attach-btn:hover  { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-surface-raised); }
-.attach-btn.attach-active { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-surface-raised); }
-/* 气泡内图片缩略图 */
-.msg-img-thumb {
-  display: block;
-  max-height: 200px;
-  max-width: 100%;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(255,255,255,0.3);
-  margin-bottom: 6px;
-  object-fit: contain;
-}
-
-/* 停止按钮脉冲动画 */
-.stop-btn-pulse {
-  animation: pulse-red 1.4s infinite;
-}
-@keyframes pulse-red {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(229,57,53,0.4); }
-  50%       { box-shadow: 0 0 0 6px rgba(229,57,53,0); }
-}
-.send-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-sm);
-  border: none;
-  background: var(--color-primary);
-  color: white;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.9rem;
-  transition: background 0.2s, transform 0.1s;
-  flex-shrink: 0;
-}
-.send-btn:hover:not(:disabled)  { background: var(--color-primary-hover); }
-.send-btn:active:not(:disabled) { transform: scale(0.95); }
-.send-btn:disabled              { background: #ccc; cursor: not-allowed; }
-.stop-btn {
-  width: 36px; height: 36px; border-radius: var(--radius-sm);
-  border: none; background: #e53935; color: white;
-  cursor: pointer; font-size: 0.85rem;
-  display: flex; align-items: center; justify-content: center;
-  transition: background 0.2s;
-  flex-shrink: 0;
-}
-.stop-btn:hover { background: var(--color-danger); }
-
-/* ── 底部提示 ─────────────────────────────────────────────── */
-.input-meta { margin-top: 6px; padding: 0 var(--space-1); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.hint       { font-size: 0.78rem; color: var(--color-text-muted); display: flex; align-items: center; gap: 5px; min-width: 0; }
-.hint.warn  { color: #e67e22; }
-.hint i     { font-size: 0.75rem; }
-.hint-tip   { font-size: 0.72rem; color: var(--color-text-muted); }
-.project-badge { background: rgba(59,130,246,0.12); color: var(--color-primary); border-radius: 4px; padding: 1px 6px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
-.project-badge:hover { background: #d0eaf9; }
-.input-meta-right { display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0; }
-.token-indicator { font-size: 0.72rem; display: flex; align-items: center; gap: var(--space-1); }
-.token-warn      { animation: blink 1.5s ease-in-out infinite; }
-
-/* ── 会话操作工具条（历史/导出/清空，input-meta 右下角水平排列） ── */
-.input-toolbar { display: flex; align-items: center; gap: 6px; }
-.toolbar-btn {
-  width: 30px; height: 30px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 0.74rem;
-  transition: all 0.2s;
-}
-.toolbar-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
-.toolbar-btn.active { background: var(--color-primary); color: white; border-color: var(--color-primary); }
-.toolbar-btn-danger { border-color: #ffd0cd; color: #e53935; }
-.toolbar-btn-danger:hover { border-color: #e53935; background: #fff5f5; }
-.toolbar-export-wrap { position: relative; }
 
 /* ── 上下文超限 Banner ─────────────────────────────── */
 .ctx-warn-banner {
@@ -1654,31 +1035,11 @@ onUnmounted(() => {
 .banner-slide-leave-active { transition: all 0.25s ease; }
 .banner-slide-enter-from,
 .banner-slide-leave-to   { opacity: 0; transform: translateY(-8px); }
-@keyframes blink { 50% { opacity: 0.6; } }
 
 /* ── 滚动条 ───────────────────────────────────────────────── */
 .message-list::-webkit-scrollbar       { width: 4px; }
 .message-list::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
 
-/* ── 气泡悬停操作栏（复制/点赞/踩）── */
-.bubble-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  opacity: 0;
-  transform: translateY(-3px);
-  transition: opacity 0.15s, transform 0.15s;
-  pointer-events: none;
-}
-.message-row.retract-mode { cursor: pointer; }
-.retract-checkbox {
-  display: flex; align-items: center; padding: 0 6px; color: var(--color-primary, #3b82f6);
-  font-size: 1rem; flex-shrink: 0;
-}
-.retracted-placeholder {
-  color: #9ca3af; font-style: italic; font-size: 0.85rem; padding: 6px 12px;
-  display: flex; align-items: center; gap: 6px;
-}
 .retract-toolbar {
   position: sticky; bottom: 0; left: 0; right: 0;
   display: flex; align-items: center; gap: 12px;
@@ -1692,62 +1053,6 @@ onUnmounted(() => {
 .retract-cancel-btn { background: #fff; border: 1px solid #d1d5db; color: #374151; }
 .retract-confirm-btn { background: #ea580c; border: none; color: #fff; }
 .retract-confirm-btn:disabled { background: #fdba74; cursor: not-allowed; }
-.bubble-wrap:hover .bubble-actions {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-.bact-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--color-text-muted);
-  font-size: 0.8rem;
-  padding: 3px 6px;
-  border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
-  line-height: 1;
-}
-.bact-btn:hover:not(:disabled) { color: var(--color-primary); background: var(--color-surface-raised); }
-.bact-btn.dislike:hover:not(:disabled) { color: #e53935; background: #fce4e4; }
-.bact-btn.active { color: var(--color-accent); }
-.bact-btn.dislike.active { color: #e53935; }
-.bact-btn:disabled { cursor: default; opacity: 0.5; }
-
-/* ── 导出菜单（从右下角工具条的导出按钮展开） ── */
-.export-menu {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  right: 0;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-  overflow: hidden;
-  z-index: 100;
-  min-width: 130px;
-}
-.export-menu button {
-  display: flex; align-items: center; gap: var(--space-2);
-  width: 100%; padding: 10px 14px;
-  border: none; background: none;
-  font-size: 0.88rem; color: #444;
-  cursor: pointer; text-align: left;
-  transition: background 0.15s;
-}
-.export-menu button:hover { background: #f5f5f5; }
-.export-menu button i { color: var(--color-primary); width: 14px; }
-
-/* 定时通知气泡底部链接 */
-.notif-task-link {
-  display: inline-flex; align-items: center; gap: 5px;
-  margin-top: var(--space-2); font-size: 0.78rem;
-  color: #ff9800; text-decoration: none;
-  opacity: 0.85; transition: opacity 0.15s;
-  border-top: 1px solid rgba(255,152,0,0.2);
-  padding-top: 6px; width: 100%;
-}
-.notif-task-link:hover { opacity: 1; text-decoration: underline; }
 
 /* ── 配置条 ───────────────────────────────────────────────── */
 .config-bar {
@@ -1871,122 +1176,10 @@ onUnmounted(() => {
 @media (max-width: 768px) {
   .chat-view         { padding: 0; }
   .message-list      { padding: var(--space-3) var(--space-2); }
-  .bubble-wrap       { max-width: 92% !important; }
-  .chat-input        { font-size: 16px !important; } /* 防止 iOS 自动缩放 */
-  .input-area        { padding: var(--space-2) !important; }
-  .message-row.user  { justify-content: flex-end; }
-  .tool-calls-card,
   .tool-running-card { max-width: 95% !important; }
 
   /* 桌面端 config-bar 在移动端隐藏（由角色/模型徽章替代） */
   .config-bar { display: none; }
-
-  /* 移动端徽章行 */
-  .mobile-config-chips {
-    display: flex;
-    gap: 8px;
-    padding: 6px 0 4px;
-  }
-
-  /*
-   * 移动端 input-toolbar 按钮可见性：
-   *   历史（fa-history） — 保留：高频操作，拇指友好
-   *   清空（fa-trash）  — 保留：需要确认对话框，由 useConfirmDialogStore 实现
-   *   导出（fa-download）— 隐藏：低频，通过 MorePanel 访问
-   *
-   * ⚠️  清空按钮的确认必须使用 useConfirmDialogStore，严禁 window.confirm()。
-   *     window.confirm() 在 PWA/WebView 模式下被浏览器静默拦截，曾是 7 次重复 bug 的根因。
-   *     ChatView.vue 中的 handleClearChat() 已正确使用 confirmDialog.confirm()，实现前请 grep 验证：
-   *     grep -n "window.confirm\|handleClearChat" frontend/src/views/ChatView.vue
-   */
-  .toolbar-export-wrap { display: none; }
-}
-
-/* ── CoT 思维过程块 ──────────────────────────────────────────*/
-.cot-block {
-  margin-bottom: 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: #f8f9ff;
-}
-.cot-summary {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px var(--space-3);
-  cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: #5569d0;
-  background: #eef0ff;
-  list-style: none;
-  user-select: none;
-}
-.cot-summary::-webkit-details-marker { display: none; }
-.cot-summary::before {
-  content: '▶';
-  font-size: 0.65rem;
-  transition: transform 0.2s;
-}
-details[open] .cot-summary::before { transform: rotate(90deg); }
-.cot-icon { font-size: 0.82rem; }
-.cot-spin { font-size: 0.75rem; color: var(--color-primary); }
-.cot-len  { margin-left: auto; font-size: 0.72rem; color: var(--color-text-muted); font-weight: 400; }
-.cot-content {
-  padding: 10px 14px;
-  font-size: 0.82rem;
-  line-height: 1.6;
-  color: var(--color-text-secondary);
-  max-height: 320px;
-  overflow-y: auto;
-}
-.cot-content p { margin: 0 0 6px; }
-
-[data-theme="dark"] .cot-block { border-color: #3a3b42; background: #252630; }
-[data-theme="dark"] .cot-summary { background: #2a2b38; color: #9ea8f0; }
-[data-theme="dark"] .cot-content { color: #8e8f9a; }
-
-/* 移动端徽章（仅在移动端通过父元素显示） */
-.mobile-config-chips { display: none; }
-
-@media (max-width: 768px) {
-  .mobile-config-chips { display: flex; }
-}
-
-.mobile-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
-  font-size: 0.78rem;
-  cursor: pointer;
-  max-width: min(140px, 35vw);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  -webkit-tap-highlight-color: transparent;
-  transition: border-color 0.15s;
-}
-
-.mobile-chip:hover { border-color: var(--color-primary); }
-
-.mobile-chip-role {
-  background: #eef2ff;
-  border-color: #c7d2fe;
-  color: #4f46e5;
-}
-
-.mobile-chip-role i { color: #6366f1; font-size: 0.72rem; }
-
-.mobile-chip span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* RoleModelSheet 内部样式 */
