@@ -1,71 +1,26 @@
 <template>
   <div class="chat-view">
     <!-- 消息搜索栏（Ctrl+F 触发） -->
-    <transition name="search-slide">
-      <div v-if="showSearch" class="chat-search-bar">
-        <i class="fas fa-search search-bar-icon" />
-        <input
-          ref="searchInputRef"
-          v-model="searchKeyword"
-          class="search-bar-input"
-          placeholder="搜索聊天记录..."
-          @input="doMessageSearch"
-          @keydown.esc="closeSearch"
-          @keydown.enter="jumpToNext"
-        />
-        <span v-if="searchMatches.length" class="search-count">
-          {{ searchCurrentIdx + 1 }} / {{ searchMatches.length }}
-        </span>
-        <button class="search-nav-btn" :disabled="!searchMatches.length" @click="jumpToPrev"><i class="fas fa-chevron-up" /></button>
-        <button class="search-nav-btn" :disabled="!searchMatches.length" @click="jumpToNext"><i class="fas fa-chevron-down" /></button>
-        <button class="search-close-btn" @click="closeSearch"><i class="fas fa-times" /></button>
-      </div>
-    </transition>
+    <ChatSearchBar
+      :show="showSearch"
+      :keyword="searchKeyword"
+      :matches-count="searchMatches.length"
+      :current-idx="searchCurrentIdx"
+      @update:keyword="onSearchKeyword"
+      @close="closeSearch"
+      @prev="jumpToPrev"
+      @next="jumpToNext"
+    />
 
     <!-- 消息列表 -->
     <div class="message-list" ref="messageListRef">
       <!-- 空状态：产品价值引导 -->
-      <div v-if="messages.length === 0" class="empty-state">
-        <div class="empty-hero">
-          <i class="fas fa-robot empty-icon"></i>
-          <h2 class="empty-title">你好，我是智能助手</h2>
-          <p class="empty-sub">本地 AI · 私有部署 · 支持工具调用</p>
-          <div v-if="modelStatus?.includes('dolphin')" class="uncensored-badge-row">
-            <span class="uncensored-badge"><i class="fas fa-lock-open" />无限制模式</span>
-          </div>
-        </div>
-
-        <!-- 示例提示词卡片 -->
-        <div class="suggestion-grid">
-          <div class="suggestion-card" @click="fillSuggestion('帮我计算 (23 * 45) + sqrt(169) 的结果')">
-            <i class="fas fa-calculator suggestion-icon" />
-            <span class="suggestion-label">数学计算</span>
-            <span class="suggestion-text">帮我计算 (23 × 45) + √169</span>
-          </div>
-          <div class="suggestion-card" @click="fillSuggestion('现在几点了？今天是星期几？')">
-            <i class="fas fa-clock suggestion-icon" />
-            <span class="suggestion-label">时间查询</span>
-            <span class="suggestion-text">现在几点？今天星期几？</span>
-          </div>
-          <div class="suggestion-card" @click="fillSuggestion('帮我写一首关于秋天的五言绝句')">
-            <i class="fas fa-pen-nib suggestion-icon" />
-            <span class="suggestion-label">创意写作</span>
-            <span class="suggestion-text">写一首关于秋天的五言绝句</span>
-          </div>
-          <div class="suggestion-card" @click="fillSuggestion('每隔30分钟提醒我喝水，帮我创建周期性任务')">
-            <i class="fas fa-bell suggestion-icon" />
-            <span class="suggestion-label">定时提醒</span>
-            <span class="suggestion-text">每隔30分钟提醒我喝水</span>
-          </div>
-        </div>
-
-        <!-- 等待时间说明 -->
-        <p class="empty-notice">
-          <i class="fas fa-info-circle" />
-          <template v-if="isCloudMode">云端模型推理中，响应速度取决于网络状况</template>
-          <template v-else>本地 CPU 推理通常需要 60～300 秒，请耐心等待</template>
-        </p>
-      </div>
+      <ChatEmptyState
+        v-if="messages.length === 0"
+        :model-status="modelStatus"
+        :is-cloud-mode="isCloudMode"
+        @suggest="fillSuggestion"
+      />
 
       <!-- 消息气泡 -->
       <div
@@ -149,7 +104,7 @@
                 class="msg-img-thumb"
                 alt="附图"
               />
-              <span v-if="msg.role !== 'assistant'" v-html="highlightSearch(msg.content)"></span>
+              <span v-if="msg.role !== 'assistant'" v-html="highlightSearch(msg.content, searchKeyword)"></span>
               <!-- 定时通知气泡底部跳转链接 -->
               <router-link v-if="msg.notif" to="/admin/tasks" class="notif-task-link">
                 <i class="fas fa-tasks" /> 查看任务管理
@@ -261,45 +216,16 @@
     </transition>
 
     <!-- 历史会话面板遮罩 -->
-    <div v-if="showHistory" class="history-backdrop" @click="showHistory = false" />
-
     <!-- 历史会话侧边栏 -->
-    <transition name="history-slide">
-      <div v-if="showHistory" class="history-panel">
-        <div class="history-header">
-          <span class="history-title"><i class="fas fa-history" /> 历史会话</span>
-          <button class="history-close" @click="showHistory = false"><i class="fas fa-times" /></button>
-        </div>
-        <button class="new-chat-btn" @click="showHistory = false; handleNewConversation()">
-          <i class="fas fa-plus" /> 新开对话
-        </button>
-        <div class="history-list" v-if="!historyLoading">
-          <div v-if="!sessions.length" class="history-empty">暂无历史会话记录</div>
-          <div
-            v-for="sess in sessions"
-            :key="sess.session_id"
-            class="history-item"
-            @click="loadSession(sess.session_id)"
-          >
-            <div class="history-item-top">
-              <span class="history-item-date">{{ formatHistoryDate(sess.updated_at) }}</span>
-              <button class="history-item-del" title="删除" @click.stop="deleteSession(sess.session_id)">
-                <i class="fas fa-trash-alt" />
-              </button>
-            </div>
-            <div class="history-item-preview">
-              <span v-if="sess.parent_session_id" class="branch-badge">
-                <i class="fas fa-code-branch" /> 分支
-              </span>{{ sess.preview || '新对话' }}
-            </div>
-            <div class="history-item-count">{{ sess.message_count }} 条消息</div>
-          </div>
-        </div>
-        <div v-else class="history-loading">
-          <i class="fas fa-circle-notch fa-spin" /> 加载中...
-        </div>
-      </div>
-    </transition>
+    <ChatHistoryPanel
+      :show="showHistory"
+      :loading="historyLoading"
+      :sessions="sessions"
+      @close="showHistory = false"
+      @new="onNewFromHistory"
+      @load="loadSession"
+      @delete="deleteSession"
+    />
 
     <!-- 配置条：角色 + 模型 -->
     <div class="config-bar">
@@ -517,42 +443,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { marked } from 'marked'
-import hljs from 'highlight.js/lib/core'
-import 'highlight.js/styles/github.css'
-import DOMPurify from 'dompurify'
-
-// 按需注册常用语言（替代全量 import，大幅减小 chunk）
-import langJs   from 'highlight.js/lib/languages/javascript'
-import langTs   from 'highlight.js/lib/languages/typescript'
-import langPy   from 'highlight.js/lib/languages/python'
-import langJava from 'highlight.js/lib/languages/java'
-import langBash from 'highlight.js/lib/languages/bash'
-import langSql  from 'highlight.js/lib/languages/sql'
-import langJson from 'highlight.js/lib/languages/json'
-import langXml  from 'highlight.js/lib/languages/xml'
-import langCss  from 'highlight.js/lib/languages/css'
-import langGo   from 'highlight.js/lib/languages/go'
-import langRust from 'highlight.js/lib/languages/rust'
-import langCpp  from 'highlight.js/lib/languages/cpp'
-import langYaml from 'highlight.js/lib/languages/yaml'
-import langMd   from 'highlight.js/lib/languages/markdown'
-
-hljs.registerLanguage('javascript', langJs);  hljs.registerLanguage('js', langJs)
-hljs.registerLanguage('typescript', langTs);  hljs.registerLanguage('ts', langTs)
-hljs.registerLanguage('python', langPy);      hljs.registerLanguage('py', langPy)
-hljs.registerLanguage('java', langJava)
-hljs.registerLanguage('bash', langBash);      hljs.registerLanguage('sh', langBash)
-hljs.registerLanguage('shell', langBash)
-hljs.registerLanguage('sql', langSql)
-hljs.registerLanguage('json', langJson)
-hljs.registerLanguage('xml', langXml);        hljs.registerLanguage('html', langXml)
-hljs.registerLanguage('css', langCss)
-hljs.registerLanguage('go', langGo)
-hljs.registerLanguage('rust', langRust)
-hljs.registerLanguage('cpp', langCpp);        hljs.registerLanguage('c', langCpp)
-hljs.registerLanguage('yaml', langYaml);      hljs.registerLanguage('yml', langYaml)
-hljs.registerLanguage('markdown', langMd);    hljs.registerLanguage('md', langMd)
+import { renderMarkdown, highlightSearch } from '@/utils/markdown'
 import { ElMessage } from 'element-plus'
 import { useWebSocketStore }    from '@/stores/websocket'
 import { useAuthStore }         from '@/stores/auth'
@@ -572,18 +463,9 @@ import {
   getActiveRoleApi, activateRoleApi, deactivateRoleApi, syncRoleToServer,
 } from '@/services/api'
 import BottomSheet from '@/components/common/BottomSheet.vue'
-
-// ── marked 配置 ────────────────────────────────────────────
-marked.setOptions({
-  highlight: (code, lang) => {
-    if (lang && hljs.getLanguage(lang)) {
-      return hljs.highlight(code, { language: lang }).value
-    }
-    return hljs.highlightAuto(code).value
-  },
-  breaks: true,
-  gfm: true,
-})
+import ChatSearchBar    from '@/components/chat/ChatSearchBar.vue'
+import ChatEmptyState   from '@/components/chat/ChatEmptyState.vue'
+import ChatHistoryPanel from '@/components/chat/ChatHistoryPanel.vue'
 
 // ── Store ──────────────────────────────────────────────────
 const router       = useRouter()
@@ -771,20 +653,10 @@ const showSearch      = ref(false)
 const searchKeyword   = ref('')
 const searchMatches   = ref([])
 const searchCurrentIdx = ref(0)
-const searchInputRef  = ref(null)
 
-// 转义 HTML 特殊字符防 XSS，再插入高亮标记
-const escapeHtml = (s) => s
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-
-const highlightSearch = (text) => {
-  if (!searchKeyword.value || !text) return escapeHtml(text || '')
-  const kw = searchKeyword.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const escaped = escapeHtml(text)
-  const kwEscaped = escapeHtml(searchKeyword.value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return escaped.replace(new RegExp(kwEscaped, 'gi'),
-    m => `<mark class="search-hl">${m}</mark>`)
+const onSearchKeyword = (v) => {
+  searchKeyword.value = v
+  doMessageSearch()
 }
 
 let _searchTimer = null
@@ -831,7 +703,6 @@ const closeSearch = () => {
 
 const openSearch = () => {
   showSearch.value = true
-  nextTick(() => searchInputRef.value?.focus())
 }
 const inputRef       = ref(null)
 
@@ -917,28 +788,6 @@ const submitFeedback = async (msg, index, rating) => {
     ElMessage({ message: '反馈提交失败，请重试', type: 'error', duration: 2500 })
     feedbacks.value[index] = null  // 重置按钮状态，允许用户再次提交
   }
-}
-
-// ── 工具方法 ───────────────────────────────────────────────
-const _MD_ALLOWED = {
-  ALLOWED_TAGS: ['p','br','strong','em','code','pre','blockquote','ul','ol','li',
-                 'h1','h2','h3','h4','h5','h6','a','img','span','div','table',
-                 'thead','tbody','tr','th','td','mark'],
-  ALLOWED_ATTR: ['href','src','alt','class','title','target'],
-}
-// 缓存已完成消息的渲染结果，避免每次 Vue 重渲染重复 parse（流式消息不缓存）
-const _mdCache = new Map()
-const renderMarkdown = (text, streaming = false) => {
-  if (!text) return ''
-  // 流式进行时跳过 marked.parse（O(n) per token），只做安全转义显示原始文本
-  if (streaming) {
-    return DOMPurify.sanitize(text.replace(/</g, '&lt;').replace(/>/g, '&gt;'), _MD_ALLOWED)
-  }
-  if (_mdCache.has(text)) return _mdCache.get(text)
-  const html = DOMPurify.sanitize(marked.parse(text), _MD_ALLOWED)
-  if (_mdCache.size > 300) _mdCache.delete(_mdCache.keys().next().value) // LRU 上限
-  _mdCache.set(text, html)
-  return html
 }
 
 // scrollToBottom 使用 rAF 节流：每帧最多执行一次，避免每个 token 都排队 nextTick
@@ -1084,6 +933,12 @@ const handleNewConversation = async () => {
   await sessionStore.startNewSession()
   ctxBannerDismissed.value = true
   ElMessage({ message: '已新开对话', type: 'success', duration: 1500 })
+}
+
+// 历史面板「新开对话」：先关面板再执行原逻辑
+const onNewFromHistory = () => {
+  showHistory.value = false
+  handleNewConversation()
 }
 
 const handleClearChat = async () => {
@@ -1285,19 +1140,6 @@ const branchFromMessage = async (index) => {
   }
 }
 
-const formatHistoryDate = (iso) => {
-  if (!iso) return ''
-  try {
-    const d = new Date(iso)
-    const diff = Date.now() - d.getTime()
-    if (diff < 60000)     return '刚刚'
-    if (diff < 3600000)   return `${Math.floor(diff / 60000)} 分钟前`
-    if (diff < 86400000)  return `${Math.floor(diff / 3600000)} 小时前`
-    if (diff < 604800000) return `${Math.floor(diff / 86400000)} 天前`
-    return d.toLocaleDateString('zh-CN')
-  } catch { return iso }
-}
-
 // ── 监听消息列表变化 ───────────────────────────────────────
 watch(
   () => messages.value.length,
@@ -1387,28 +1229,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* ── 消息搜索栏 ──────────────────────────────────────────── */
-.chat-search-bar {
-  display: flex; align-items: center; gap: 6px;
-  padding: 6px var(--space-3); background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-.search-bar-icon { color: var(--color-text-muted); font-size: 0.85rem; }
-.search-bar-input {
-  flex: 1; border: none; outline: none;
-  font-size: 0.88rem; color: var(--color-text);
-}
-.search-count { font-size: 0.78rem; color: var(--color-text-muted); white-space: nowrap; }
-.search-nav-btn, .search-close-btn {
-  background: none; border: none; color: var(--color-text-muted);
-  cursor: pointer; padding: var(--space-1) 6px; border-radius: 4px; font-size: 0.8rem;
-}
-.search-nav-btn:hover, .search-close-btn:hover { background: #f0f0f0; color: var(--color-text); }
-.search-nav-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.search-slide-enter-active, .search-slide-leave-active { transition: all 0.2s; }
-.search-slide-enter-from, .search-slide-leave-to { opacity: 0; transform: translateY(-8px); }
-
 /* 搜索命中的气泡 */
 .bubble-wrap.search-match .bubble { outline: 2px solid #ffe082; }
 .bubble-wrap.search-current .bubble { outline: 2px solid #f57c00; }
@@ -1529,111 +1349,6 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-}
-
-/* ── 空状态（产品引导） ──────────────────────────────────── */
-.empty-state {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  padding: 40px var(--space-5);
-  max-width: 700px;
-  margin: 0 auto;
-  width: 100%;
-}
-.empty-hero {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-2);
-}
-.empty-icon  { font-size: 2.8rem; color: #c5c8f0; }
-.empty-title { font-size: 1.25rem; font-weight: 600; color: #444; margin: 0; }
-.empty-sub   { font-size: 0.88rem; color: var(--color-text-muted); margin: 0; }
-.uncensored-badge-row { margin-top: 6px; display: flex; justify-content: center; }
-.uncensored-badge {
-  background: linear-gradient(135deg, #f6d365, #fda085);
-  color: white;
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px var(--space-2);
-  border-radius: 20px;
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-/* 示例提示词卡片 */
-.suggestion-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-3);
-  width: 100%;
-}
-.suggestion-card {
-  display: grid;
-  grid-template-areas: "icon label" "icon text";
-  grid-template-columns: 36px 1fr;
-  gap: 2px 10px;
-  padding: 14px var(--space-4);
-  border: 1px solid #e8eaf0;
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  cursor: pointer;
-  transition: all 0.18s;
-  align-items: center;
-}
-/* 4 张卡片各自颜色主题 */
-.suggestion-card:nth-child(1) { background: #eff6ff; border-color: #bfdbfe; }
-.suggestion-card:nth-child(2) { background: #fff7ed; border-color: #fed7aa; }
-.suggestion-card:nth-child(3) { background: #f0fdf4; border-color: #bbf7d0; }
-.suggestion-card:nth-child(4) { background: #faf5ff; border-color: #e9d5ff; }
-
-.suggestion-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-}
-.suggestion-card:nth-child(1):hover { border-color: #3b82f6; }
-.suggestion-card:nth-child(2):hover { border-color: #f97316; }
-.suggestion-card:nth-child(3):hover { border-color: #22c55e; }
-.suggestion-card:nth-child(4):hover { border-color: #a855f7; }
-
-.suggestion-icon {
-  grid-area: icon;
-  font-size: 1.15rem;
-  justify-self: center;
-}
-.suggestion-card:nth-child(1) .suggestion-icon { color: #3b82f6; }
-.suggestion-card:nth-child(2) .suggestion-icon { color: #f97316; }
-.suggestion-card:nth-child(3) .suggestion-icon { color: #22c55e; }
-.suggestion-card:nth-child(4) .suggestion-icon { color: #a855f7; }
-.suggestion-label {
-  grid-area: label;
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.suggestion-text {
-  grid-area: text;
-  font-size: 0.875rem;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.empty-notice {
-  font-size: 0.78rem;
-  color: var(--color-text-muted);
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin: 0;
-}
-@media (max-width: 600px) {
-  .suggestion-grid { grid-template-columns: 1fr; }
 }
 
 /* ── 消息行 ───────────────────────────────────────────────── */
@@ -2023,98 +1738,6 @@ onUnmounted(() => {
 .export-menu button:hover { background: #f5f5f5; }
 .export-menu button i { color: var(--color-primary); width: 14px; }
 
-/* ── 历史会话面板 ─────────────────────────────────────────── */
-.history-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0,0,0,0.18);
-  z-index: 19;
-}
-.history-panel {
-  position: absolute;
-  top: 0; left: 0; bottom: 0;
-  width: 280px;
-  background: var(--color-surface);
-  border-right: 1px solid var(--color-border);
-  box-shadow: 2px 0 16px rgba(0,0,0,0.12);
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.history-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 14px var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-.history-title {
-  font-size: 0.92rem; font-weight: 600; color: var(--color-text);
-  display: flex; align-items: center; gap: 7px;
-}
-.history-title i { color: var(--color-primary); }
-.history-close {
-  background: none; border: none; color: var(--color-text-muted);
-  cursor: pointer; padding: var(--space-1) 6px; border-radius: 4px; font-size: 0.9rem;
-  transition: background 0.15s, color 0.15s;
-}
-.history-close:hover { background: #f5f5f5; color: var(--color-text); }
-.new-chat-btn {
-  margin: 10px 14px;
-  padding: var(--space-2) 14px;
-  background: var(--color-primary); color: white;
-  border: none; border-radius: var(--radius-sm);
-  font-size: 0.88rem; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  transition: background 0.15s;
-  flex-shrink: 0;
-}
-.new-chat-btn:hover { background: var(--color-primary-hover); }
-.history-list {
-  flex: 1; overflow-y: auto; padding: var(--space-1) 10px 10px;
-}
-.history-list::-webkit-scrollbar       { width: 3px; }
-.history-list::-webkit-scrollbar-thumb { background: #e0e0e0; border-radius: 2px; }
-.history-empty, .history-loading {
-  text-align: center; color: var(--color-text-muted); font-size: 0.85rem; padding: var(--space-6) 0;
-}
-.history-item {
-  padding: 10px 10px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background 0.15s;
-  margin-bottom: 2px;
-  border: 1px solid transparent;
-}
-.history-item:hover { background: #f5f7ff; border-color: #e8ecff; }
-.history-item-top {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: var(--space-1);
-}
-.history-item-date { font-size: 0.74rem; color: var(--color-text-muted); }
-.history-item-del {
-  background: none; border: none; color: #ddd;
-  cursor: pointer; padding: 2px 5px; font-size: 0.72rem; border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
-  line-height: 1;
-}
-.history-item-del:hover { color: #e53935; background: #fce4e4; }
-.history-item-preview {
-  font-size: 0.84rem; color: var(--color-text-secondary);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  margin-bottom: 3px;
-}
-.history-item-count { font-size: 0.74rem; color: var(--color-text-muted); }
-.branch-badge {
-  display: inline-flex; align-items: center; gap: 2px;
-  font-size: 0.7rem; color: #6c6fff; background: #ededff;
-  border-radius: 3px; padding: 0 var(--space-1); margin-right: var(--space-1); vertical-align: middle;
-  font-weight: 600; line-height: 1.5;
-}
-[data-theme="dark"] .branch-badge { color: #a5b4fc; background: #2a2a5a; }
-.history-slide-enter-active, .history-slide-leave-active { transition: transform 0.25s ease; }
-.history-slide-enter-from, .history-slide-leave-to { transform: translateX(-100%); }
-
 /* 定时通知气泡底部链接 */
 .notif-task-link {
   display: inline-flex; align-items: center; gap: 5px;
@@ -2252,10 +1875,8 @@ onUnmounted(() => {
   .chat-input        { font-size: 16px !important; } /* 防止 iOS 自动缩放 */
   .input-area        { padding: var(--space-2) !important; }
   .message-row.user  { justify-content: flex-end; }
-  .history-panel     { width: min(240px, 85vw); }
   .tool-calls-card,
   .tool-running-card { max-width: 95% !important; }
-  .search-bar-input  { font-size: 16px !important; }
 
   /* 桌面端 config-bar 在移动端隐藏（由角色/模型徽章替代） */
   .config-bar { display: none; }
