@@ -4,9 +4,14 @@ import com.intelligent.agent.web.ai.llm.cloud.OpenAiCompatibleLlmProvider;
 import com.intelligent.agent.web.ai.llm.ollama.OllamaLlmProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -74,5 +79,43 @@ class LlmProviderRouterTest {
         LlmProviderRouter noCloud = new LlmProviderRouter(ollama, unconfigured, List.of("deepseek-chat"));
         assertThat(noCloud.forUser("u1", "deepseek-chat")).isSameAs(ollama);
         assertThat(noCloud.forUser("u1", "")).isSameAs(ollama);
+    }
+
+    @Test
+    void forUserGatesCallsWhenInferenceGateProvided() throws Exception {
+        InferenceGate gate = new InferenceGate(1);
+        AtomicInteger calls = new AtomicInteger();
+        LlmProvider fake = new LlmProvider() {
+            @Override
+            public String name() {
+                return "fake";
+            }
+
+            @Override
+            public Flux<ModelEvent> stream(ChatTurn turn) {
+                return Flux.just(new ModelEvent("content", "ok"));
+            }
+
+            @Override
+            public Mono<String> complete(ChatTurn turn) {
+                calls.incrementAndGet();
+                return Mono.just("ok");
+            }
+        };
+        LlmProviderRouter gated = new LlmProviderRouter(fake, null, List.of(), null, gate);
+
+        gate.acquire();
+        CompletableFuture<String> result = new CompletableFuture<>();
+        gated.forUser("u1", "").complete(ChatTurn.of("fake", List.of()))
+                .subscribe(result::complete, result::completeExceptionally);
+
+        Thread.sleep(200);
+        assertThat(calls).hasValue(0);
+        assertThat(gate.active()).isEqualTo(1);
+
+        gate.release();
+        assertThat(result.get(5, TimeUnit.SECONDS)).isEqualTo("ok");
+        assertThat(calls).hasValue(1);
+        assertThat(gate.active()).isZero();
     }
 }

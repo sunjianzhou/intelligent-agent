@@ -3,6 +3,7 @@ package com.intelligent.agent.web.service;
 import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
 import com.intelligent.agent.web.ai.memory.MemoryRepository;
 import com.intelligent.agent.web.ai.memory.SemanticResponseCache;
+import com.intelligent.agent.web.ai.llm.InferenceGate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -23,7 +24,8 @@ class ConfigRuntimeServiceTest {
         ConfigRuntimeService service = new ConfigRuntimeService(
                 mock(MemoryRepository.class),
                 mock(ConversationMemoryService.class),
-                new SemanticResponseCache());
+                new SemanticResponseCache(),
+                new InferenceGate(1));
         ReflectionTestUtils.setField(service, "dataDir", tempDir.toString());
         return service;
     }
@@ -71,5 +73,50 @@ class ConfigRuntimeServiceTest {
         newService().patch(Map.of("tool_result_max_chars", 20000));
 
         assertThat(newService().toolResultMaxChars()).isEqualTo(20000);
+    }
+
+    @Test
+    void inferenceConcurrencyDefaultsToOne() {
+        assertThat(newService().inferenceConcurrency()).isEqualTo(1);
+    }
+
+    @Test
+    void patchAppliesInferenceConcurrencyToGate() {
+        InferenceGate gate = new InferenceGate(1);
+        ConfigRuntimeService service = new ConfigRuntimeService(
+                mock(MemoryRepository.class),
+                mock(ConversationMemoryService.class),
+                new SemanticResponseCache(),
+                gate);
+        ReflectionTestUtils.setField(service, "dataDir", tempDir.toString());
+
+        service.patch(Map.of("inference_concurrency", 5));
+
+        assertThat(gate.maxConcurrency()).isEqualTo(5);
+        assertThat(service.inferenceConcurrency()).isEqualTo(5);
+        assertThat(service.get().get("usage"))
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("active_inferences", 0)
+                .containsEntry("concurrency_slots", 5.0);
+    }
+
+    @Test
+    void usageReportsRealActiveInferences() throws Exception {
+        InferenceGate gate = new InferenceGate(1);
+        ConfigRuntimeService service = new ConfigRuntimeService(
+                mock(MemoryRepository.class),
+                mock(ConversationMemoryService.class),
+                new SemanticResponseCache(),
+                gate);
+        ReflectionTestUtils.setField(service, "dataDir", tempDir.toString());
+        service.patch(Map.of("inference_concurrency", 3));
+
+        gate.acquire();
+        gate.acquire();
+
+        assertThat(service.get().get("usage"))
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("active_inferences", 2)
+                .containsEntry("concurrency_slots", 3.0);
     }
 }

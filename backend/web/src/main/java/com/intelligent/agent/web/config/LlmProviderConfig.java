@@ -1,5 +1,6 @@
 package com.intelligent.agent.web.config;
 
+import com.intelligent.agent.web.ai.llm.InferenceGate;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.ai.llm.OllamaOptions;
 import com.intelligent.agent.web.ai.llm.circuit.CircuitBreakerConfig;
@@ -57,6 +58,7 @@ public class LlmProviderConfig {
             OllamaLlmProvider ollamaLlmProvider,
             OpenAiCompatibleLlmProvider cloudLlmProvider,
             CircuitBreakerRegistry circuitBreakerRegistry,
+            InferenceGate inferenceGate,
             @Value("${ai.llm.cloud.models:}") List<String> cloudModels,
             @Value("${ai.llm.cloud.model:}") String cloudModel) {
         List<String> models = new ArrayList<>();
@@ -71,7 +73,13 @@ public class LlmProviderConfig {
             }
         }
         return new LlmProviderRouter(ollamaLlmProvider, cloudLlmProvider, models,
-                circuitBreakerRegistry);
+                circuitBreakerRegistry, inferenceGate);
+    }
+
+    /** 全局并发推理闸门：上限由 runtime 配置 inference_concurrency 驱动（ConfigRuntimeService 注入）。 */
+    @Bean
+    public InferenceGate inferenceGate() {
+        return new InferenceGate(1);
     }
 
     @Bean

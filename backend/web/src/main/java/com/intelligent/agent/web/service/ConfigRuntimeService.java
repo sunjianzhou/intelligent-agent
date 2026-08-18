@@ -1,10 +1,12 @@
 package com.intelligent.agent.web.service;
 
+import com.intelligent.agent.web.ai.llm.InferenceGate;
 import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
 import com.intelligent.agent.web.ai.memory.MemoryRepository;
 import com.intelligent.agent.web.ai.memory.MemorySearchQuery;
 import com.intelligent.agent.web.ai.memory.SemanticResponseCache;
 import com.intelligent.agent.web.infrastructure.filesystem.JsonFileStore;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -51,14 +53,23 @@ public class ConfigRuntimeService {
     private final MemoryRepository memoryRepository;
     private final ConversationMemoryService conversationMemoryService;
     private final SemanticResponseCache semanticResponseCache;
+    private final InferenceGate inferenceGate;
     private final Map<String, Object> runtimeConfig = new ConcurrentHashMap<>();
 
     public ConfigRuntimeService(MemoryRepository memoryRepository,
                                 ConversationMemoryService conversationMemoryService,
-                                SemanticResponseCache semanticResponseCache) {
+                                SemanticResponseCache semanticResponseCache,
+                                InferenceGate inferenceGate) {
         this.memoryRepository = memoryRepository;
         this.conversationMemoryService = conversationMemoryService;
         this.semanticResponseCache = semanticResponseCache;
+        this.inferenceGate = inferenceGate;
+    }
+
+    /** 启动时把持久化（或默认）的 inference_concurrency 应用到全局闸门。 */
+    @PostConstruct
+    public void applyInferenceConcurrency() {
+        inferenceGate.setMaxConcurrency(inferenceConcurrency());
     }
 
     public Map<String, Object> get() {
@@ -67,7 +78,7 @@ public class ConfigRuntimeService {
         config.putAll(runtimeConfig);
 
         Map<String, Object> usage = new LinkedHashMap<>();
-        usage.put("active_inferences", 0);
+        usage.put("active_inferences", inferenceGate.active());
         usage.put("concurrency_slots", config.get("inference_concurrency"));
         usage.put("l1_cache_entries", 0);
         usage.put("l2_cache_entries", semanticResponseCache.entries());
@@ -98,6 +109,10 @@ public class ConfigRuntimeService {
         }
         runtimeConfig.putAll(updated);
         persist(updated);
+        Object concurrency = updated.get("inference_concurrency");
+        if (concurrency instanceof Number n) {
+            inferenceGate.setMaxConcurrency(n.intValue());
+        }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("updated", updated);
         result.put("message", "运行时配置已更新");
@@ -128,6 +143,18 @@ public class ConfigRuntimeService {
             v = defaults().get("tool_result_max_chars");
         }
         return v instanceof Number n ? n.intValue() : 5000;
+    }
+
+    /** 并发推理上限（默认 1，runtime 配置覆盖），驱动全局 {@link InferenceGate}。 */
+    public int inferenceConcurrency() {
+        Object v = runtimeConfig.get("inference_concurrency");
+        if (v == null) {
+            v = persisted().get("inference_concurrency");
+        }
+        if (v == null) {
+            v = defaults().get("inference_concurrency");
+        }
+        return v instanceof Number n ? n.intValue() : 1;
     }
 
     private Map<String, Object> defaults() {

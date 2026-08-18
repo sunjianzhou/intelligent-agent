@@ -70,7 +70,8 @@ class GapFillContractTest {
         TaskSchedulerService scheduler = new TaskSchedulerService(
                 new com.intelligent.agent.web.domain.task.TaskService(), dataDir);
         ConfigRuntimeService configRuntimeService = new ConfigRuntimeService(
-                memoryRepository, conversationMemoryService, semanticResponseCache);
+                memoryRepository, conversationMemoryService, semanticResponseCache,
+                new com.intelligent.agent.web.ai.llm.InferenceGate(1));
         CloudService cloudService = new CloudService(modelService);
         ReflectionTestUtils.setField(configRuntimeService, "dataDir", dataDir.toString());
         ReflectionTestUtils.setField(cloudService, "dataDir", dataDir.toString());
