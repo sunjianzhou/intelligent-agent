@@ -60,4 +60,16 @@ class ConfigRuntimeServiceTest {
 
         assertThat(newService().llmRequestOptions()).containsEntry("temperature", 2.0);
     }
+
+    @Test
+    void toolResultMaxCharsDefaultsTo5000() {
+        assertThat(newService().toolResultMaxChars()).isEqualTo(5000);
+    }
+
+    @Test
+    void toolResultMaxCharsUsesPersistedValue() {
+        newService().patch(Map.of("tool_result_max_chars", 20000));
+
+        assertThat(newService().toolResultMaxChars()).isEqualTo(20000);
+    }
 }

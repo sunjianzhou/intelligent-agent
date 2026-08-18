@@ -118,6 +118,18 @@ public class ConfigRuntimeService {
         return options;
     }
 
+    /** 工具结果回传 LLM 前的最大字符数（默认 5000；runtime 配置覆盖）。 */
+    public int toolResultMaxChars() {
+        Object v = runtimeConfig.get("tool_result_max_chars");
+        if (v == null) {
+            v = persisted().get("tool_result_max_chars");
+        }
+        if (v == null) {
+            v = defaults().get("tool_result_max_chars");
+        }
+        return v instanceof Number n ? n.intValue() : 5000;
+    }
+
     private Map<String, Object> defaults() {
         Map<String, Object> defaults = new LinkedHashMap<>();
         defaults.put("inference_concurrency", 1);

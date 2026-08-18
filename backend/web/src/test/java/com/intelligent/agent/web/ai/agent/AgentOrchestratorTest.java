@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.ai.agent;
 
 import com.intelligent.agent.web.ai.llm.ChatTurn;
+import com.intelligent.agent.web.ai.llm.ChatMessage;
 import com.intelligent.agent.web.ai.llm.LlmProvider;
 import com.intelligent.agent.web.ai.llm.LlmResponse;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
@@ -9,6 +10,7 @@ import com.intelligent.agent.web.ai.tool.AgentTool;
 import com.intelligent.agent.web.ai.tool.ToolCall;
 import com.intelligent.agent.web.ai.tool.ToolDefinition;
 import com.intelligent.agent.web.ai.tool.ToolExecutor;
+import com.intelligent.agent.web.service.ConfigRuntimeService;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -19,6 +21,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * 本地 ReAct 编排测试：无工具事件顺序（token → done）、工具轮执行、
@@ -199,6 +203,36 @@ class AgentOrchestratorTest {
                 .expectNextMatches(e -> e.type().equals("done"))
                 .verifyComplete();
         assertThat(loopFake.completeCalls[0]).isEqualTo(5);
+    }
+
+    @Test
+    void truncatesLongToolResultsBeforeFeedingModel() {
+        String longText = "x".repeat(2000);
+        ChatTurn[] lastTurn = new ChatTurn[1];
+        ToolCallProvider recording = new ToolCallProvider(
+                List.of("", "完成"),
+                Flux.just(ModelEvent.token("完成"), ModelEvent.done(Map.of())),
+                List.of(ToolCall.of("echo", Map.of("text", longText))), 1) {
+            @Override
+            public Mono<LlmResponse> completeWithTools(ChatTurn turn, List<ToolDefinition> tools) {
+                lastTurn[0] = turn;
+                return super.completeWithTools(turn, tools);
+            }
+        };
+        ConfigRuntimeService config = mock(ConfigRuntimeService.class);
+        when(config.toolResultMaxChars()).thenReturn(50);
+        AgentOrchestrator o = new AgentOrchestrator(
+                new LlmProviderRouter(recording, null, List.of()), tools,
+                null, null, null, AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS, null, config);
+
+        o.complete(AgentRequestContext.of("u1", "go")).block();
+
+        assertThat(lastTurn[0]).isNotNull();
+        ChatMessage toolMsg = lastTurn[0].messages().stream()
+                .filter(m -> "tool".equals(m.role()))
+                .findFirst().orElseThrow();
+        assertThat(toolMsg.content()).startsWith("echo:" + "x".repeat(45));
+        assertThat(toolMsg.content()).contains("已截断");
     }
 
     @Test

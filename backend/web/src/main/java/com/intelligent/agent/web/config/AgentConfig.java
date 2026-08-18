@@ -38,6 +38,7 @@ import com.intelligent.agent.web.im.ChannelAdapterManager;
 import com.intelligent.agent.web.integration.feishu.FeishuChannelClient;
 import com.intelligent.agent.web.infrastructure.scheduler.TaskSchedulerService;
 import com.intelligent.agent.web.service.ImageService;
+import com.intelligent.agent.web.service.ConfigRuntimeService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -184,10 +185,11 @@ public class AgentConfig {
                                                ConversationMemoryService conversationMemoryService,
                                                PromptService promptService,
                                                BranchFailureDetector branchFailureDetector,
-                                               TraceService traceService) {
+                                               TraceService traceService,
+                                               ConfigRuntimeService configRuntimeService) {
         return new AgentOrchestrator(llmProviderRouter, toolExecutor, conversationMemoryService,
                 promptService, branchFailureDetector, AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS,
-                traceService);
+                traceService, configRuntimeService);
     }
 
     /** TODO-110 Task 4.4：分支失败检测 + 铁律违反扫描（模式来自 rules.md + 硬编码清单）。 */

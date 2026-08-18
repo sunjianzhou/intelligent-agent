@@ -18,6 +18,7 @@ import com.intelligent.agent.web.ai.tool.ToolExecutor;
 import com.intelligent.agent.web.ai.tool.ToolResult;
 import com.intelligent.agent.web.infrastructure.observability.TraceService;
 import com.intelligent.agent.web.infrastructure.observability.TraceSpan;
+import com.intelligent.agent.web.service.ConfigRuntimeService;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -48,6 +49,7 @@ public class AgentOrchestrator {
     private final BranchFailureDetector branchFailureDetector;
     private final int maxToolRounds;
     private final TraceService traceService;
+    private final ConfigRuntimeService configRuntimeService;
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor) {
         this(router, toolExecutor, DEFAULT_MAX_TOOL_ROUNDS);
@@ -81,6 +83,15 @@ public class AgentOrchestrator {
                              PromptService promptService,
                              BranchFailureDetector branchFailureDetector, int maxToolRounds,
                              TraceService traceService) {
+        this(router, toolExecutor, memoryService, promptService, branchFailureDetector,
+                maxToolRounds, traceService, null);
+    }
+
+    public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
+                             ConversationMemoryService memoryService,
+                             PromptService promptService,
+                             BranchFailureDetector branchFailureDetector, int maxToolRounds,
+                             TraceService traceService, ConfigRuntimeService configRuntimeService) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.toolExecutor = Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
         this.toolCallParser = new TextToolCallParser();
@@ -90,6 +101,7 @@ public class AgentOrchestrator {
                 ? new BranchFailureDetector() : branchFailureDetector;
         this.maxToolRounds = maxToolRounds;
         this.traceService = traceService;
+        this.configRuntimeService = configRuntimeService;
     }
 
     public Flux<ModelEvent> stream(AgentRequestContext context) {
@@ -371,8 +383,8 @@ public class AgentOrchestrator {
                 if (!ToolResult.SUCCESS.equals(result.status())) {
                     failures.add(result);
                 }
-                String text = result.data() != null ? String.valueOf(result.data())
-                        : (result.error() != null ? result.error() : result.status());
+                String text = truncateToolResult(result.data() != null ? String.valueOf(result.data())
+                        : (result.error() != null ? result.error() : result.status()));
                 next.add(ChatMessage.tool(text, "call_" + (executedCalls.size() + i)));
                 // G4：每个工具调用一个 span
                 addSpan(traceId, "tool_call", toolStart, Map.of(
@@ -395,6 +407,17 @@ public class AgentOrchestrator {
             }
             return new ReActState(next, "", true, executed, true);
         }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /** 工具结果回传 LLM 前按 runtime 配置截断（tool_result_max_chars，默认 5000），
+     *  避免超长输出撑爆上下文。 */
+    private String truncateToolResult(String text) {
+        int max = configRuntimeService == null
+                ? 5000 : configRuntimeService.toolResultMaxChars();
+        if (max <= 0 || text == null || text.length() <= max) {
+            return text;
+        }
+        return text.substring(0, max) + "\n...(工具输出已截断，共 " + text.length() + " 字符)";
     }
 
     private Flux<ModelEvent> streamFinal(AgentRequestContext ctx, ReActState state,
