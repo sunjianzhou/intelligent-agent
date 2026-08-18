@@ -173,7 +173,7 @@ public class KnowledgeService {
         }
         if (ext.equals(".pdf")) {
             try (org.apache.pdfbox.pdmodel.PDDocument doc =
-                         org.apache.pdfbox.pdmodel.PDDocument.load(content)) {
+                         org.apache.pdfbox.Loader.loadPDF(content)) {
                 return new org.apache.pdfbox.text.PDFTextStripper().getText(doc);
             }
         }

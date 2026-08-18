@@ -3,7 +3,6 @@ package com.intelligent.agent.web.util;
 import com.intelligent.agent.web.config.AuthProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -33,10 +32,10 @@ public class JwtUtil {
         long now    = System.currentTimeMillis();
         long expiry = now + authProperties.getJwt().getExpiryHours() * 3600_000L;
         return Jwts.builder()
-                .setSubject(username)
-                .setIssuedAt(new Date(now))
-                .setExpiration(new Date(expiry))
-                .signWith(getKey(), SignatureAlgorithm.HS256)
+                .subject(username)
+                .issuedAt(new Date(now))
+                .expiration(new Date(expiry))
+                .signWith(getKey())
                 .compact();
     }
 
@@ -48,20 +47,20 @@ public class JwtUtil {
         long now    = System.currentTimeMillis();
         long expiry = now + 30L * 24 * 3600_000L;
         return Jwts.builder()
-                .setSubject(username)
+                .subject(username)
                 .claim("scope", "cli")
-                .setIssuedAt(new Date(now))
-                .setExpiration(new Date(expiry))
-                .signWith(getKey(), SignatureAlgorithm.HS256)
+                .issuedAt(new Date(now))
+                .expiration(new Date(expiry))
+                .signWith(getKey())
                 .compact();
     }
 
     public Claims parse(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(getKey())
+        return Jwts.parser()
+                .verifyWith(getKey())
                 .build()
-                .parseClaimsJws(token)
-                .getBody();
+                .parseSignedClaims(token)
+                .getPayload();
     }
 
     public boolean shouldRefresh(Claims claims) {
