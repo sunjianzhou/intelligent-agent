@@ -1713,7 +1713,10 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       PDFBox 2.0.31→3.0.8（Loader.loadPDF）、移除 spring-ai-bom；
       springdoc 保持 2.9.0（2.10.x 在中央仓库不存在；3.x 面向 Spring Boot 4，
       Boot 3.5 下不适用，2.9.0 即 2.x 最新）。全量后端 399 用例绿。
-      剩余：前端 vite 7 / vitest 3 / vue 3.5。
+      前端工具链 ✅ 2026-08-18（commit `1edbca4`）：vite 4→7.3、vitest 1.6→3.2、
+      vue 3.3→3.5、@vitejs/plugin-vue 4→6；`npm audit fix` 后 0 漏洞
+      （修复 sass→immutable / vite→nanoid,postcss 等构建期传递依赖）；
+      前端 14 用例绿 + 构建通过。G7 全部收口。
 - [x] G8 CI/CD（2026-08-13 完成，commit `ba296f7`）：
       新增 `.github/workflows/ci.yml`：backend（JDK 21 + `mvnw test`）、
       frontend（Node 22 + `npm ci` + `vitest run` + `vite build`），master push/PR 双触发；
