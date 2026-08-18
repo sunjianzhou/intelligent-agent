@@ -7,6 +7,7 @@ import com.intelligent.agent.web.service.ModelService;
 import com.intelligent.agent.web.infrastructure.scheduler.TaskSchedulerService;
 import com.intelligent.agent.web.infrastructure.monitoring.SystemResourceService;
 import com.intelligent.agent.web.service.ConfigRuntimeService;
+import com.intelligent.agent.web.ai.llm.circuit.CircuitBreakerRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -28,6 +29,7 @@ public class HealthController {
     @Autowired(required = false) private TaskSchedulerService taskSchedulerService;
     @Autowired(required = false) private SystemResourceService systemResourceService;
     @Autowired(required = false) private ConfigRuntimeService configRuntimeService;
+    @Autowired(required = false) private CircuitBreakerRegistry circuitBreakerRegistry;
 
     // ── 健康检查 ──────────────────────────────────────────────
 
@@ -64,6 +66,15 @@ public class HealthController {
             return ResponseEntity.ok(systemResourceService.get());
         }
         return ResponseEntity.ok(new HashMap<>());
+    }
+
+    /** G6：LLM 熔断器 + SLO 状态（按模型：state / success_rate / 拒绝数等）。 */
+    @GetMapping("/llm/status")
+    public ResponseEntity<Map<String, Object>> llmStatus() {
+        if (circuitBreakerRegistry != null) {
+            return ResponseEntity.ok(circuitBreakerRegistry.status());
+        }
+        return ResponseEntity.ok(Map.of("enabled", false, "breakers", java.util.List.of()));
     }
 
     // ── 模型管理 ──────────────────────────────────────────────

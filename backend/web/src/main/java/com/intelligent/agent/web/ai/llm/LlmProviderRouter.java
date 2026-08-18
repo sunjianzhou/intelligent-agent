@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.ai.llm;
 
 import com.intelligent.agent.web.ai.llm.cloud.OpenAiCompatibleLlmProvider;
+import com.intelligent.agent.web.ai.llm.circuit.CircuitBreakerRegistry;
 
 import java.util.List;
 import java.util.Objects;
@@ -19,12 +20,21 @@ public class LlmProviderRouter {
     private final LlmProvider local;
     private final OpenAiCompatibleLlmProvider cloud;
     private final Set<String> cloudModels = ConcurrentHashMap.newKeySet();
+    private final CircuitBreakerRegistry breakerRegistry;
 
     public LlmProviderRouter(LlmProvider local,
                              OpenAiCompatibleLlmProvider cloud,
                              List<String> cloudModels) {
+        this(local, cloud, cloudModels, null);
+    }
+
+    public LlmProviderRouter(LlmProvider local,
+                             OpenAiCompatibleLlmProvider cloud,
+                             List<String> cloudModels,
+                             CircuitBreakerRegistry breakerRegistry) {
         this.local = Objects.requireNonNull(local, "local provider is required");
         this.cloud = cloud;
+        this.breakerRegistry = breakerRegistry;
         if (cloudModels != null) {
             for (String model : cloudModels) {
                 registerCloudModel(model);
@@ -34,11 +44,18 @@ public class LlmProviderRouter {
 
     public LlmProvider forUser(String userId, String requestedModel) {
         String model = requestedModel == null ? "" : requestedModel.trim();
+        LlmProvider target;
         if (cloud != null && cloud.isConfigured()
                 && (model.isEmpty() || cloudModels.contains(model))) {
-            return cloud;
+            target = cloud;
+        } else {
+            target = local;
         }
-        return local;
+        if (breakerRegistry == null) {
+            return target;
+        }
+        // G6：按模型熔断（未指定模型时按 provider 名），熔断打开时快速失败
+        return breakerRegistry.wrap(model.isEmpty() ? target.name() : model, target);
     }
 
     /** 运行期注册云端模型名（CloudService 激活时调用），使路由立即识别。 */

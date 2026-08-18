@@ -2,6 +2,8 @@ package com.intelligent.agent.web.config;
 
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.ai.llm.OllamaOptions;
+import com.intelligent.agent.web.ai.llm.circuit.CircuitBreakerConfig;
+import com.intelligent.agent.web.ai.llm.circuit.CircuitBreakerRegistry;
 import com.intelligent.agent.web.ai.llm.cloud.OpenAiCompatibleLlmProvider;
 import com.intelligent.agent.web.ai.llm.ollama.OllamaLlmProvider;
 import org.springframework.beans.factory.annotation.Value;
@@ -54,6 +56,7 @@ public class LlmProviderConfig {
     public LlmProviderRouter llmProviderRouter(
             OllamaLlmProvider ollamaLlmProvider,
             OpenAiCompatibleLlmProvider cloudLlmProvider,
+            CircuitBreakerRegistry circuitBreakerRegistry,
             @Value("${ai.llm.cloud.models:}") List<String> cloudModels,
             @Value("${ai.llm.cloud.model:}") String cloudModel) {
         List<String> models = new ArrayList<>();
@@ -67,6 +70,17 @@ public class LlmProviderConfig {
                 }
             }
         }
-        return new LlmProviderRouter(ollamaLlmProvider, cloudLlmProvider, models);
+        return new LlmProviderRouter(ollamaLlmProvider, cloudLlmProvider, models,
+                circuitBreakerRegistry);
+    }
+
+    @Bean
+    public CircuitBreakerRegistry circuitBreakerRegistry(
+            @Value("${ai.llm.circuit-breaker.enabled:true}") boolean enabled,
+            @Value("${ai.llm.circuit-breaker.failure-threshold:5}") int failureThreshold,
+            @Value("${ai.llm.circuit-breaker.cooldown:30s}") Duration cooldown,
+            @Value("${ai.llm.circuit-breaker.window-size:100}") int windowSize) {
+        return new CircuitBreakerRegistry(
+                new CircuitBreakerConfig(enabled, failureThreshold, cooldown, windowSize));
     }
 }

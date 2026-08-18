@@ -35,6 +35,12 @@ ai:
     extraction:
       enabled: ${LLM_EXTRACTION_ENABLED:true}
       timeout: ${LLM_EXTRACTION_TIMEOUT:30s}
+    # G6：LLM 熔断器 + SLO（按模型维度；连续失败达阈值 → OPEN，冷却后单次试探）
+    circuit-breaker:
+      enabled: ${LLM_CIRCUIT_BREAKER_ENABLED:true}
+      failure-threshold: ${LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD:5}
+      cooldown: ${LLM_CIRCUIT_BREAKER_COOLDOWN:30s}
+      window-size: ${LLM_CIRCUIT_BREAKER_WINDOW_SIZE:100}
   # 真实 embedding（Ollama /api/embed，TODO-110 Task 5）
   embedding:
     enabled: ${EMBEDDING_ENABLED:true}
