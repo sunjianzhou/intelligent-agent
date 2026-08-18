@@ -1724,7 +1724,13 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       新增 8 个测试（ConfigRuntimeService 3 / LocalChatService 2 / Ollama 2 / 云端 1）；
       全量后端 379 用例绿、前端 14 用例绿、构建通过。
       `tool_result_max_chars` 另于 commit `6e995be` 接入工具结果截断（见 G2）。
-      剩余（未在本项处理）：`inference_concurrency` 仍为展示态。
+      `inference_concurrency` 接线 ✅ 2026-08-18（commit `5b7867f`）：新增
+      `InferenceGate`（可运行期调上限、超出排队等待）+ `ConcurrencyLimitedLlmProvider`
+      （流式期间持有槽位，完成/出错/取消释放）装饰器，路由器统一包住所有 LLM 调用
+      （聊天/调度 llm_generate/记忆蒸馏）；熔断在外先快速失败、闸门在内排队；
+      `ConfigRuntimeService` 上报真实 `active_inferences`，PATCH 保存时实时调整闸门上限，
+      启动时按持久化/默认值应用。新增 9 个测试（Gate 4 / 装饰器 3 / Router 1 /
+       ConfigRuntimeService +2），全量后端 410 用例绿。
 
 ### 环境问题记录（2026-08-13 排查，与项目代码无关）
 
