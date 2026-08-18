@@ -160,8 +160,13 @@
 - [x] J-03 闭环：`RestTemplate` 换 HttpClient 5 连接池（max 50/route 20 + 驱逐），
       `HttpClientUtil` 显式 PoolingHttpClientConnectionManager（TTL 60s + 空闲驱逐）
       ✅ 2026-08-15
-- [ ] 前端大视图拆分：`ChatView.vue` 93KB / `TasksView` 44KB / `MemoryView` 39KB 等
-      （P3 大项，按需推进）
+- [x] 前端大视图拆分 ✅ 2026-08-18（commit `2a4a18b`）：
+      ChatView 2429→2052 行：markdown 渲染收敛到 `src/utils/markdown.js`
+      （marked/hljs/DOMPurify 单点配置）+ 抽出 ChatSearchBar / ChatEmptyState /
+      ChatHistoryPanel（样式原样随迁）；TasksView 1119→872 行：抽出 TaskCard
+      （展示辅助函数随迁，now 由父传入）；MemoryView 1001→918 行：抽出 MemoryCard。
+      模板/样式原样迁移、行为零变化；前端 14 用例绿 + 构建通过。
+      剩余可继续拆：ChatView 消息行/输入区、TasksView 弹窗、MemoryView 文件面板。
 - [x] E2E 迁 Java：`tests/e2e-java`（JUnit + JDK HttpClient，16 个场景测试类，
       覆盖原 pytest 68 用例全部场景；后端不可达整类跳过）；`tests/e2e`（pytest）已删除，
       CI 手动 E2E job 改为 Java 套件 ✅ 2026-08-15
