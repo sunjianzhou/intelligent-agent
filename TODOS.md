@@ -1649,8 +1649,9 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       启动自动连接 + 工具动态注册进 ToolExecutor + 断开清理 + 重名跳过）；
       `/api/mcp/servers` CRUD + connect/disconnect；前端 MCPView 新增服务器管理卡片。
       测试：McpConnectionManager 4（真实 mock HTTP 服务器）+ McpController 3 + E2E 1。
-      剩余：stdio 传输（npx 类服务器）、MCP session 池化复用、工具输出 8K 截断 +
-      注入防护（McpAgentTool 结果已字符串化，截断待补）。
+      剩余：stdio 传输（npx 类服务器）、MCP session 池化复用、注入防护
+      （McpAgentTool 结果已字符串化；截断已补 ✅ 2026-08-18 commit `6e995be`：
+      AgentOrchestrator 按 runtime `tool_result_max_chars` 统一截断工具结果再喂 LLM，默认 5000）。
 - [x] G3 LLM 评估体系（v1 基线版）✅ 2026-08-17（commit 9b4bfb0）：
       `backend/web/src/test/eval/EvalSuite.java`（@Tag("eval") + SpringBootTest）加载
       `src/test/resources/eval/golden-cases.json`（8 个用例：计算/单位换算/时间/常识/
@@ -1709,7 +1710,8 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       未保存前模型表 / 默认值完全不受影响（避免"保存任意配置把 num_ctx=4096 覆盖模型表"）。
       新增 8 个测试（ConfigRuntimeService 3 / LocalChatService 2 / Ollama 2 / 云端 1）；
       全量后端 379 用例绿、前端 14 用例绿、构建通过。
-      剩余（未在本项处理）：`tool_result_max_chars` / `inference_concurrency` 仍为展示态。
+      `tool_result_max_chars` 另于 commit `6e995be` 接入工具结果截断（见 G2）。
+      剩余（未在本项处理）：`inference_concurrency` 仍为展示态。
 
 ### 环境问题记录（2026-08-13 排查，与项目代码无关）
 
