@@ -1678,8 +1678,11 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       自动作废（避免每次检索全量重嵌入）；候选预筛（userId/type/projectId/importance）
       已有；时间衰减 score = 0.7*sim + 0.2*importance + 0.1*recency（24h 半衰期）。
       剩余：分层记忆 working/episodic/semantic（RAG_TOP_K 按层配额）。
-- [ ] G6 编排升级（可后置）：planning 前置（复杂任务先出 plan）、reflection 后验、
-      human-in-the-loop 审批门、circuit breaker/SLO。
+- [ ] G6 编排升级（部分）：circuit breaker/SLO ✅ 2026-08-18（commit `143f7d2`）：
+      按模型熔断（CLOSED/OPEN/HALF_OPEN + 冷却后单次试探，连续失败阈值 5 默认）、
+      滚动窗口成功率 SLO、`GET /api/llm/status` 状态端点；配置
+      `ai.llm.circuit-breaker.*`（默认开）。新增 16 个测试，全量后端 398 用例绿。
+      剩余：planning 前置（复杂任务先出 plan）、reflection 后验、human-in-the-loop 审批门。
 - [x] 上下文成本 ✅ 2026-08-17（commit 5752d98）：
       - Ollama 请求默认带 `cache_prompt: true`（`OLLAMA_CACHE_PROMPT` 可关）；
       - `num_ctx` 按模型配置表下发（`OLLAMA_NUM_CTX_BY_MODEL`，如
