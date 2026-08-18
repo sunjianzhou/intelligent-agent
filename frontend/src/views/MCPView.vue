@@ -280,6 +280,7 @@ const remove = async (id) => {
 
 // ── 系统资源配置 ──────────────────────────────────────────
 const rcEdit   = ref({})
+const rcBase   = ref({})
 const rcSaving = ref(false)
 
 const loadRcConfig = async () => {
@@ -287,16 +288,28 @@ const loadRcConfig = async () => {
   if (data?.config) {
     if (Object.keys(rcEdit.value).length === 0) {
       rcEdit.value = { ...data.config }
+      rcBase.value = { ...data.config }
     }
   }
 }
 
 const saveRuntimeConfig = async () => {
+  const changed = {}
+  for (const key of Object.keys(rcEdit.value)) {
+    if (rcEdit.value[key] !== rcBase.value[key]) {
+      changed[key] = rcEdit.value[key]
+    }
+  }
+  if (Object.keys(changed).length === 0) {
+    ElMessage({ message: '没有需要保存的变更', type: 'info', duration: 2000 })
+    return
+  }
   rcSaving.value = true
   try {
-    const res = await updateRuntimeConfig(rcEdit.value)
+    const res = await updateRuntimeConfig(changed)
     if (res?.success) {
       ElMessage({ message: `已更新 ${Object.keys(res.updated || {}).length} 项配置`, type: 'success', duration: 2000 })
+      rcBase.value = { ...rcEdit.value }
     } else {
       const errKeys = Object.keys(res?.errors || {})
       ElMessage({ message: errKeys.length ? `${errKeys[0]}: ${res.errors[errKeys[0]]}` : '保存失败', type: 'error', duration: 3000 })

@@ -37,6 +37,14 @@ public class ConfigRuntimeService {
             Map.entry("ollama_temperature", new double[]{0.0, 2.0}),
             Map.entry("ollama_num_ctx", new double[]{512, 131072}));
 
+    /** runtime 配置中会注入到 LLM 请求的键 → {@code AgentRequestContext.options} 键映射。
+     *  只注入已持久化的值（保存后生效），未保存前保持模型配置表 / application.yml 默认值不变。 */
+    private static final Map<String, String> LLM_OPTION_KEYS = Map.of(
+            "ollama_temperature", "temperature",
+            "ollama_max_tokens", "max_tokens",
+            "ollama_num_ctx", "num_ctx",
+            "chat_timeout", "chat_timeout");
+
     @Value("${intelligent-agent.data-dir:data}")
     private String dataDir;
 
@@ -94,6 +102,20 @@ public class ConfigRuntimeService {
         result.put("updated", updated);
         result.put("message", "运行时配置已更新");
         return result;
+    }
+
+    /** 返回应注入本次 LLM 请求的模型参数（仅持久化的键，未保存的键不注入）。
+     *  键名与 {@code ChatTurn.options} / provider 读取的参数名一致。 */
+    public Map<String, Object> llmRequestOptions() {
+        Map<String, Object> persisted = persisted();
+        Map<String, Object> options = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : LLM_OPTION_KEYS.entrySet()) {
+            Object value = persisted.get(entry.getKey());
+            if (value != null) {
+                options.put(entry.getValue(), value);
+            }
+        }
+        return options;
     }
 
     private Map<String, Object> defaults() {

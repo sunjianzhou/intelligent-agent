@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -183,5 +184,19 @@ class OpenAiCompatibleLlmProviderTest {
                     assertThat(t.getMessage()).doesNotContain("sk-test-123");
                 })
                 .verify();
+    }
+
+    @Test
+    void chatTimeoutOptionOverridesRequestTimeout() {
+        server.enqueue(new MockResponse()
+                .setBody("{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}")
+                .setHeader("Content-Type", "application/json")
+                .setHeadersDelay(5, TimeUnit.SECONDS));
+        ChatTurn turn = new ChatTurn("u1", "deepseek-chat",
+                List.of(ChatMessage.user("hi")), Map.of("chat_timeout", 1));
+
+        StepVerifier.create(provider.complete(turn))
+                .expectError()
+                .verify(Duration.ofSeconds(4));
     }
 }

@@ -148,7 +148,7 @@ public class OpenAiCompatibleLlmProvider extends AbstractHttpLlmProvider {
                 payload.put("tools", ToolSchemas.toPayload(tools));
             }
             String body = MAPPER.writeValueAsString(payload);
-            return jsonRequest(baseUrl + "/chat/completions")
+            return jsonRequest(baseUrl + "/chat/completions", resolveRequestTimeout(turn.options()))
                     .header("Authorization", "Bearer " + apiKey)
                     .header("Accept", "text/event-stream")
                     .POST(HttpRequest.BodyPublishers.ofString(body))

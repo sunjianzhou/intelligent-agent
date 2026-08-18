@@ -12,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 /**
@@ -52,9 +53,30 @@ public abstract class AbstractHttpLlmProvider implements LlmProvider {
     }
 
     protected HttpRequest.Builder jsonRequest(String url) {
+        return jsonRequest(url, requestTimeout);
+    }
+
+    /** 按请求覆盖超时（如 runtime 配置的 chat_timeout）；null 时回退构造时的默认超时。 */
+    protected HttpRequest.Builder jsonRequest(String url, Duration timeout) {
         return HttpRequest.newBuilder(URI.create(url))
                 .header("Content-Type", "application/json")
-                .timeout(requestTimeout);
+                .timeout(timeout == null ? requestTimeout : timeout);
+    }
+
+    /** 从模型参数中解析请求级超时（秒，key=chat_timeout），缺失或非法时回退默认超时。 */
+    protected Duration resolveRequestTimeout(Map<String, Object> options) {
+        Object raw = options == null ? null : options.get("chat_timeout");
+        long seconds = -1;
+        if (raw instanceof Number n) {
+            seconds = n.longValue();
+        } else if (raw instanceof String s) {
+            try {
+                seconds = Long.parseLong(s.trim());
+            } catch (NumberFormatException ignored) {
+                // 非法值回退默认超时
+            }
+        }
+        return seconds > 0 ? Duration.ofSeconds(seconds) : requestTimeout;
     }
 
     /** 逐行消费流式响应；handler 返回 true 表示流已结束。 */

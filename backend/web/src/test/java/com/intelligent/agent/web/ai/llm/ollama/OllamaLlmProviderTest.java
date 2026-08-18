@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -284,5 +285,37 @@ class OllamaLlmProviderTest {
 
         RecordedRequest request = server.takeRequest();
         assertThat(request.getBody().readUtf8()).contains("\"num_ctx\":8192");
+    }
+
+    @Test
+    void injectsRuntimeOptionsIntoPayload() throws Exception {
+        server.enqueue(new MockResponse()
+                .setBody("{\"message\":{\"content\":\"ok\"},\"done\":true}")
+                .setHeader("Content-Type", "application/json"));
+        ChatTurn turn = new ChatTurn("u1", "qwen2.5:7b",
+                List.of(ChatMessage.user("hi")),
+                Map.of("temperature", 0.3, "max_tokens", 1024, "num_ctx", 8192));
+        provider.complete(turn).block();
+
+        RecordedRequest request = server.takeRequest();
+        String body = request.getBody().readUtf8();
+        assertThat(body)
+                .contains("\"temperature\":0.3")
+                .contains("\"num_predict\":1024")
+                .contains("\"num_ctx\":8192");
+    }
+
+    @Test
+    void chatTimeoutOptionOverridesRequestTimeout() {
+        server.enqueue(new MockResponse()
+                .setBody("{\"message\":{\"content\":\"ok\"},\"done\":true}")
+                .setHeader("Content-Type", "application/json")
+                .setHeadersDelay(5, TimeUnit.SECONDS));
+        ChatTurn turn = new ChatTurn("u1", "qwen2.5:7b",
+                List.of(ChatMessage.user("hi")), Map.of("chat_timeout", 1));
+
+        StepVerifier.create(provider.complete(turn))
+                .expectError()
+                .verify(Duration.ofSeconds(4));
     }
 }

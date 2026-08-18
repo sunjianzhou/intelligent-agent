@@ -136,7 +136,7 @@ public class OllamaLlmProvider extends AbstractHttpLlmProvider {
                 payload.put("tools", ToolSchemas.toPayload(tools));
             }
             String body = MAPPER.writeValueAsString(payload);
-            return jsonRequest(baseUrl + "/api/chat")
+            return jsonRequest(baseUrl + "/api/chat", resolveRequestTimeout(turn.options()))
                     .header("Accept", "application/x-ndjson")
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
