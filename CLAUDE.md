@@ -152,3 +152,9 @@ message yet"。
 并设 `CODEX_INSTALLER_USE_RELEASES_OPENAI_COM=false` 直连 GitHub（主源 403）。
 0.147.0 仅对新会话生效：当前运行中的会话仍是 0.146.0 内存版本，需重启 Codex
 后重新 spawn 测试代理验证任务正文是否可达；确认修复后删除本节。
+
+**2026-08-18 复测（0.147.0 新会话，结论：仍未修复）**：本会话 `codex --version` = 0.147.0。
+`spawn_agent`（fork_turns=none，任务仅存在于消息正文）与 `followup_task` 各派一次
+写文件任务（内容为唯一标记 `SUBAGENT-DELIVERY-OK-7F3K`），两次子代理均只回标准问候语、
+未创建任何文件，症状与 0.146.0 完全一致。本节继续保留；不能依赖 spawn/followup
+消息正文传任务，关键任务仍本地完成。
