@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * 响应兼容普通 JSON 与 text/event-stream（SSE）两种 Content-Type。
  */
 @Slf4j
-public class McpClient {
+public class McpClient implements McpTransportClient {
 
     private final String baseUrl;
     private final String apiKey;
@@ -112,6 +112,11 @@ public class McpClient {
 
     public String sessionId() {
         return sessionId;
+    }
+
+    @Override
+    public void close() {
+        // HTTP 无长连接资源需释放；预留（未来可关闭连接池连接）
     }
 
     // ── JSON-RPC 传输 ────────────────────────────────────────

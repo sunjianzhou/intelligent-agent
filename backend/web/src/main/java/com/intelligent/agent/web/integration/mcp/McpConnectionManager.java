@@ -8,6 +8,7 @@ import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -29,8 +30,8 @@ public class McpConnectionManager {
     private final JsonFileStore store;
 
     private final Map<String, McpServerConfig> servers = new ConcurrentHashMap<>();
-    /** 已连接服务器：id → 客户端。 */
-    private final Map<String, McpClient> connected = new ConcurrentHashMap<>();
+    /** 已连接服务器：id → 传输客户端（HTTP/stdio，session 池化复用）。 */
+    private final Map<String, McpTransportClient> connected = new ConcurrentHashMap<>();
     /** 已连接服务器注册的工具名：id → [tool...]。 */
     private final Map<String, List<String>> registeredTools = new ConcurrentHashMap<>();
 
@@ -84,10 +85,22 @@ public class McpConnectionManager {
         McpServerConfig server = new McpServerConfig(
                 id, str(body.get("name")), str(body.get("base_url")),
                 encrypt(body.get("api_key")),
+                str(body.get("transport")),
+                str(body.get("command")),
+                strList(body.get("args")),
                 body.get("enabled") == null || Boolean.TRUE.equals(body.get("enabled")),
                 str(body.get("protocol_version")), Instant.now(), Instant.now());
         if (server.name().isBlank() || server.baseUrl().isBlank()) {
-            return Map.of("success", false, "message", "name 与 base_url 必填");
+            if ("stdio".equals(server.transport())) {
+                if (server.name().isBlank()) {
+                    return Map.of("success", false, "message", "name 必填");
+                }
+                if (server.command().isBlank()) {
+                    return Map.of("success", false, "message", "stdio 传输必须填写 command");
+                }
+            } else {
+                return Map.of("success", false, "message", "name 与 base_url 必填");
+            }
         }
         servers.put(id, server);
         persist();
@@ -113,6 +126,9 @@ public class McpConnectionManager {
                 body.get("name") == null ? existing.name() : str(body.get("name")),
                 body.get("base_url") == null ? existing.baseUrl() : str(body.get("base_url")),
                 apiKey,
+                body.get("transport") == null ? existing.transport() : str(body.get("transport")),
+                body.get("command") == null ? existing.command() : str(body.get("command")),
+                body.get("args") == null ? existing.args() : strList(body.get("args")),
                 body.get("enabled") == null ? existing.enabled()
                         : Boolean.TRUE.equals(body.get("enabled")),
                 body.get("protocol_version") == null ? existing.protocolVersion()
@@ -149,8 +165,12 @@ public class McpConnectionManager {
             return Map.of("success", false, "message", "服务器不存在");
         }
         disconnect(serverId);
-        McpClient client = new McpClient(server.baseUrl(), secretCrypto.decrypt(server.apiKey()));
+        McpTransportClient client = "stdio".equals(server.transport())
+                ? new McpStdioClient(server.command(), server.args(), Duration.ofSeconds(30))
+                : new McpClient(server.baseUrl(),
+                        secretCrypto.decrypt(server.apiKey()), Duration.ofSeconds(30));
         if (!client.initialize(server.protocolVersion())) {
+            client.close();
             return Map.of("success", false, "message", "MCP 初始化失败（握手无响应）");
         }
         List<McpClient.McpToolInfo> tools = client.listTools();
@@ -176,7 +196,10 @@ public class McpConnectionManager {
                 toolExecutor.unregister(name);
             }
         }
-        McpClient removed = connected.remove(serverId);
+        McpTransportClient removed = connected.remove(serverId);
+        if (removed != null) {
+            removed.close();
+        }
         if (removed == null && toolNames == null) {
             return Map.of("success", false, "message", "服务器未连接");
         }
@@ -190,7 +213,7 @@ public class McpConnectionManager {
     /** 由 McpAgentTool 调用：路由到对应服务器的已连接客户端执行工具。 */
     public Map<String, Object> callTool(String serverId, String toolName,
                                         Map<String, Object> arguments) {
-        McpClient client = connected.get(serverId);
+        McpTransportClient client = connected.get(serverId);
         if (client == null) {
             return Map.of("success", false, "error", "MCP 服务器未连接: " + serverId);
         }
@@ -231,6 +254,9 @@ public class McpConnectionManager {
         map.put("id", server.id());
         map.put("name", server.name());
         map.put("base_url", server.baseUrl());
+        map.put("transport", server.transport());
+        map.put("command", server.command());
+        map.put("args", server.args());
         map.put("api_key_masked", mask(server.apiKey()));
         map.put("enabled", server.enabled());
         map.put("protocol_version", server.protocolVersion());
@@ -249,6 +275,13 @@ public class McpConnectionManager {
         String plain = String.valueOf(apiKey);
         return plain.isBlank() || plain.startsWith("enc:")
                 ? plain : secretCrypto.encrypt(plain);
+    }
+
+    private static List<String> strList(Object value) {
+        if (!(value instanceof List)) {
+            return List.of();
+        }
+        return ((List<?>) value).stream().map(String::valueOf).toList();
     }
 
     private static String mask(String apiKey) {
