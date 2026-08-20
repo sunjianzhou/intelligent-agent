@@ -5,6 +5,8 @@ import com.intelligent.agent.web.ai.agent.BranchFailureDetector;
 import com.intelligent.agent.web.ai.agent.planning.LlmTaskPlanner;
 import com.intelligent.agent.web.ai.agent.planning.PlanningComplexityDetector;
 import com.intelligent.agent.web.ai.agent.planning.TaskPlanner;
+import com.intelligent.agent.web.ai.agent.reflection.AnswerReflector;
+import com.intelligent.agent.web.ai.agent.reflection.LlmAnswerReflector;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
 import com.intelligent.agent.web.ai.memory.LlmExtractionService;
@@ -190,10 +192,11 @@ public class AgentConfig {
                                                BranchFailureDetector branchFailureDetector,
                                                TraceService traceService,
                                                ConfigRuntimeService configRuntimeService,
-                                               TaskPlanner taskPlanner) {
+                                               TaskPlanner taskPlanner,
+                                               AnswerReflector answerReflector) {
         return new AgentOrchestrator(llmProviderRouter, toolExecutor, conversationMemoryService,
                 promptService, branchFailureDetector, AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS,
-                traceService, configRuntimeService, taskPlanner);
+                traceService, configRuntimeService, taskPlanner, answerReflector);
     }
 
     /** G6 planning 前置：LLM 计划器（启发式门控 + 低温度计划生成，失败降级）。 */
@@ -205,6 +208,14 @@ public class AgentConfig {
                                    @Value("${ai.planning.timeout:30s}") Duration timeout) {
         return new LlmTaskPlanner(llmProviderRouter,
                 new PlanningComplexityDetector(minMessageLength), enabled, timeout, maxSteps);
+    }
+
+    /** G6 reflection 后验：答案自检器（工具执行后修订草稿，失败保留草稿）。 */
+    @Bean
+    public AnswerReflector answerReflector(LlmProviderRouter llmProviderRouter,
+                                           @Value("${ai.reflection.enabled:true}") boolean enabled,
+                                           @Value("${ai.reflection.timeout:30s}") Duration timeout) {
+        return new LlmAnswerReflector(llmProviderRouter, enabled, timeout);
     }
 
     /** TODO-110 Task 4.4：分支失败检测 + 铁律违反扫描（模式来自 rules.md + 硬编码清单）。 */

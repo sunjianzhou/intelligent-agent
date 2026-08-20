@@ -55,6 +55,10 @@ ai:
     min-message-length: ${AI_PLANNING_MIN_MESSAGE_LENGTH:24}
     max-steps: ${AI_PLANNING_MAX_STEPS:6}
     timeout: ${AI_PLANNING_TIMEOUT:30s}
+  # G6 reflection 后验：工具执行后对草稿答案做一次自检修订（失败保留草稿）
+  reflection:
+    enabled: ${AI_REFLECTION_ENABLED:true}
+    timeout: ${AI_REFLECTION_TIMEOUT:30s}
 
 server:
   port: 8080

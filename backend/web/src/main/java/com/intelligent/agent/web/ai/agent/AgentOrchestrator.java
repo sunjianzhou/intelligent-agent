@@ -3,6 +3,7 @@ package com.intelligent.agent.web.ai.agent;
 import com.intelligent.agent.web.ai.agent.planning.ExecutionPlan;
 import com.intelligent.agent.web.ai.agent.planning.PlanStep;
 import com.intelligent.agent.web.ai.agent.planning.TaskPlanner;
+import com.intelligent.agent.web.ai.agent.reflection.AnswerReflector;
 import com.intelligent.agent.web.ai.llm.ChatMessage;
 import com.intelligent.agent.web.ai.llm.ChatTurn;
 import com.intelligent.agent.web.ai.llm.LlmProvider;
@@ -58,6 +59,7 @@ public class AgentOrchestrator {
     private final TraceService traceService;
     private final ConfigRuntimeService configRuntimeService;
     private final TaskPlanner planner;
+    private final AnswerReflector reflector;
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor) {
         this(router, toolExecutor, DEFAULT_MAX_TOOL_ROUNDS);
@@ -110,6 +112,16 @@ public class AgentOrchestrator {
                              BranchFailureDetector branchFailureDetector, int maxToolRounds,
                              TraceService traceService, ConfigRuntimeService configRuntimeService,
                              TaskPlanner planner) {
+        this(router, toolExecutor, memoryService, promptService, branchFailureDetector,
+                maxToolRounds, traceService, configRuntimeService, planner, null);
+    }
+
+    public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
+                             ConversationMemoryService memoryService,
+                             PromptService promptService,
+                             BranchFailureDetector branchFailureDetector, int maxToolRounds,
+                             TraceService traceService, ConfigRuntimeService configRuntimeService,
+                             TaskPlanner planner, AnswerReflector reflector) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.toolExecutor = Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
         this.toolCallParser = new TextToolCallParser();
@@ -121,6 +133,7 @@ public class AgentOrchestrator {
         this.traceService = traceService;
         this.configRuntimeService = configRuntimeService;
         this.planner = planner;
+        this.reflector = reflector;
     }
 
     public Flux<ModelEvent> stream(AgentRequestContext context) {
@@ -377,6 +390,64 @@ public class AgentOrchestrator {
         return sb.toString();
     }
 
+    /** G6 reflection 后验：工具执行过的请求在出最终答案前做一次自检修订。 */
+    private Mono<String> reflectFinalAnswer(AgentRequestContext ctx, ReActState state,
+                                            String draft, String traceId) {
+        if (reflector == null || !ctx.useTools() || state.executedCalls().isEmpty()
+                || draft == null || draft.isBlank()) {
+            return Mono.just(draft);
+        }
+        long[] start = {0};
+        return Mono.fromCallable(() -> {
+                    String revised = reflector.reflect(ctx, draft,
+                            toolResultSummary(state.messages()),
+                            planSteps(state.messages()));
+                    addSpan(traceId, "reflection", start[0], Map.of(
+                            "revised", !revised.equals(draft),
+                            "input_chars", draft.length()));
+                    return revised;
+                })
+                .doOnSubscribe(s -> start[0] = System.currentTimeMillis())
+                .subscribeOn(Schedulers.boundedElastic())
+                .onErrorResume(e -> {
+                    log.warn("reflection failed, keeping draft: {}", safeMessage(e));
+                    return Mono.just(draft);
+                });
+    }
+
+    /** 从工具轮消息中提取结果摘要（每条截断到 500 字符，避免撑爆自检上下文）。 */
+    private static List<String> toolResultSummary(List<ChatMessage> messages) {
+        List<String> out = new ArrayList<>();
+        for (ChatMessage message : messages) {
+            if (!"tool".equals(message.role()) || message.content() == null
+                    || message.content().isBlank()) {
+                continue;
+            }
+            String content = message.content();
+            out.add(content.length() <= 500 ? content : content.substring(0, 500) + "…");
+        }
+        return out;
+    }
+
+    /** 从消息中提取 [PLAN] 系统消息的步骤列表（供自检对照）。 */
+    private static List<String> planSteps(List<ChatMessage> messages) {
+        for (ChatMessage message : messages) {
+            if ("system".equals(message.role()) && message.content() != null
+                    && message.content().startsWith("[PLAN]")) {
+                List<String> steps = new ArrayList<>();
+                for (String line : message.content().split("\\R")) {
+                    String text = line.replaceFirst("^\\d+\\.\\s*", "").trim();
+                    if (!text.isBlank() && !text.startsWith("[PLAN]")
+                            && !text.startsWith("请严格按照")) {
+                        steps.add(text);
+                    }
+                }
+                return steps;
+            }
+        }
+        return List.of();
+    }
+
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
                                            int round, List<ToolCall> executedCalls,
                                            String traceId) {
@@ -507,7 +578,8 @@ public class AgentOrchestrator {
                                          String traceId) {
         // content 非空 = 已有最终答复（无工具路径或分支失败终止态），不再调用模型
         if (state.content() != null && !state.content().isBlank()) {
-            Flux<ModelEvent> finalFlux = finalizeAnswer(ctx, state.content());
+            Flux<ModelEvent> finalFlux = reflectFinalAnswer(ctx, state, state.content(), traceId)
+                    .flatMapMany(text -> finalizeAnswer(ctx, text));
             if (!state.executedCalls().isEmpty()) {
                 return Flux.concat(
                         Flux.just(ModelEvent.toolCallsDone(state.executedCalls())),
@@ -527,13 +599,14 @@ public class AgentOrchestrator {
         }
         return Flux.concat(
                 Flux.just(ModelEvent.toolCallsDone(state.executedCalls())),
-                bufferFinalAnswer(ctx, answer));
+                bufferFinalAnswer(ctx, state, answer, traceId));
     }
 
     private Mono<String> completeFinal(AgentRequestContext ctx, ReActState state,
                                        String traceId) {
         if (state.content() != null && !state.content().isBlank()) {
-            return Mono.just(TaskSentinelUtils.strip(state.content()));
+            return reflectFinalAnswer(ctx, state,
+                    TaskSentinelUtils.strip(state.content()), traceId);
         }
         List<ChatMessage> finalMessages = finalizeMessages(state.messages(), state.toolsRan());
         Mono<String> result = router.forUser(ctx.userId(), ctx.model())
@@ -541,11 +614,13 @@ public class AgentOrchestrator {
                 .map(TaskSentinelUtils::strip)
                 .onErrorResume(e -> Mono.just(safeMessage(e)));
         return traceLlmCall(traceId, result.map(c -> new LlmResponse(c, List.of())),
-                ctx, false).map(LlmResponse::content);
+                ctx, false).map(LlmResponse::content)
+                .flatMap(text -> reflectFinalAnswer(ctx, state, text, traceId));
     }
 
     /** 缓冲流式回答 → 剥除任务标记 → 发出事件与 done（与 Python 全结束后扫描一致）。 */
-    private Flux<ModelEvent> bufferFinalAnswer(AgentRequestContext ctx, Flux<ModelEvent> source) {
+    private Flux<ModelEvent> bufferFinalAnswer(AgentRequestContext ctx, ReActState state,
+                                               Flux<ModelEvent> source, String traceId) {
         return source.collectList().flatMapMany(events -> {
             boolean hasError = events.stream().anyMatch(e -> "error".equals(e.type()));
             if (hasError) {
@@ -557,7 +632,8 @@ public class AgentOrchestrator {
                     sb.append(event.data());
                 }
             }
-            return finalizeAnswer(ctx, sb.toString());
+            return reflectFinalAnswer(ctx, state, sb.toString(), traceId)
+                    .flatMapMany(text -> finalizeAnswer(ctx, text));
         });
     }
 
