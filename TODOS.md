@@ -1691,11 +1691,20 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       自动作废（避免每次检索全量重嵌入）；候选预筛（userId/type/projectId/importance）
       已有；时间衰减 score = 0.7*sim + 0.2*importance + 0.1*recency（24h 半衰期）。
       剩余：分层记忆 working/episodic/semantic（RAG_TOP_K 按层配额）。
-- [ ] G6 编排升级（部分）：circuit breaker/SLO ✅ 2026-08-18（commit `143f7d2`）：
+- [x] G6 编排升级（部分）：circuit breaker/SLO ✅ 2026-08-18（commit `143f7d2`）：
       按模型熔断（CLOSED/OPEN/HALF_OPEN + 冷却后单次试探，连续失败阈值 5 默认）、
       滚动窗口成功率 SLO、`GET /api/llm/status` 状态端点；配置
       `ai.llm.circuit-breaker.*`（默认开）。新增 16 个测试，全量后端 398 用例绿。
-      剩余：planning 前置（复杂任务先出 plan）、reflection 后验、human-in-the-loop 审批门。
+      planning 前置 ✅ 2026-08-20（commit `18406c1`）：`PlanningComplexityDetector`
+      启发式门控（显式计划意图 / 连接词+动作词+编号 ≥2 信号）+ `LlmTaskPlanner`
+      低温度 JSON 计划生成（失败回退行解析 / 降级为空不阻塞执行）；
+      `AgentOrchestrator` 注入 [PLAN] 系统消息到执行轮、`plan` 事件先于工具轮发出
+      （SSE 直传 + WS `WebSocketMessageType.PLAN` + 前端计划卡片）；
+      trace 增加 planning span；配置 `ai.planning.*`（默认开，min 24 / max 6 / 30s）。
+      新增 20 后端用例 + 4 前端用例；后端 430 用例绿、前端 18 用例绿 + 构建通过；
+      顺带修复 `ConcurrencyLimitedLlmProviderTest` 主线程与 boundedElastic 释放的
+      时序竞态（有界等待断言，仅测试）。
+      剩余：reflection 后验、human-in-the-loop 审批门。
 - [x] 上下文成本 ✅ 2026-08-17（commit 5752d98）：
       - Ollama 请求默认带 `cache_prompt: true`（`OLLAMA_CACHE_PROMPT` 可关）；
       - `num_ctx` 按模型配置表下发（`OLLAMA_NUM_CTX_BY_MODEL`，如
