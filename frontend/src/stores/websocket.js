@@ -4,6 +4,7 @@ import { isTokenExpired } from '@/utils/jwt'
 import { formatTime } from '@/utils/date'
 import { genId } from '@/utils/string'
 import { resolvePendingMessageIds } from '@/utils/messageIdSync'
+import { planEventToMessage } from '@/utils/plan'
 import {
   switchModel as apiSwitchModel,
   getModels as apiGetModels,
@@ -220,6 +221,13 @@ export const useWebSocketStore = defineStore('websocket', () => {
           })
         }
         break
+
+      case 'plan': {
+        // G6 planning 前置：复杂任务先展示执行计划，再继续执行
+        const planMsg = planEventToMessage(data)
+        if (planMsg) addMessage(planMsg)
+        break
+      }
 
       case 'chat_token':
         // 流式 token，逐字追加

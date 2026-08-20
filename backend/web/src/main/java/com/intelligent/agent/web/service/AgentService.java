@@ -188,6 +188,11 @@ public class AgentService {
                 wsMsg.put("chunk", String.valueOf(eventData));
                 return wsMsg;
 
+            case WebSocketMessageType.PLAN:
+                wsMsg.put("type", WebSocketMessageType.PLAN);
+                wsMsg.put("plan", eventData);
+                return wsMsg;
+
             case "token":
                 String token = String.valueOf(eventData);
                 fullMsg.append(token);
@@ -243,7 +248,7 @@ public class AgentService {
         return switch (eventType) {
             case "thinking_chunk", "token",
                     WebSocketMessageType.TOOL_CALL_START, "tool_call",
-                    "task_update", "task_blocked" -> true;
+                    "task_update", "task_blocked", WebSocketMessageType.PLAN -> true;
             default -> false;
         };
     }

@@ -45,6 +45,8 @@ public final class WebSocketMessageType {
     public static final String NOTIFICATION    = "notification";
     /** LLM <think>…</think> CoT 思维块（流式，逐片推送） */
     public static final String THINKING_CHUNK  = "thinking_chunk";
+    /** G6 planning 前置：执行计划（复杂任务先出计划，再执行） */
+    public static final String PLAN            = "plan";
 
     /** 当前协议版本，随协议变更递增 */
     public static final int PROTOCOL_VERSION = 1;

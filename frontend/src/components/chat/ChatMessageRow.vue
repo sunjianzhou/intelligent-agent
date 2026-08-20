@@ -41,6 +41,21 @@
       </div>
     </template>
 
+    <!-- 执行计划卡片（G6 planning 前置） -->
+    <template v-else-if="!msg.isRetracted && msg.role === 'plan'">
+      <div class="plan-card">
+        <div class="plan-title">
+          <i class="fas fa-list-check" /> 执行计划
+        </div>
+        <ol class="plan-steps">
+          <li v-for="(step, i) in msg.steps" :key="i" class="plan-step">
+            <span class="plan-step-title">{{ step.title }}</span>
+            <span v-if="step.detail" class="plan-step-detail">{{ step.detail }}</span>
+          </li>
+        </ol>
+      </div>
+    </template>
+
     <!-- 普通消息（头像 + 气泡） -->
     <template v-else-if="!msg.isRetracted">
       <div v-if="msg.role !== 'user'" class="avatar">
@@ -321,6 +336,39 @@ const submitFeedback = async (msg, index, rating) => {
   padding: var(--space-1) var(--space-2);
   margin-top: var(--space-1);
   word-break: break-all;
+}
+
+/* ── 执行计划卡片 ────────────────────────────────────────── */
+.plan-card {
+  max-width: 80%;
+  background: #f0f7f4;
+  border: 1px solid #cfe6dc;
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  margin: 0 auto;
+}
+.plan-title {
+  font-weight: 500;
+  color: #4a5568;
+  margin-bottom: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.plan-title i { color: var(--color-success); }
+.plan-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.plan-step-title { color: #4a5568; font-weight: 500; }
+.plan-step-detail {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  margin-left: 6px;
 }
 
 /* ── 光标动画 ─────────────────────────────────────────────── */

@@ -2,6 +2,9 @@ package com.intelligent.agent.web.config;
 
 import com.intelligent.agent.web.ai.agent.AgentOrchestrator;
 import com.intelligent.agent.web.ai.agent.BranchFailureDetector;
+import com.intelligent.agent.web.ai.agent.planning.LlmTaskPlanner;
+import com.intelligent.agent.web.ai.agent.planning.PlanningComplexityDetector;
+import com.intelligent.agent.web.ai.agent.planning.TaskPlanner;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
 import com.intelligent.agent.web.ai.memory.LlmExtractionService;
@@ -186,10 +189,22 @@ public class AgentConfig {
                                                PromptService promptService,
                                                BranchFailureDetector branchFailureDetector,
                                                TraceService traceService,
-                                               ConfigRuntimeService configRuntimeService) {
+                                               ConfigRuntimeService configRuntimeService,
+                                               TaskPlanner taskPlanner) {
         return new AgentOrchestrator(llmProviderRouter, toolExecutor, conversationMemoryService,
                 promptService, branchFailureDetector, AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS,
-                traceService, configRuntimeService);
+                traceService, configRuntimeService, taskPlanner);
+    }
+
+    /** G6 planning 前置：LLM 计划器（启发式门控 + 低温度计划生成，失败降级）。 */
+    @Bean
+    public TaskPlanner taskPlanner(LlmProviderRouter llmProviderRouter,
+                                   @Value("${ai.planning.enabled:true}") boolean enabled,
+                                   @Value("${ai.planning.min-message-length:24}") int minMessageLength,
+                                   @Value("${ai.planning.max-steps:6}") int maxSteps,
+                                   @Value("${ai.planning.timeout:30s}") Duration timeout) {
+        return new LlmTaskPlanner(llmProviderRouter,
+                new PlanningComplexityDetector(minMessageLength), enabled, timeout, maxSteps);
     }
 
     /** TODO-110 Task 4.4：分支失败检测 + 铁律违反扫描（模式来自 rules.md + 硬编码清单）。 */

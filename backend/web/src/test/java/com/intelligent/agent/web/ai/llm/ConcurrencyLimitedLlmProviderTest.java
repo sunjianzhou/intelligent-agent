@@ -26,7 +26,7 @@ class ConcurrencyLimitedLlmProviderTest {
         String result = provider.complete(ChatTurn.of("fake", List.of())).block(Duration.ofSeconds(5));
 
         assertThat(result).isEqualTo("pong");
-        assertThat(gate.active()).isZero();
+        awaitActiveZero(gate);
         assertThat(delegate.calls).hasValue(1);
     }
 
@@ -62,7 +62,7 @@ class ConcurrencyLimitedLlmProviderTest {
                 .blockLast(Duration.ofSeconds(5));
 
         assertThat(during.await(1, TimeUnit.SECONDS)).isTrue();
-        assertThat(gate.active()).isZero();
+        awaitActiveZero(gate);
     }
 
     @Test
@@ -91,6 +91,20 @@ class ConcurrencyLimitedLlmProviderTest {
                 .expectError(RuntimeException.class)
                 .verify(Duration.ofSeconds(5));
 
+        awaitActiveZero(gate);
+    }
+
+    /** doFinally 的释放发生在 boundedElastic 线程，主线程需有界等待，避免时序竞态。 */
+    private static void awaitActiveZero(InferenceGate gate) {
+        long deadline = System.currentTimeMillis() + 5000;
+        while (gate.active() != 0 && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
         assertThat(gate.active()).isZero();
     }
 

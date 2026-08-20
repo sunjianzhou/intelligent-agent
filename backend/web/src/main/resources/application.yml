@@ -49,6 +49,12 @@ ai:
   memory:
     # 项目上下文 LLM 提取轮次间隔（与 Python ContextExtractor 每 8 轮一致）
     project-extraction-interval: ${PROJECT_EXTRACTION_INTERVAL:8}
+  # G6 planning 前置：复杂任务先出计划再执行（启发式门控 + 低温度 LLM 计划生成）
+  planning:
+    enabled: ${AI_PLANNING_ENABLED:true}
+    min-message-length: ${AI_PLANNING_MIN_MESSAGE_LENGTH:24}
+    max-steps: ${AI_PLANNING_MAX_STEPS:6}
+    timeout: ${AI_PLANNING_TIMEOUT:30s}
 
 server:
   port: 8080

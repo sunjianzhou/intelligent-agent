@@ -1,5 +1,8 @@
 package com.intelligent.agent.web.ai.agent;
 
+import com.intelligent.agent.web.ai.agent.planning.ExecutionPlan;
+import com.intelligent.agent.web.ai.agent.planning.PlanStep;
+import com.intelligent.agent.web.ai.agent.planning.TaskPlanner;
 import com.intelligent.agent.web.ai.llm.ChatMessage;
 import com.intelligent.agent.web.ai.llm.ChatTurn;
 import com.intelligent.agent.web.ai.llm.LlmProvider;
@@ -19,6 +22,8 @@ import com.intelligent.agent.web.ai.tool.ToolResult;
 import com.intelligent.agent.web.infrastructure.observability.TraceService;
 import com.intelligent.agent.web.infrastructure.observability.TraceSpan;
 import com.intelligent.agent.web.service.ConfigRuntimeService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -27,6 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * 本地 ReAct 编排器：
@@ -40,6 +46,7 @@ import java.util.Objects;
 public class AgentOrchestrator {
 
     public static final int DEFAULT_MAX_TOOL_ROUNDS = 5;
+    private static final Logger log = LoggerFactory.getLogger(AgentOrchestrator.class);
 
     private final LlmProviderRouter router;
     private final ToolExecutor toolExecutor;
@@ -50,6 +57,7 @@ public class AgentOrchestrator {
     private final int maxToolRounds;
     private final TraceService traceService;
     private final ConfigRuntimeService configRuntimeService;
+    private final TaskPlanner planner;
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor) {
         this(router, toolExecutor, DEFAULT_MAX_TOOL_ROUNDS);
@@ -92,6 +100,16 @@ public class AgentOrchestrator {
                              PromptService promptService,
                              BranchFailureDetector branchFailureDetector, int maxToolRounds,
                              TraceService traceService, ConfigRuntimeService configRuntimeService) {
+        this(router, toolExecutor, memoryService, promptService, branchFailureDetector,
+                maxToolRounds, traceService, configRuntimeService, null);
+    }
+
+    public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
+                             ConversationMemoryService memoryService,
+                             PromptService promptService,
+                             BranchFailureDetector branchFailureDetector, int maxToolRounds,
+                             TraceService traceService, ConfigRuntimeService configRuntimeService,
+                             TaskPlanner planner) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.toolExecutor = Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
         this.toolCallParser = new TextToolCallParser();
@@ -102,6 +120,7 @@ public class AgentOrchestrator {
         this.maxToolRounds = maxToolRounds;
         this.traceService = traceService;
         this.configRuntimeService = configRuntimeService;
+        this.planner = planner;
     }
 
     public Flux<ModelEvent> stream(AgentRequestContext context) {
@@ -120,9 +139,19 @@ public class AgentOrchestrator {
                     .doOnError(e -> endTrace(traceId, false));
         }
         StringBuilder tokens = new StringBuilder();
-        return Flux.defer(() -> runToolRounds(context, initialMessages(context, memory),
-                        0, List.of(), traceId)
-                        .flatMapMany(state -> streamFinal(context, state, traceId)))
+        return planningMono(context, traceId)
+                .flatMapMany(plan -> {
+                    List<ChatMessage> messages = plan.isPresent()
+                            ? withPlan(initialMessages(context, memory), plan.get())
+                            : initialMessages(context, memory);
+                    Flux<ModelEvent> rounds = runToolRounds(context, messages,
+                                    0, List.of(), traceId)
+                            .flatMapMany(state -> streamFinal(context, state, traceId));
+                    if (plan.isPresent()) {
+                        return Flux.concat(Flux.just(ModelEvent.plan(plan.get())), rounds);
+                    }
+                    return rounds;
+                })
                 .doOnNext(event -> {
                     if ("token".equals(event.type())) {
                         tokens.append(event.data());
@@ -148,9 +177,14 @@ public class AgentOrchestrator {
                     })
                     .doOnError(e -> endTrace(traceId, false));
         }
-        return Mono.defer(() -> runToolRounds(context, initialMessages(context, memory),
-                        0, List.of(), traceId)
-                        .flatMap(state -> completeFinal(context, state, traceId)))
+        return planningMono(context, traceId)
+                .flatMap(plan -> {
+                    List<ChatMessage> messages = plan.isPresent()
+                            ? withPlan(initialMessages(context, memory), plan.get())
+                            : initialMessages(context, memory);
+                    return runToolRounds(context, messages, 0, List.of(), traceId)
+                            .flatMap(state -> completeFinal(context, state, traceId));
+                })
                 .doOnSuccess(answer -> {
                     recordTurn(context, answer, traceId);
                     endTrace(traceId, true);
@@ -300,6 +334,47 @@ public class AgentOrchestrator {
         }
         messages.add(ChatMessage.user(ctx.message()));
         return messages;
+    }
+
+    /** G6 planning 前置：复杂任务先生成计划（boundedElastic，失败降级为无计划）。 */
+    private Mono<Optional<ExecutionPlan>> planningMono(AgentRequestContext ctx, String traceId) {
+        if (planner == null || !ctx.useTools()) {
+            return Mono.just(Optional.empty());
+        }
+        long[] start = {0};
+        return Mono.fromCallable(() -> planner.plan(ctx))
+                .doOnSubscribe(s -> start[0] = System.currentTimeMillis())
+                .subscribeOn(Schedulers.boundedElastic())
+                .onErrorResume(e -> {
+                    log.warn("planning failed, continuing without plan: {}", safeMessage(e));
+                    return Mono.just(Optional.empty());
+                })
+                .doOnNext(plan -> {
+                    if (plan.isPresent()) {
+                        addSpan(traceId, "planning", start[0],
+                                Map.of("steps", plan.get().steps().size()));
+                    }
+                });
+    }
+
+    /** 把 [PLAN] 系统消息插到用户消息之前，让执行轮按计划推进。 */
+    private static List<ChatMessage> withPlan(List<ChatMessage> messages, ExecutionPlan plan) {
+        List<ChatMessage> out = new ArrayList<>(messages);
+        out.add(out.size() - 1, ChatMessage.system(planText(plan)));
+        return out;
+    }
+
+    private static String planText(ExecutionPlan plan) {
+        StringBuilder sb = new StringBuilder("[PLAN]\n请严格按照以下计划逐步执行，每一步完成后继续下一步：");
+        List<PlanStep> steps = plan.steps();
+        for (int i = 0; i < steps.size(); i++) {
+            PlanStep step = steps.get(i);
+            sb.append('\n').append(i + 1).append(". ").append(step.title());
+            if (!step.detail().isBlank()) {
+                sb.append(" — ").append(step.detail());
+            }
+        }
+        return sb.toString();
     }
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
