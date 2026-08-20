@@ -2,6 +2,7 @@ package com.intelligent.agent.web.controller;
 import lombok.extern.slf4j.Slf4j;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.intelligent.agent.web.ai.agent.approval.ApprovalGate;
 import com.intelligent.agent.web.util.JsonUtil;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
@@ -49,6 +50,9 @@ public class WebSocketController extends TextWebSocketHandler {
 
     @Autowired(required = false)
     private TaskSchedulerService taskSchedulerService;
+
+    @Autowired(required = false)
+    private ApprovalGate approvalGate;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
@@ -104,6 +108,8 @@ public class WebSocketController extends TextWebSocketHandler {
                 JsonUtil.sendJsonMessage(session, pongResponse);
             } else if (WebSocketMessageType.GET_SYSTEM_INFO.equals(type)) {
                 sendSystemInfo(session);
+            } else if (WebSocketMessageType.APPROVAL_DECISION.equals(type)) {
+                handleApprovalDecision(session, request);
             } else {
                 log.warn("未知消息类型: {}", type);
 
@@ -128,6 +134,35 @@ public class WebSocketController extends TextWebSocketHandler {
 
             JsonUtil.sendJsonMessage(session, errorResponse);
         }
+    }
+
+    /** G6 HITL：用户对工具调用的审批决议（批准/拒绝）。 */
+    private void handleApprovalDecision(WebSocketSession session,
+                                        Map<String, Object> request) throws IOException {
+        String approvalId = (String) request.get("approval_id");
+        Boolean approved = (Boolean) request.get("approved");
+        String userId = (String) session.getAttributes().get("userId");
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("request_id", request.get("request_id"));
+        response.put("timestamp", LocalDateTime.now().toString());
+        if (approvalGate == null || approvalId == null || approvalId.isBlank()) {
+            response.put("type", WebSocketMessageType.ERROR);
+            response.put("message", "审批服务不可用或缺少 approval_id");
+        } else {
+            boolean resolved = approvalGate.resolve(approvalId, userId,
+                    Boolean.TRUE.equals(approved));
+            if (resolved) {
+                response.put("type", WebSocketMessageType.APPROVAL_RESOLVED);
+                response.put("approval_id", approvalId);
+                log.info("审批决议已生效: approvalId={}, userId={}, approved={}",
+                        approvalId, userId, approved);
+            } else {
+                response.put("type", WebSocketMessageType.ERROR);
+                response.put("message", "审批不存在或无权操作");
+            }
+        }
+        JsonUtil.sendJsonMessage(session, response);
     }
 
     private void handleChatMessage(WebSocketSession session,

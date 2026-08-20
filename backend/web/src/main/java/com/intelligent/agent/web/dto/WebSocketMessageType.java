@@ -47,6 +47,12 @@ public final class WebSocketMessageType {
     public static final String THINKING_CHUNK  = "thinking_chunk";
     /** G6 planning 前置：执行计划（复杂任务先出计划，再执行） */
     public static final String PLAN            = "plan";
+    /** G6 HITL：工具调用需要用户审批（服务端 → 客户端） */
+    public static final String APPROVAL_REQUIRED = "approval_required";
+    /** G6 HITL：用户审批决议（客户端 → 服务端） */
+    public static final String APPROVAL_DECISION = "approval_decision";
+    /** G6 HITL：审批决议已生效（服务端 → 客户端，可选确认） */
+    public static final String APPROVAL_RESOLVED = "approval_resolved";
 
     /** 当前协议版本，随协议变更递增 */
     public static final int PROTOCOL_VERSION = 1;

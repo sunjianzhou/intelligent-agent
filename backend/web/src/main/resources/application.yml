@@ -59,6 +59,10 @@ ai:
   reflection:
     enabled: ${AI_REFLECTION_ENABLED:true}
     timeout: ${AI_REFLECTION_TIMEOUT:30s}
+  # G6 HITL：不可逆工具调用（channel_message）需用户审批（web/WS 渠道；IM 渠道直发）
+  hitl:
+    enabled: ${AI_HITL_ENABLED:true}
+    timeout: ${AI_HITL_TIMEOUT:120s}
 
 server:
   port: 8080

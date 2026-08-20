@@ -41,7 +41,8 @@ public class ChannelMessageTool implements AgentTool {
                                         "description", "feishu_im/wecom/telegram/web"),
                                 "receiver_id", Map.of("type", "string", "description", "接收者 ID"),
                                 "chat_type", Map.of("type", "string", "description", "p2p/group")),
-                        "required", List.of("message")));
+                        "required", List.of("message")))
+                .requireApproval();
     }
 
     @Override

@@ -6,7 +6,7 @@ import java.util.Objects;
  * 模型无关的流式事件，序列化形状与既有 SSE 协议一致：{@code {"type":...,"data":...}}。
  * <p>
  * 公开契约仅允许以下事件类型：
- * token / tool_call_start / tool_call / tool_calls_done / plan / done / error。
+ * token / tool_call_start / tool_call / tool_calls_done / plan / approval_required / done / error。
  *
  * @param type 事件类型
  * @param data 事件数据（token/error 为字符串，tool_* 为结构化对象）
@@ -20,6 +20,7 @@ public record ModelEvent(String type, Object data) {
     public static final String TYPE_DONE = "done";
     public static final String TYPE_ERROR = "error";
     public static final String TYPE_PLAN = "plan";
+    public static final String TYPE_APPROVAL_REQUIRED = "approval_required";
     public static final String TYPE_TASK_UPDATE = "task_update";
     public static final String TYPE_TASK_BLOCKED = "task_blocked";
 
@@ -54,6 +55,11 @@ public record ModelEvent(String type, Object data) {
     /** G6 planning 前置：执行计划事件（data 为 {@code ExecutionPlan}）。 */
     public static ModelEvent plan(Object planData) {
         return new ModelEvent(TYPE_PLAN, planData);
+    }
+
+    /** G6 HITL：工具调用需要用户审批（data 含 approval_id/tool/args）。 */
+    public static ModelEvent approvalRequired(Object approvalData) {
+        return new ModelEvent(TYPE_APPROVAL_REQUIRED, approvalData);
     }
 
     public static ModelEvent taskUpdate(Object data) {

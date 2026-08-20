@@ -193,6 +193,11 @@ public class AgentService {
                 wsMsg.put("plan", eventData);
                 return wsMsg;
 
+            case WebSocketMessageType.APPROVAL_REQUIRED:
+                wsMsg.put("type", WebSocketMessageType.APPROVAL_REQUIRED);
+                wsMsg.put("approval", eventData);
+                return wsMsg;
+
             case "token":
                 String token = String.valueOf(eventData);
                 fullMsg.append(token);
@@ -248,7 +253,8 @@ public class AgentService {
         return switch (eventType) {
             case "thinking_chunk", "token",
                     WebSocketMessageType.TOOL_CALL_START, "tool_call",
-                    "task_update", "task_blocked", WebSocketMessageType.PLAN -> true;
+                    "task_update", "task_blocked", WebSocketMessageType.PLAN,
+                    WebSocketMessageType.APPROVAL_REQUIRED -> true;
             default -> false;
         };
     }

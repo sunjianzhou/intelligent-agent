@@ -56,6 +56,28 @@
       </div>
     </template>
 
+    <!-- 审批卡片（G6 HITL） -->
+    <template v-else-if="!msg.isRetracted && msg.role === 'approval'">
+      <div class="approval-card" :class="msg.status">
+        <div class="approval-title">
+          <i class="fas fa-user-shield" /> 需要你的确认
+        </div>
+        <div class="approval-tool">工具：<code>{{ msg.approval.tool }}</code></div>
+        <pre v-if="approvalArgsText(msg)" class="approval-args">{{ approvalArgsText(msg) }}</pre>
+        <div v-if="msg.status === 'pending'" class="approval-actions">
+          <button class="approve-btn" @click="decideApprovalMsg(msg, true)">
+            <i class="fas fa-check" /> 批准
+          </button>
+          <button class="deny-btn" @click="decideApprovalMsg(msg, false)">
+            <i class="fas fa-times" /> 拒绝
+          </button>
+        </div>
+        <div v-else class="approval-result" :class="msg.status">
+          {{ msg.status === 'approved' ? '已批准，继续执行' : '已拒绝，取消执行' }}
+        </div>
+      </div>
+    </template>
+
     <!-- 普通消息（头像 + 气泡） -->
     <template v-else-if="!msg.isRetracted">
       <div v-if="msg.role !== 'user'" class="avatar">
@@ -151,6 +173,7 @@ import { renderMarkdown, highlightSearch } from '@/utils/markdown'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { submitFeedback as apiFeedback } from '@/services/api'
+import { decideApproval as apiDecideApproval } from '@/services/api'
 import { formatTime } from '@/utils/date'
 
 const props = defineProps({
@@ -174,6 +197,21 @@ const formatToolResult = (result) => {
   if (!result) return ''
   const s = typeof result === 'string' ? result : JSON.stringify(result)
   try { return JSON.stringify(JSON.parse(s), null, 2) } catch { return s }
+}
+
+const approvalArgsText = (msg) => {
+  const args = msg.approval?.args
+  if (!args || !Object.keys(args).length) return ''
+  try { return JSON.stringify(args, null, 2) } catch { return String(args) }
+}
+
+const decideApprovalMsg = async (msg, approved) => {
+  try {
+    await apiDecideApproval(msg.approval.approval_id, approved)
+    msg.status = approved ? 'approved' : 'denied'
+  } catch {
+    ElMessage({ message: '审批提交失败，请重试', type: 'error', duration: 2500 })
+  }
 }
 
 const copyMessage = async (content) => {
@@ -370,6 +408,50 @@ const submitFeedback = async (msg, index, rating) => {
   font-size: 0.8rem;
   margin-left: 6px;
 }
+
+/* ── 审批卡片（G6 HITL） ─────────────────────────────────── */
+.approval-card {
+  max-width: 80%;
+  background: #fff8f0;
+  border: 1px solid #f0dcc0;
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  margin: 0 auto;
+}
+.approval-card.approved { background: #f0f7f4; border-color: #cfe6dc; }
+.approval-card.denied  { background: #fdf1f1; border-color: #f0cfcf; }
+.approval-title {
+  font-weight: 500;
+  color: #8a5a1a;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.approval-title i { color: #d97706; }
+.approval-tool { color: #4a5568; margin-bottom: 4px; }
+.approval-args {
+  font-size: 0.78rem;
+  color: #718096;
+  background: var(--color-surface);
+  border-radius: 4px;
+  padding: 6px 8px;
+  word-break: break-all;
+}
+.approval-actions { display: flex; gap: 8px; margin-top: 8px; }
+.approve-btn, .deny-btn {
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 5px 14px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  color: #fff;
+}
+.approve-btn { background: var(--color-success); }
+.deny-btn    { background: var(--color-danger); }
+.approve-btn:hover, .deny-btn:hover { opacity: 0.85; }
+.approval-result { margin-top: 6px; font-size: 0.8rem; color: #4a5568; }
 
 /* ── 光标动画 ─────────────────────────────────────────────── */
 .cursor {

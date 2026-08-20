@@ -254,6 +254,14 @@ export const listGeneratedImages = () => request(`${BASE}/images`)
 export const deleteGeneratedImage = (filename) =>
   request(`${BASE}/images/${encodeURIComponent(filename)}`, { method: 'DELETE' })
 
+// ── HITL approval (G6) ───────────────────────────────────────────────────────
+export const decideApproval = (approvalId, approved) =>
+  request(`${BASE}/approvals/${encodeURIComponent(approvalId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approved }),
+  })
+
 // ── Knowledge files ───────────────────────────────────────────────────────────
 
 export const listKnowledgeFiles  = () => request(`${BASE}/knowledge/files`)

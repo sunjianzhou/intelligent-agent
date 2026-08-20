@@ -3,6 +3,7 @@ package com.intelligent.agent.web.ai.agent;
 import com.intelligent.agent.web.ai.agent.planning.ExecutionPlan;
 import com.intelligent.agent.web.ai.agent.planning.PlanStep;
 import com.intelligent.agent.web.ai.agent.planning.TaskPlanner;
+import com.intelligent.agent.web.ai.agent.approval.ApprovalGate;
 import com.intelligent.agent.web.ai.agent.reflection.AnswerReflector;
 import com.intelligent.agent.web.ai.llm.ChatMessage;
 import com.intelligent.agent.web.ai.llm.ChatTurn;
@@ -27,13 +28,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * 本地 ReAct 编排器：
@@ -60,6 +65,7 @@ public class AgentOrchestrator {
     private final ConfigRuntimeService configRuntimeService;
     private final TaskPlanner planner;
     private final AnswerReflector reflector;
+    private final ApprovalGate approvalGate;
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor) {
         this(router, toolExecutor, DEFAULT_MAX_TOOL_ROUNDS);
@@ -122,6 +128,17 @@ public class AgentOrchestrator {
                              BranchFailureDetector branchFailureDetector, int maxToolRounds,
                              TraceService traceService, ConfigRuntimeService configRuntimeService,
                              TaskPlanner planner, AnswerReflector reflector) {
+        this(router, toolExecutor, memoryService, promptService, branchFailureDetector,
+                maxToolRounds, traceService, configRuntimeService, planner, reflector, null);
+    }
+
+    public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
+                             ConversationMemoryService memoryService,
+                             PromptService promptService,
+                             BranchFailureDetector branchFailureDetector, int maxToolRounds,
+                             TraceService traceService, ConfigRuntimeService configRuntimeService,
+                             TaskPlanner planner, AnswerReflector reflector,
+                             ApprovalGate approvalGate) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.toolExecutor = Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
         this.toolCallParser = new TextToolCallParser();
@@ -134,6 +151,7 @@ public class AgentOrchestrator {
         this.configRuntimeService = configRuntimeService;
         this.planner = planner;
         this.reflector = reflector;
+        this.approvalGate = approvalGate;
     }
 
     public Flux<ModelEvent> stream(AgentRequestContext context) {
@@ -157,13 +175,18 @@ public class AgentOrchestrator {
                     List<ChatMessage> messages = plan.isPresent()
                             ? withPlan(initialMessages(context, memory), plan.get())
                             : initialMessages(context, memory);
+                    // HITL：审批请求等中途事件经 midEvents 与主事件流合并（审批前先推送）
+                    Sinks.Many<ModelEvent> midEvents =
+                            Sinks.many().unicast().onBackpressureBuffer();
                     Flux<ModelEvent> rounds = runToolRounds(context, messages,
-                                    0, List.of(), traceId)
+                                    0, List.of(), traceId, midEvents::tryEmitNext)
+                            .doFinally(signal -> midEvents.tryEmitComplete())
                             .flatMapMany(state -> streamFinal(context, state, traceId));
+                    Flux<ModelEvent> merged = Flux.merge(midEvents.asFlux(), rounds);
                     if (plan.isPresent()) {
-                        return Flux.concat(Flux.just(ModelEvent.plan(plan.get())), rounds);
+                        return Flux.concat(Flux.just(ModelEvent.plan(plan.get())), merged);
                     }
-                    return rounds;
+                    return merged;
                 })
                 .doOnNext(event -> {
                     if ("token".equals(event.type())) {
@@ -448,17 +471,39 @@ public class AgentOrchestrator {
         return List.of();
     }
 
+    /** G6 HITL：仅 web/WS 渠道且工具标记 approvalRequired 时才需要审批（IM 无审批 UI 直发）。 */
+    private boolean needsApproval(AgentRequestContext ctx, ToolCall call) {
+        if (approvalGate == null || !approvalGate.enabled()) {
+            return false;
+        }
+        String channel = ctx.channel();
+        if (channel != null && !channel.isBlank() && !"web".equalsIgnoreCase(channel)
+                && !"ws".equalsIgnoreCase(channel)) {
+            return false;
+        }
+        return toolExecutor.definitions().stream()
+                .anyMatch(d -> d.name().equals(call.name()) && d.approvalRequired());
+    }
+
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
                                            int round, List<ToolCall> executedCalls,
                                            String traceId) {
         return runToolRounds(ctx, messages, round, executedCalls,
-                new ArrayList<>(), new ArrayList<>(), traceId);
+                new ArrayList<>(), new ArrayList<>(), traceId, null);
+    }
+
+    private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
+                                           int round, List<ToolCall> executedCalls,
+                                           String traceId, Consumer<ModelEvent> eventSink) {
+        return runToolRounds(ctx, messages, round, executedCalls,
+                new ArrayList<>(), new ArrayList<>(), traceId, eventSink);
     }
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
                                            int round, List<ToolCall> executedCalls,
                                            List<ToolResult> failures,
-                                           List<String> assistantTexts, String traceId) {
+                                           List<String> assistantTexts, String traceId,
+                                           Consumer<ModelEvent> eventSink) {
         if (round >= maxToolRounds) {
             return Mono.just(new ReActState(messages, "", true, executedCalls, false));
         }
@@ -478,18 +523,19 @@ public class AgentOrchestrator {
                                 true, executedCalls, false));
                     }
                     return handleRound(ctx, messages, response, executedCalls,
-                            failures, assistantTexts, traceId);
+                            failures, assistantTexts, traceId, eventSink);
                 })
                 .flatMap(state -> state.continueLoop()
                         ? runToolRounds(ctx, state.messages(), round + 1,
-                        state.executedCalls(), failures, assistantTexts, traceId)
+                        state.executedCalls(), failures, assistantTexts, traceId, eventSink)
                         : Mono.just(state));
     }
 
     private Mono<ReActState> handleRound(AgentRequestContext ctx, List<ChatMessage> messages,
                                          LlmResponse response, List<ToolCall> executedCalls,
                                          List<ToolResult> failures,
-                                         List<String> assistantTexts, String traceId) {
+                                         List<String> assistantTexts, String traceId,
+                                         Consumer<ModelEvent> eventSink) {
         String content = response.content();
         // toolsRan 是粘性的：只要本轮或之前任一工具轮执行过工具，后续轮次不得再复用
         // 首轮内容跳过 tool_calls_done / 最终流式回答。
@@ -518,15 +564,44 @@ public class AgentOrchestrator {
         return Mono.fromCallable(() -> {
             ToolExecutionContext execCtx = ToolExecutionContext.of(ctx.userId(), "user");
             long toolStart = System.currentTimeMillis();
+            // G6 HITL：需审批的工具调用先请求用户决议（web/WS 渠道），拒绝/超时取消执行。
+            // 审批请求事件在阻塞等待前经 eventSink 推送（stream 路径），其余渠道直发。
+            boolean[] approved = new boolean[calls.size()];
+            Arrays.fill(approved, true);
+            for (int i = 0; i < calls.size(); i++) {
+                ToolCall call = calls.get(i);
+                if (needsApproval(ctx, call)) {
+                    ApprovalGate.ApprovalRequest request =
+                            approvalGate.request(ctx.userId(), call.name(), call.arguments());
+                    if (eventSink != null) {
+                        eventSink.accept(ModelEvent.approvalRequired(request.eventData()));
+                    }
+                    approved[i] = approvalGate.await(request);
+                }
+            }
+            List<ToolCall> executable = new ArrayList<>();
+            for (int i = 0; i < calls.size(); i++) {
+                if (approved[i]) {
+                    executable.add(calls.get(i));
+                }
+            }
             // 并行执行（各自超时复用 ToolExecutor 语义）；结果按入参顺序合并后
             // 再单线程追加消息/失败列表，避免共享容器并发写。
-            List<ToolResult> results = toolExecutor.executeParallel(calls, execCtx);
+            List<ToolResult> results = toolExecutor.executeParallel(executable, execCtx);
+            Map<Integer, ToolResult> resultByIndex = new HashMap<>();
+            int execIdx = 0;
+            for (int i = 0; i < calls.size(); i++) {
+                resultByIndex.put(i, approved[i]
+                        ? results.get(execIdx++)
+                        : ToolResult.denied("用户拒绝了该工具调用（或审批超时），未执行"));
+            }
             List<ToolCall> executed = new ArrayList<>(executedCalls);
             for (int i = 0; i < calls.size(); i++) {
                 ToolCall call = calls.get(i);
-                ToolResult result = results.get(i);
+                ToolResult result = resultByIndex.get(i);
                 executed.add(call);
-                if (!ToolResult.SUCCESS.equals(result.status())) {
+                if (!ToolResult.SUCCESS.equals(result.status())
+                        && !ToolResult.DENIED.equals(result.status())) {
                     failures.add(result);
                 }
                 String raw = result.data() != null ? String.valueOf(result.data())
