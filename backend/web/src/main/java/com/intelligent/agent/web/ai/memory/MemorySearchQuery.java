@@ -1,14 +1,17 @@
 package com.intelligent.agent.web.ai.memory;
 
+import java.util.Set;
+
 /**
  * 作用域检索条件。userId 必填（用户隔离底线）；
- * roleId / projectId / type / minImportance 均为可选过滤。
+ * roleId / projectId / type / excludedTypes / minImportance 均为可选过滤。
  */
 public record MemorySearchQuery(
         String userId,
         String roleId,
         String projectId,
         String type,
+        Set<String> excludedTypes,
         double minImportance,
         String text,
         int limit
@@ -21,6 +24,8 @@ public record MemorySearchQuery(
         if (limit <= 0) {
             limit = 5;
         }
+        excludedTypes = excludedTypes == null || excludedTypes.isEmpty()
+                ? null : Set.copyOf(excludedTypes);
     }
 
     public static MemorySearchQuery of(String userId, String text, int limit) {
@@ -38,6 +43,7 @@ public record MemorySearchQuery(
         private String roleId;
         private String projectId;
         private String type;
+        private Set<String> excludedTypes;
         private double minImportance;
 
         private Builder(String userId, String text, int limit) {
@@ -61,13 +67,20 @@ public record MemorySearchQuery(
             return this;
         }
 
+        /** 排除指定类型（G5 分层检索用，如 semantic 排除 summary）。 */
+        public Builder excludeTypes(Set<String> excludedTypes) {
+            this.excludedTypes = excludedTypes;
+            return this;
+        }
+
         public Builder minImportance(double minImportance) {
             this.minImportance = minImportance;
             return this;
         }
 
         public MemorySearchQuery build() {
-            return new MemorySearchQuery(userId, roleId, projectId, type, minImportance, text, limit);
+            return new MemorySearchQuery(userId, roleId, projectId, type,
+                    excludedTypes, minImportance, text, limit);
         }
     }
 }

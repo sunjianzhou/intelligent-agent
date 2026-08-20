@@ -175,6 +175,10 @@ public class VectorMemoryRepository implements MemoryRepository {
         if (query.type() != null && !query.type().equals(record.type())) {
             return false;
         }
+        if (query.excludedTypes() != null && record.type() != null
+                && query.excludedTypes().contains(record.type())) {
+            return false;
+        }
         return record.importance() >= query.minImportance();
     }
 

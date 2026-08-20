@@ -331,12 +331,20 @@ public class AgentOrchestrator {
             messages.add(ChatMessage.system("你是 " + ctx.persona() + "。"));
         }
         if (ctx.useMemory()) {
-            if (!memory.longTermRecall().isEmpty()) {
-                StringBuilder recall = new StringBuilder("[LONG-TERM MEMORY]\n");
-                for (MemoryRecord record : memory.longTermRecall()) {
-                    recall.append("- ").append(record.content()).append('\n');
+            // G5 分层记忆：episodic（情景）/ semantic（语义）分段注入；
+            // 旧上下文（只有合并召回）走 [LONG-TERM MEMORY] 兼容路径
+            if (!memory.episodicRecall().isEmpty() || !memory.semanticRecall().isEmpty()) {
+                if (!memory.episodicRecall().isEmpty()) {
+                    messages.add(ChatMessage.system(recallSection(
+                            "[EPISODIC MEMORY]", memory.episodicRecall())));
                 }
-                messages.add(ChatMessage.system(recall.toString().trim()));
+                if (!memory.semanticRecall().isEmpty()) {
+                    messages.add(ChatMessage.system(recallSection(
+                            "[SEMANTIC MEMORY]", memory.semanticRecall())));
+                }
+            } else if (!memory.longTermRecall().isEmpty()) {
+                messages.add(ChatMessage.system(recallSection(
+                        "[LONG-TERM MEMORY]", memory.longTermRecall())));
             }
             if (!memory.projectContext().isBlank()) {
                 messages.add(ChatMessage.system("[PROJECT CONTEXT]\n" + memory.projectContext()));
@@ -370,6 +378,14 @@ public class AgentOrchestrator {
         }
         messages.add(ChatMessage.user(ctx.message()));
         return messages;
+    }
+
+    private static String recallSection(String header, List<MemoryRecord> records) {
+        StringBuilder sb = new StringBuilder(header).append('\n');
+        for (MemoryRecord record : records) {
+            sb.append("- ").append(record.content()).append('\n');
+        }
+        return sb.toString().stripTrailing();
     }
 
     /** G6 planning 前置：复杂任务先生成计划（boundedElastic，失败降级为无计划）。 */

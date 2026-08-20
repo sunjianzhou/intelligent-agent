@@ -11,6 +11,7 @@ import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -23,11 +24,16 @@ public class ConversationMemoryService {
     public static final Duration SHORT_TERM_TTL = Duration.ofHours(24);
     public static final int SHORT_TERM_MAX_SIZE = 100;
     public static final int RAG_TOP_K = 3;
+    // G5 分层记忆：按层配额（episodic=summary 类，semantic=fact 类）
+    public static final int EPISODIC_TOP_K = 2;
+    public static final int SEMANTIC_TOP_K = 3;
     public static final double CACHE_SIMILARITY_THRESHOLD = 0.8;
 
     private final MemoryRepository memoryRepository;
     private final SemanticResponseCache semanticCache;
     private final MemoryDistillationService distiller;
+    private final int episodicTopK;
+    private final int semanticTopK;
 
     private final Map<String, Deque<StampedMessage>> shortTerm = new ConcurrentHashMap<>();
     private final Map<String, Integer> turnCounts = new ConcurrentHashMap<>();
@@ -39,9 +45,18 @@ public class ConversationMemoryService {
     public ConversationMemoryService(MemoryRepository memoryRepository,
                                      SemanticResponseCache semanticCache,
                                      MemoryDistillationService distiller) {
+        this(memoryRepository, semanticCache, distiller, EPISODIC_TOP_K, SEMANTIC_TOP_K);
+    }
+
+    public ConversationMemoryService(MemoryRepository memoryRepository,
+                                     SemanticResponseCache semanticCache,
+                                     MemoryDistillationService distiller,
+                                     int episodicTopK, int semanticTopK) {
         this.memoryRepository = memoryRepository;
         this.semanticCache = semanticCache;
         this.distiller = distiller;
+        this.episodicTopK = Math.max(1, episodicTopK);
+        this.semanticTopK = Math.max(1, semanticTopK);
     }
 
     /** 加载单次请求的记忆上下文；useMemory=false 时返回空上下文。 */
@@ -52,15 +67,40 @@ public class ConversationMemoryService {
         String userId = effectiveUserId(ctx.userId());
         List<ChatMessage> history = historyMessages(userId);
 
-        List<MemoryRecord> recall = ctx.message() == null || ctx.message().isBlank()
+        String queryText = ctx.message() == null ? "" : ctx.message();
+        // G5 分层：episodic = summary 类；semantic = 其余类型（fact/knowledge/遗留等）
+        List<MemoryRecord> episodic = queryText.isBlank()
                 ? List.of()
-                : filterExcluded(userId, memoryRepository.search(userId, ctx.message(), RAG_TOP_K));
+                : filterExcluded(userId, memoryRepository.search(
+                        MemorySearchQuery.builder(userId, queryText, episodicTopK)
+                                .type("summary").build()));
+        List<MemoryRecord> semantic = queryText.isBlank()
+                ? List.of()
+                : filterExcluded(userId, memoryRepository.search(
+                        MemorySearchQuery.builder(userId, queryText, semanticTopK)
+                                .excludeTypes(Set.of("summary")).build()));
+        List<MemoryRecord> recall = mergeLayers(episodic, semantic);
 
         String projectContext = projectContext(ctx);
 
         OptionalCacheResult cache = lookupCache(ctx);
 
-        return new AgentContext(history, recall, projectContext, cache.answer());
+        return new AgentContext(history, recall, episodic, semantic,
+                projectContext, cache.answer());
+    }
+
+    /** 合并分层召回（按 id 去重，保持 episodic 在前）。 */
+    private static List<MemoryRecord> mergeLayers(List<MemoryRecord> episodic,
+                                                  List<MemoryRecord> semantic) {
+        List<MemoryRecord> merged = new ArrayList<>(episodic);
+        java.util.Set<String> ids = episodic.stream().map(MemoryRecord::id)
+                .collect(Collectors.toSet());
+        for (MemoryRecord record : semantic) {
+            if (ids.add(record.id())) {
+                merged.add(record);
+            }
+        }
+        return merged;
     }
 
     /** 记录一轮对话：写短期历史、按 5/10 轮触发蒸馏与摘要、回写语义缓存。 */
