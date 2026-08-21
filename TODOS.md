@@ -89,7 +89,15 @@
 
 ### D. 需求驱动待办（归档，有人提出需求再做）
 
-- [ ] 图片生成 P3：ComfyUI 工作流热重载 API / LoRA 注入 / SDXL/FLUX 多模型自动匹配 / diffusers LoRA / bitsandbytes 量化
+- [x] 图片生成 P3（Java 侧，2026-08-21 完成，commit 待提交后回填）：
+      ComfyUI 工作流热重载 API（GET/PUT/DELETE /api/image/comfyui-workflow，落盘
+      data/image/comfyui-workflow.json，{{prompt}}/{{model}}/{{width}} 等占位符替换）/
+      LoRA 注入（GET /api/image/loras + 生成请求 loras 参数，SD15/SDXL 走 LoraLoader 链、
+      FLUX 走 LoraLoaderModelOnly）/ SDXL/FLUX 多模型自动匹配（按模型名探测，SDXL 带
+      CLIPSetLastLayer(-2)、FLUX 走 UNETLoader+CLIPLoader+EmptySD3LatentImage 模板）/
+      模型切换改为真生效（switchModel 更新默认模型，下次生成采用）。前端 ImageView 增加
+      LoRA 输入 + 自定义工作流 JSON 编辑/保存/恢复默认。后端 472 用例绿（+7）、前端 20 绿。
+      diffusers LoRA / bitsandbytes 量化随 Python 退役，Java 侧不再适用，已关闭。
 
 ### E. 可选小项
 
@@ -337,9 +345,9 @@
 
 > **2026-08-08 归档说明**：图片生成模块随 Python Agent 退役（commit `354bf33`）。
 > Java 侧保留 `integration/comfyui/ComfyUiClient`（提交工作流 + 轮询进度）。
-> 原 P3 遗留（工作流热重载 API / LoRA 注入 / 多模型自动匹配 / diffusers LoRA /
-> bitsandbytes 量化）在 Java 侧需要新的图片生成实现，标注为"需求驱动再做"，
-> 不再作为迁移队列待办。
+> 原 P3 遗留中的 ComfyUI 部分（工作流热重载 API / LoRA 注入 / 多模型自动匹配）
+> 已于 2026-08-21 在 Java 侧实现（见上方「当前待办总览 · D」）；diffusers LoRA /
+> bitsandbytes 量化随 Python 退役不再适用，关闭。
 
 ---
 
@@ -1756,7 +1764,8 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       frontend（Node 22 + `npm ci` + `vitest run` + `vite build`），master push/PR 双触发；
       E2E（需 Ollama + 后端）为 `workflow_dispatch` 手动 job，不进默认门。
       本地已验证全部命令：后端 296 用例绿、前端 14 用例绿、构建通过。
-- [ ] 后续轮：图片生成 P3（ComfyUI 热重载/LoRA/FLUX）、Telegram bot 真实送达验收。
+- [x] 图片生成 P3（ComfyUI 热重载/LoRA/FLUX）✅ 2026-08-21（见上文 D 节）
+- [ ] 后续轮：Telegram bot 真实送达验收。
 - [x] runtime 配置接线缺口（2026-08-17 排查发现）✅ 2026-08-18（commit `b0b07b7`）：
       按请求注入（决定：不入模型配置表）——`LocalChatService` 把已保存的 runtime 配置
       映射进 `AgentRequestContext.options`（temperature / max_tokens / num_ctx /

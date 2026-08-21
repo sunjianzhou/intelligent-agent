@@ -244,6 +244,15 @@ export const switchImageModel       = (model) =>
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model }),
   })
+export const listImageLoras = () => request(`${BASE}/image/loras`)
+export const getComfyuiWorkflow = () => request(`${BASE}/image/comfyui-workflow`)
+export const saveComfyuiWorkflow = (workflow) =>
+  request(`${BASE}/image/comfyui-workflow`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workflow }),
+  })
+export const resetComfyuiWorkflow = () =>
+  request(`${BASE}/image/comfyui-workflow`, { method: 'DELETE' })
 // 高步数/CFG 时本地推理可能超过 30s 默认超时，放宽到 5 分钟
 export const generateImage = (params) =>
   request(`${BASE}/image/generate`, {

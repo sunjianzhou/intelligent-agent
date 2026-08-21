@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.controller;
 
 import com.intelligent.agent.web.service.ImageService;
+import com.intelligent.agent.web.integration.comfyui.ComfyUiClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
@@ -8,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -92,9 +94,52 @@ public class ImageProxyController {
         if (seed < 0) {
             seed = (int) (System.currentTimeMillis() % Integer.MAX_VALUE);
         }
+        String model = String.valueOf(body.getOrDefault("model", "")).trim();
+        String sampler = String.valueOf(body.getOrDefault("sampler_name", "")).trim();
+        List<ComfyUiClient.Lora> loras = ComfyUiClient.parseLoras(body.get("loras"));
         return ResponseEntity.ok(imageService.generate(prompt,
                 String.valueOf(body.getOrDefault("negative_prompt", "")),
-                width, height, steps, cfg, seed));
+                width, height, steps, cfg, seed, model, sampler, loras));
+    }
+
+    @GetMapping("/api/image/loras")
+    public ResponseEntity<Map<String, Object>> listLoras() {
+        if (imageService != null) {
+            return ResponseEntity.ok(imageService.listLoras());
+        }
+        return ResponseEntity.ok(Map.of("loras", java.util.Collections.emptyList()));
+    }
+
+    @GetMapping("/api/image/comfyui-workflow")
+    public ResponseEntity<Map<String, Object>> getComfyuiWorkflow() {
+        if (imageService != null) {
+            return ResponseEntity.ok(imageService.getCustomWorkflow());
+        }
+        return ResponseEntity.ok(Map.of("success", false, "message", "图片服务未初始化"));
+    }
+
+    @PutMapping("/api/image/comfyui-workflow")
+    public ResponseEntity<Map<String, Object>> saveComfyuiWorkflow(
+            @RequestBody Map<String, Object> body) {
+        if (imageService == null) {
+            return ResponseEntity.ok(Map.of("success", false, "message", "图片服务未初始化"));
+        }
+        Object workflow = body.get("workflow");
+        if (!(workflow instanceof Map)) {
+            return ResponseEntity.badRequest().body(
+                    Map.of("success", false, "message", "workflow 必须是节点图 JSON 对象"));
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> graph = (Map<String, Object>) workflow;
+        return ResponseEntity.ok(imageService.saveCustomWorkflow(graph));
+    }
+
+    @DeleteMapping("/api/image/comfyui-workflow")
+    public ResponseEntity<Map<String, Object>> resetComfyuiWorkflow() {
+        if (imageService != null) {
+            return ResponseEntity.ok(imageService.resetCustomWorkflow());
+        }
+        return ResponseEntity.ok(Map.of("success", false, "message", "图片服务未初始化"));
     }
 
     @GetMapping("/api/images")

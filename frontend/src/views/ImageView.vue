@@ -155,6 +155,40 @@
           </div>
         </div>
 
+        <!-- 高级选项（ComfyUI：LoRA + 自定义工作流） -->
+        <div class="param-section" v-if="providerName === 'comfyui'">
+          <label class="param-label">
+            LoRA <span class="en-tip">（逗号分隔：文件名:强度，如 detail.safetensors:0.8）</span>
+          </label>
+          <input
+            v-model="form.loras"
+            class="prompt-input lora-input"
+            placeholder="lora1.safetensors:0.8, lora2.safetensors"
+          />
+        </div>
+
+        <div class="param-section" v-if="providerName === 'comfyui'">
+          <label class="param-label">
+            自定义工作流
+            <span v-if="usingCustomWorkflow" class="workflow-badge">使用中</span>
+            <span class="en-tip">（节点图 JSON，支持占位符）</span>
+          </label>
+          <textarea
+            v-model="workflowJson"
+            class="prompt-input workflow-input"
+            rows="5"
+            placeholder='{"1":{"class_type":"CheckpointLoaderSimple","inputs":{"ckpt_name":"checkpoint.safetensors"}}}'
+          />
+          <div class="workflow-actions">
+            <button class="style-btn" :disabled="workflowSaving" @click="doSaveWorkflow">
+              <i class="fas fa-save" /> 保存
+            </button>
+            <button class="style-btn" :disabled="workflowSaving" @click="doResetWorkflow">
+              <i class="fas fa-undo" /> 恢复默认
+            </button>
+          </div>
+        </div>
+
         <!-- 生成按钮 -->
         <button
           class="gen-btn"
@@ -268,6 +302,7 @@ import {
   getImageProviderStatus, listImageModels, switchImageModel,
   generateImage, listGeneratedImages, deleteGeneratedImage,
   getImageProgress, getControlnetModules, getControlnetModels,
+  getComfyuiWorkflow, saveComfyuiWorkflow, resetComfyuiWorkflow,
 } from '@/services/api'
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
@@ -312,6 +347,7 @@ const form = ref({
   controlnetModule:  'none',
   controlnetModel:   '',
   controlnetWeight:  1.0,
+  loras:             '',               // ComfyUI LoRA："name:强度, name2" 逗号分隔
 })
 
 const providerOk    = ref(false)
@@ -332,6 +368,9 @@ const progressEta    = ref(0)
 let   _progressTimer = null
 const controlnetModules = ref([])
 const controlnetModels  = ref([])
+const workflowJson      = ref('')
+const usingCustomWorkflow = ref(false)
+const workflowSaving    = ref(false)
 
 // ── 计算 ─────────────────────────────────────────────────────────────────────
 
@@ -380,7 +419,7 @@ const statusLabel = computed(() => {
 // ── 初始化 ────────────────────────────────────────────────────────────────────
 
 onMounted(async () => {
-  await Promise.all([loadStatus(), loadGallery()])
+  await Promise.all([loadStatus(), loadGallery(), loadWorkflowState()])
 })
 
 onUnmounted(() => stopProgressPoll())
@@ -407,6 +446,72 @@ const loadModels = async () => {
     models.value       = res?.models || []
     selectedModel.value = res?.current || ''
   } catch { /* 静默失败 */ }
+}
+
+const loadWorkflowState = async () => {
+  try {
+    const res = await getComfyuiWorkflow()
+    usingCustomWorkflow.value = !!res?.using_custom
+    workflowJson.value = res?.workflow
+      ? JSON.stringify(res.workflow, null, 2)
+      : ''
+  } catch { /* 非 ComfyUI 或后端未就绪时静默 */ }
+}
+
+const doSaveWorkflow = async () => {
+  if (workflowSaving.value) return
+  let graph
+  try {
+    graph = JSON.parse(workflowJson.value)
+  } catch {
+    ElMessage({ message: '工作流 JSON 格式错误', type: 'error', duration: 2500 })
+    return
+  }
+  if (!graph || typeof graph !== 'object' || Array.isArray(graph)) {
+    ElMessage({ message: '工作流必须是 JSON 对象（节点图）', type: 'error', duration: 2500 })
+    return
+  }
+  workflowSaving.value = true
+  try {
+    const res = await saveComfyuiWorkflow(graph)
+    if (res?.success) {
+      usingCustomWorkflow.value = true
+      ElMessage({ message: res.message || '工作流已保存', type: 'success', duration: 2000 })
+    } else {
+      ElMessage({ message: res?.message || '保存失败', type: 'error', duration: 2500 })
+    }
+  } finally {
+    workflowSaving.value = false
+  }
+}
+
+const doResetWorkflow = async () => {
+  if (workflowSaving.value) return
+  workflowSaving.value = true
+  try {
+    const res = await resetComfyuiWorkflow()
+    if (res?.success) {
+      usingCustomWorkflow.value = false
+      workflowJson.value = ''
+      ElMessage({ message: res.message || '已恢复内置模板', type: 'success', duration: 2000 })
+    } else {
+      ElMessage({ message: res?.message || '恢复失败', type: 'error', duration: 2500 })
+    }
+  } finally {
+    workflowSaving.value = false
+  }
+}
+
+const parseLoras = (raw) => {
+  if (!raw || !raw.trim()) return undefined
+  return raw.split(',').map((part) => {
+    const [name, modelStrength, clipStrength] = part.trim().split(':')
+    if (!name) return null
+    const lora = { name: name.trim() }
+    if (modelStrength) lora.strength_model = Number(modelStrength) || 1.0
+    if (clipStrength) lora.strength_clip = Number(clipStrength) || lora.strength_model || 1.0
+    return lora
+  }).filter(Boolean)
 }
 
 // ── 操作 ─────────────────────────────────────────────────────────────────────
@@ -493,6 +598,8 @@ const doGenerate = async () => {
       size:               form.value.size,
       steps:              form.value.steps,
       cfg:                form.value.cfg,
+      model:              selectedModel.value || undefined,
+      loras:              parseLoras(form.value.loras),
       sampler_name:       form.value.sampler,
       init_image_base64:  form.value.initImageB64 || undefined,
       denoising_strength: form.value.denoisingStrength,
@@ -614,6 +721,16 @@ const formatDate = (iso) => {
 }
 .prompt-input:focus { border-color: var(--color-primary); }
 .prompt-input.neg { font-size: 0.8rem; color: #e53935; }
+.lora-input { font-size: 0.78rem; }
+.workflow-input {
+  font-family: monospace; font-size: 0.72rem;
+  background: var(--color-surface);
+}
+.workflow-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+.workflow-badge {
+  font-size: 0.68rem; color: #2f9e7a; background: #effaf5;
+  padding: 1px 8px; border-radius: 10px; margin-left: 6px;
+}
 
 .style-presets { display: flex; flex-wrap: wrap; gap: 6px; }
 .style-btn {
