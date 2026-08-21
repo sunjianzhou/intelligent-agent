@@ -1691,14 +1691,26 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       ① calc-001 模型对原生 tool_calls 结果回应错乱（qwen2.5:7b 工具循环健壮性）；
       ② advanced_calculator 缺 km→m 换算且模型把内部选项泄露给用户；
       ③ 模型用错工具名（datetime vs time）。
-      剩余：跑 1-2 周基线后决定是否开 `-Deval.min-score` 门槛（已实现参数化）。
+      门槛落地 ✅ 2026-08-21（commit 待回填）：第二轮基线 8 用例全过、平均 7.13 分
+      （calc=5 / unit=10 / time=5 / qa=10 / memory=8 / web=2 / persona=7 / group=10），
+      决策：`-Deval.min-score` 默认改为保护线 2（低于全部已见得分，只拦"完全失败"级
+      回归），质量门仍可 `-Deval.min-score=7` 覆盖；顺带修复 eval userId `eval:user`
+      冒号导致会话持久化失败的问题（改 `eval-user`）。已知短板：web/calc/time 三个
+      工具用例仍受 qwen2.5:7b 工具循环健壮性限制，留待模型或提示词侧调优。
 - [x] G4 可观测性（核心）✅ 2026-08-15：`AgentRunTrace`（requestId → spans：
       llm_call/tool_call/rag/memory/cache，含耗时/成败/模型/工具参数摘要，截断防敏感）；
       落盘 `data/traces/`（原子写 + 500 条容量淘汰 + userId 隔离）；`/api/traces`
       list/get/delete；前端 TraceView（/admin/traces，routes.config.js 单源挂载）；
       requestId 全链路（ChatRequest.request_id + WS/REST 自动生成）。
       测试：TraceServiceTest 6 + TraceController 4 + TraceInstrumentation 2 + E2E 1。
-      剩余：OTel/OpenInference 导出（预留位）。
+      OTel/OpenInference 导出 ✅ 2026-08-21（commit 待回填）：新增 `OtlpTraceExporter`，
+      OTLP/HTTP（JSON）推送 Collector `/v1/traces`（JDK HttpClient + Jackson 手工组包，
+      无 protobuf/OTel SDK 依赖），span 带 OpenInference 语义属性
+      （AGENT/LLM/TOOL/RETRIEVER/CHAIN + llm/tool/retriever 明细），traceId/spanId
+      由 requestId 确定性派生；`ai.trace.export.*` 配置（默认关，endpoint 默认
+      localhost:4318，5s 超时），异步导出、失败仅告警；`TraceService.complete()` 落盘后
+      触发。新增 4 测试（禁用不发 / OTLP 载荷与 OpenInference 属性 / Collector 500 容忍 /
+      TraceService 接线）；后端全量 476 用例绿（+4）。
 
 ### P1 记忆与上下文
 

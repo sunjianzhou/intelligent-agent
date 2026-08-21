@@ -34,8 +34,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 按 rubric（0-10）打分，结果 JSONL 落盘到 {@code target/eval-results/}。
  *
  * <p>运行方式：{@code mvn -Peval test}（默认全量测试通过 excludedGroups 排除本类）。
- * v1 不设分数门槛（CI 先跑 1-2 周基线）；如需临时门槛可传
- * {@code -Deval.min-score=7}，低于阈值的用例将使构建失败。</p>
+ * v1 默认保护线 {@code eval.min-score=2}（低于任何已见用例得分，只拦"完全失败"
+ * 级回归）；质量门可覆盖 {@code -Deval.min-score=7}，低于阈值的用例将使构建失败。
+ * 基线参考：2026-08-17 首跑平均 6.13；2026-08-21 第二轮平均 7.13（最低 web-001=2）。</p>
  */
 @Slf4j
 @Tag("eval")
@@ -93,17 +94,14 @@ class EvalSuite {
         // 基线模式：只要求至少 1 个用例真实跑通（全挂说明环境/接线问题）
         assertThat(error).isLessThan(results.size());
 
-        // 可选门槛：-Deval.min-score=7
-        String minScoreProp = System.getProperty("eval.min-score");
-        if (minScoreProp != null && !minScoreProp.isBlank()) {
-            double min = Double.parseDouble(minScoreProp.trim());
-            for (CaseResult r : results) {
-                assertThat(r.score())
-                        .as("用例 %s 得分 %.0f 低于门槛 %.0f：%s", r.id(),
-                                r.score() == null ? -1 : r.score(), min, r.reasons())
-                        .isNotNull()
-                        .isGreaterThanOrEqualTo((int) Math.ceil(min));
-            }
+        // 分数门槛：默认保护线 2（拦灾难性回归）；质量门用 -Deval.min-score=7 覆盖
+        double min = Double.parseDouble(System.getProperty("eval.min-score", "2"));
+        for (CaseResult r : results) {
+            assertThat(r.score())
+                    .as("用例 %s 得分 %.0f 低于门槛 %.0f：%s", r.id(),
+                            r.score() == null ? -1 : r.score(), min, r.reasons())
+                    .isNotNull()
+                    .isGreaterThanOrEqualTo((int) Math.ceil(min));
         }
     }
 
@@ -112,7 +110,7 @@ class EvalSuite {
         try {
             ChatRequest req = new ChatRequest();
             req.setMessage(c.prompt());
-            req.setUserId("eval:user");
+            req.setUserId("eval-user");
             req.setUseTools(c.useTools() == null || c.useTools());
             req.setUseMemory(true);
             req.setChannel("web");
