@@ -82,6 +82,24 @@ class FeishuMessageSenderTest {
     }
 
     @Test
+    void sendTextByOpenId_postsWithOpenIdReceiveType() throws Exception {
+        server.enqueue(tokenResponse("tok-openid", 7200));
+        server.enqueue(new MockResponse().setResponseCode(200)
+                .setBody("{\"code\":0,\"data\":{\"message_id\":\"om_abc123\"}}"));
+
+        String messageId = sender.sendTextByOpenId("ou_user123", "主动验证消息");
+
+        assertThat(messageId).isEqualTo("om_abc123");
+        server.takeRequest();  // token 请求
+        RecordedRequest msgReq = server.takeRequest(2, TimeUnit.SECONDS);
+        assertThat(msgReq).isNotNull();
+        assertThat(msgReq.getPath()).contains("receive_id_type=open_id");
+        String body = msgReq.getBody().readUtf8();
+        assertThat(body).contains("ou_user123");
+        assertThat(body).contains("主动验证消息");
+    }
+
+    @Test
     void sendText_retries_onServerError_thenSendsFallback() throws Exception {
         server.enqueue(tokenResponse("tok-retry", 7200));
         server.enqueue(new MockResponse().setResponseCode(500));

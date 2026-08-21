@@ -114,6 +114,14 @@ public class FeishuMessageSender {
         return sendWithRetry(chatId, "text", content);
     }
 
+    /** 发送文本给指定 open_id（用户或群，receive_id_type=open_id），
+     *  用于"机器人主动给用户发消息"场景（如心跳/定时提醒/送达验证）。 */
+    public String sendTextByOpenId(String openId, String text) {
+        Map<String, Object> content = new HashMap<>();
+        content.put("text", text);
+        return sendWithRetry(openId, "text", content, "open_id");
+    }
+
     public String sendPost(String chatId, Map<String, Object> content) {
         return sendWithRetry(chatId, "post", content);
     }
@@ -181,13 +189,18 @@ public class FeishuMessageSender {
     }
 
     private String sendWithRetry(String chatId, String msgType, Object content) {
+        return sendWithRetry(chatId, msgType, content, "chat_id");
+    }
+
+    private String sendWithRetry(String receiveId, String msgType, Object content,
+                                 String receiveIdType) {
         Exception lastEx = null;
         for (int i = 0; i < 3; i++) {
             try {
-                return doSend(chatId, msgType, content);
+                return doSend(receiveId, msgType, content, receiveIdType);
             } catch (Exception e) {
                 lastEx = e;
-                log.warn("发送飞书消息第 {} 次失败，chatId={}: {}", i + 1, chatId, e.getMessage());
+                log.warn("发送飞书消息第 {} 次失败，receiveId={}: {}", i + 1, receiveId, e.getMessage());
                 if (i < 2) {
                     try { Thread.sleep(1000L << i); } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
@@ -195,24 +208,30 @@ public class FeishuMessageSender {
                 }
             }
         }
-        log.error("发送消息 3 次全部失败，chatId={}，发送 fallback", chatId, lastEx);
+        log.error("发送消息 3 次全部失败，receiveId={}，发送 fallback", receiveId, lastEx);
         try {
-            return doSend(chatId, "text", Collections.singletonMap("text", "网络繁忙，请重试 🙏"));
+            return doSend(receiveId, "text",
+                    Collections.singletonMap("text", "网络繁忙，请重试 🙏"), receiveIdType);
         } catch (Exception e) {
-            log.error("fallback 消息也发送失败，chatId={}", chatId, e);
+            log.error("fallback 消息也发送失败，receiveId={}", receiveId, e);
             return null;
         }
     }
 
     private String doSend(String chatId, String msgType, Object content) throws Exception {
+        return doSend(chatId, msgType, content, "chat_id");
+    }
+
+    private String doSend(String receiveId, String msgType, Object content,
+                          String receiveIdType) throws Exception {
         // ── 发送前验证（TODO-93 失职自查钩子）────────────────────
         verifyMessageContent(msgType, content);
 
-        String url   = feishuBase + "/open-apis/im/v1/messages?receive_id_type=chat_id";
+        String url   = feishuBase + "/open-apis/im/v1/messages?receive_id_type=" + receiveIdType;
         String token = getTenantAccessToken();
 
         Map<String, Object> body = new HashMap<>();
-        body.put("receive_id", chatId);
+        body.put("receive_id", receiveId);
         body.put("msg_type",   msgType);
         body.put("content",    objectMapper.writeValueAsString(content));
 
@@ -230,7 +249,7 @@ public class FeishuMessageSender {
         String messageId = extractMessageId(res.getBody());
 
         // ── 发送后验证：message_id 缺失时抛异常触发 retry（TODO-93）──
-        verifyMessageId(messageId, chatId, msgType);
+        verifyMessageId(messageId, receiveId, msgType);
 
         return messageId;
     }

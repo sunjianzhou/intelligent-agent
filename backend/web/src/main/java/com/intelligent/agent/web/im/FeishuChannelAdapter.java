@@ -62,7 +62,11 @@ public class FeishuChannelAdapter implements ChannelAdapter {
     @Override
     public SendResult sendText(String receiverId, String text, String chatType) {
         try {
-            String messageId = sender.sendText(receiverId, truncateText(text));
+            // open_id（ou_ 前缀，飞书用户/群 open_id）走 receive_id_type=open_id，
+            // 否则按既有 chat_id 语义发送——让 channel_message 能真正给用户发消息
+            String messageId = isOpenId(receiverId)
+                    ? sender.sendTextByOpenId(receiverId, truncateText(text))
+                    : sender.sendText(receiverId, truncateText(text));
             return new SendResult(messageId != null, messageId, null,
                     ChannelType.FEISHU, 0);
         } catch (Exception e) {
@@ -71,6 +75,10 @@ public class FeishuChannelAdapter implements ChannelAdapter {
             return new SendResult(false, null, e.getMessage(),
                     ChannelType.FEISHU, 0);
         }
+    }
+
+    private static boolean isOpenId(String receiverId) {
+        return receiverId != null && receiverId.startsWith("ou_");
     }
 
     @Override
