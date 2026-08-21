@@ -18,9 +18,11 @@
 
     <properties>
         <java.version>21</java.version>
-        <!-- LLM 评估（G3）：surefire 内置用户属性，默认排除 @Tag("eval")，
-             -Peval 时覆盖为 groups=eval + 清空排除，只跑评估 -->
-        <excludedGroups>eval</excludedGroups>
+        <!-- LLM 评估（G3）+ IM 真实送达验证（B 项）：surefire 内置用户属性，
+             默认排除 @Tag("eval") / @Tag("im-verify")；
+             -Peval 时覆盖为 groups=eval + 清空排除，只跑评估；
+             im-verify 手动跑：mvn test -Dgroups=im-verify -DexcludedGroups= -->
+        <excludedGroups>eval,im-verify</excludedGroups>
     </properties>
 
     <dependencies>
