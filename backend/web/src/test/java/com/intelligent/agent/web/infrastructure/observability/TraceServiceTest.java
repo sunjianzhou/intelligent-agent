@@ -3,6 +3,8 @@ package com.intelligent.agent.web.infrastructure.observability;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.time.Duration;
+import java.util.ArrayList;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -75,6 +77,37 @@ class TraceServiceTest {
 
         assertThat(service.list("alice", 50)).hasSize(2);
         assertThat(service.list("alice", 50).get(0).get("request_id")).isEqualTo("r3");
+    }
+
+    @Test
+    void completeInvokesExporterWhenConfigured() {
+        RecordingExporter exporter = new RecordingExporter();
+        TraceService service = new TraceService(tempDir, 10, exporter);
+        service.begin("req-exp", "alice", "s1", "web", "qwen2.5:7b");
+        service.addSpan("req-exp",
+                TraceSpan.ok("llm_call", 1, 10, Map.of("model", "qwen2.5:7b")));
+
+        service.complete("req-exp", "ok");
+
+        assertThat(exporter.exported).hasSize(1);
+        assertThat(exporter.exported.get(0).requestId()).isEqualTo("req-exp");
+        assertThat(exporter.exported.get(0).spans()).hasSize(1);
+    }
+
+    /** 记录导出内容的测试替身（OtlpTraceExporter 可继承，覆写异步入口）。 */
+    private static final class RecordingExporter extends OtlpTraceExporter {
+        final List<AgentRunTrace> exported = new ArrayList<>();
+
+        RecordingExporter() {
+            super(false, "http://localhost:4318", Duration.ofSeconds(1));
+        }
+
+        @Override
+        public void export(AgentRunTrace trace) {
+            if (trace != null) {
+                exported.add(trace);
+            }
+        }
     }
 
     @Test

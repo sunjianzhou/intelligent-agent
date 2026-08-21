@@ -63,6 +63,13 @@ ai:
   hitl:
     enabled: ${AI_HITL_ENABLED:true}
     timeout: ${AI_HITL_TIMEOUT:120s}
+  # G4 导出：OTel OTLP/HTTP（JSON）追踪导出，默认关；
+  # 开启后每条 trace 完成时异步推送到 Collector /v1/traces（Jaeger/Tempo/Grafana 等）
+  trace:
+    export:
+      enabled: ${OTEL_EXPORTER_ENABLED:false}
+      endpoint: ${OTEL_EXPORTER_ENDPOINT:http://localhost:4318}
+      timeout-ms: ${OTEL_EXPORTER_TIMEOUT_MS:5000}
 
 server:
   port: 8080

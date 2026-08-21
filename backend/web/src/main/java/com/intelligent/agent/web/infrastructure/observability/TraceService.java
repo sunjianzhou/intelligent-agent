@@ -22,7 +22,7 @@ import java.util.stream.Stream;
  * <ul>
  *   <li>进行中的 trace 在内存聚合 spans；完成后原子落盘 {@code data/traces/}；</li>
  *   <li>容量上限（默认 500 条）按文件修改时间淘汰最旧；</li>
- *   <li>list/get 均按 userId 隔离；预留 OTel/OpenInference 导出位。</li>
+ *   <li>list/get 均按 userId 隔离；可选 OTLP/HTTP 导出（{@link OtlpTraceExporter}）。</li>
  * </ul>
  */
 @Slf4j
@@ -33,17 +33,23 @@ public class TraceService {
     private final Path tracesDir;
     private final int maxTraces;
     private final ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+    private final OtlpTraceExporter exporter;
 
     /** 进行中的 trace：requestId → 聚合器（spans 追加）。 */
     private final Map<String, MutableTrace> active = new ConcurrentHashMap<>();
 
     public TraceService(Path dataDir) {
-        this(dataDir, DEFAULT_MAX_TRACES);
+        this(dataDir, DEFAULT_MAX_TRACES, null);
     }
 
     public TraceService(Path dataDir, int maxTraces) {
+        this(dataDir, maxTraces, null);
+    }
+
+    public TraceService(Path dataDir, int maxTraces, OtlpTraceExporter exporter) {
         this.tracesDir = dataDir.resolve("traces");
         this.maxTraces = maxTraces > 0 ? maxTraces : DEFAULT_MAX_TRACES;
+        this.exporter = exporter;
         try {
             Files.createDirectories(tracesDir);
         } catch (IOException e) {
@@ -88,6 +94,9 @@ public class TraceService {
                 List.copyOf(trace.spans));
         persist(finished);
         pruneIfNeeded();
+        if (exporter != null) {
+            exporter.export(finished);
+        }
     }
 
     /** 最近 N 条（按完成时间倒序，userId 隔离）。 */

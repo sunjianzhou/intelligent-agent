@@ -10,11 +10,13 @@ import com.intelligent.agent.web.domain.analytics.AnalyticsService;
 import com.intelligent.agent.web.domain.teaching.TeachingService;
 import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
 import com.intelligent.agent.web.infrastructure.observability.TraceService;
+import com.intelligent.agent.web.infrastructure.observability.OtlpTraceExporter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.nio.file.Path;
+import java.time.Duration;
 
 /**
  * 领域服务装配。数据目录默认 backend/web/data，
@@ -26,6 +28,15 @@ public class DomainConfig {
 
     @Value("${intelligent-agent.data-dir:data}")
     private String dataDir;
+
+    @Value("${ai.trace.export.enabled:false}")
+    private boolean traceExportEnabled;
+
+    @Value("${ai.trace.export.endpoint:http://localhost:4318}")
+    private String traceExportEndpoint;
+
+    @Value("${ai.trace.export.timeout-ms:5000}")
+    private long traceExportTimeoutMs;
 
     @Bean
     public RoleService roleService() {
@@ -67,9 +78,12 @@ public class DomainConfig {
         return new TeachingService(Path.of(dataDir));
     }
 
-    /** G4：Agent 运行追踪（data/traces/ 落盘，默认 500 条上限）。 */
+    /** G4：Agent 运行追踪（data/traces/ 落盘，默认 500 条上限；可选 OTLP 导出）。 */
     @Bean
     public TraceService traceService() {
-        return new TraceService(Path.of(dataDir));
+        OtlpTraceExporter exporter = new OtlpTraceExporter(
+                traceExportEnabled, traceExportEndpoint,
+                Duration.ofMillis(Math.max(100, traceExportTimeoutMs)));
+        return new TraceService(Path.of(dataDir), TraceService.DEFAULT_MAX_TRACES, exporter);
     }
 }
