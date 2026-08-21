@@ -404,7 +404,8 @@
 
 4. **L1 响应缓存锁优化** — `agent/core/agent.py:108-109`；需 `inference_concurrency` 调高后出现热点再做。
 5. **Java 侧 token 批量转发** — 需先有延迟抖动证据再做。
-8. **Scheduler 轮询改事件驱动** — 任务量小时无所谓；调度器历史上多次出现并发/绑定 bug，改动有风险，待任务量真正增长再做。
+8. ~~**Scheduler 轮询改事件驱动**~~ ✅ 已落地（2026-08-11 `TaskSchedulerService.refresh()`
+   按最近到期唤醒 + 60s 兜底扫描，见「当前待办总览 · C」），本条过时关闭。
 
 > ChromaDB 迁移至 Docker 具名卷已于 2026-06-09 完成，具名卷为 `intelligent_agent_agent_chroma_data` / `intelligent_agent_agent_chroma_data_longterm`。
 > 中间无前缀卷 `agent_chroma_data`/`agent_chroma_data_longterm` 可按需 `docker volume rm` 清理。
@@ -1706,7 +1707,11 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       决策：`-Deval.min-score` 默认改为保护线 2（低于全部已见得分，只拦"完全失败"级
       回归），质量门仍可 `-Deval.min-score=7` 覆盖；顺带修复 eval userId `eval:user`
       冒号导致会话持久化失败的问题（改 `eval-user`）。已知短板：web/calc/time 三个
-      工具用例仍受 qwen2.5:7b 工具循环健壮性限制，留待模型或提示词侧调优。
+      工具用例仍受 qwen2.5:7b 工具循环健壮性限制；2026-08-21 已加 `ToolExecutor`
+      容错别名（datetime/time→time_tool、calc→calculator、web/search→web_search、
+      unit_convert→advanced_calculator、remember→store_memory 等，见 ToolExecutorTest），
+      第三轮基线（commit `7495215`）平均 8.25（time=10↑、web=5↑、memory=9↑、calc 仍 5），
+      工具名误用类失败缓解，calc 工具循环健壮性仍留待模型或提示词侧调优。
 - [x] G4 可观测性（核心）✅ 2026-08-15：`AgentRunTrace`（requestId → spans：
       llm_call/tool_call/rag/memory/cache，含耗时/成败/模型/工具参数摘要，截断防敏感）；
       落盘 `data/traces/`（原子写 + 500 条容量淘汰 + userId 隔离）；`/api/traces`
