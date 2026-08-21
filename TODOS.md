@@ -1691,7 +1691,7 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       ① calc-001 模型对原生 tool_calls 结果回应错乱（qwen2.5:7b 工具循环健壮性）；
       ② advanced_calculator 缺 km→m 换算且模型把内部选项泄露给用户；
       ③ 模型用错工具名（datetime vs time）。
-      门槛落地 ✅ 2026-08-21（commit 待回填）：第二轮基线 8 用例全过、平均 7.13 分
+      门槛落地 ✅ 2026-08-21（commit `c434b7c`）：第二轮基线 8 用例全过、平均 7.13 分
       （calc=5 / unit=10 / time=5 / qa=10 / memory=8 / web=2 / persona=7 / group=10），
       决策：`-Deval.min-score` 默认改为保护线 2（低于全部已见得分，只拦"完全失败"级
       回归），质量门仍可 `-Deval.min-score=7` 覆盖；顺带修复 eval userId `eval:user`
@@ -1703,7 +1703,7 @@ W12 (7/21-7/28): TODO-106     ✅ 已完成（2026-07-09） Phase 3: 双通道�
       list/get/delete；前端 TraceView（/admin/traces，routes.config.js 单源挂载）；
       requestId 全链路（ChatRequest.request_id + WS/REST 自动生成）。
       测试：TraceServiceTest 6 + TraceController 4 + TraceInstrumentation 2 + E2E 1。
-      OTel/OpenInference 导出 ✅ 2026-08-21（commit 待回填）：新增 `OtlpTraceExporter`，
+      OTel/OpenInference 导出 ✅ 2026-08-21（commit `8f0efca`）：新增 `OtlpTraceExporter`，
       OTLP/HTTP（JSON）推送 Collector `/v1/traces`（JDK HttpClient + Jackson 手工组包，
       无 protobuf/OTel SDK 依赖），span 带 OpenInference 语义属性
       （AGENT/LLM/TOOL/RETRIEVER/CHAIN + llm/tool/retriever 明细），traceId/spanId
