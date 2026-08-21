@@ -12,7 +12,7 @@
           <i class="fas fa-plus" /> 新增服务器
         </button>
       </div>
-      <div class="config-hint">HTTP JSON-RPC 传输；连接成功后其工具自动进入 LLM 工具集</div>
+      <div class="config-hint">HTTP 远程 / stdio 本地进程两种传输；连接成功后其工具自动进入 LLM 工具集</div>
 
       <div v-if="servers.length === 0" class="server-empty">
         尚未配置 MCP 服务器
@@ -21,7 +21,8 @@
         <div v-for="server in servers" :key="server.id" class="server-row">
           <div class="server-main">
             <span class="server-name">{{ server.name }}</span>
-            <span class="server-url">{{ server.base_url }}</span>
+            <span class="server-url">{{ server.transport === 'stdio' ? server.command : server.base_url }}</span>
+            <span class="server-transport">{{ server.transport || 'http' }}</span>
             <span class="server-tools" v-if="server.tool_count > 0">{{ server.tool_count }} 工具</span>
           </div>
           <span class="server-status" :class="server.connected ? 'st-on' : 'st-off'">
@@ -54,10 +55,26 @@
         </div>
         <div class="server-form">
           <label>名称 <input v-model="serverEdit.name" class="db-input" placeholder="如 GitHub MCP" /></label>
-          <label>Base URL <input v-model="serverEdit.base_url" class="db-input" placeholder="https://example.com/mcp" /></label>
-          <label>API Key（可选）
-            <input v-model="serverEdit.api_key" class="db-input" type="password" placeholder="留空则不发送鉴权头" />
+          <label>传输方式
+            <select v-model="serverEdit.transport" class="db-input">
+              <option value="http">HTTP（远程服务器）</option>
+              <option value="stdio">stdio（本地进程，如 npx）</option>
+            </select>
           </label>
+          <template v-if="serverEdit.transport === 'http'">
+            <label>Base URL <input v-model="serverEdit.base_url" class="db-input" placeholder="https://example.com/mcp" /></label>
+            <label>API Key（可选）
+              <input v-model="serverEdit.api_key" class="db-input" type="password" placeholder="留空则不发送鉴权头" />
+            </label>
+          </template>
+          <template v-else>
+            <label>启动命令
+              <input v-model="serverEdit.command" class="db-input" placeholder="如 npx" />
+            </label>
+            <label>参数（逗号分隔，可选）
+              <input v-model="serverEdit.args" class="db-input" placeholder="如 -y,@modelcontextprotocol/server-filesystem,D:/data" />
+            </label>
+          </template>
           <label class="server-check">
             <input type="checkbox" v-model="serverEdit.enabled" /> 启用（启动时自动连接）
           </label>
@@ -219,7 +236,8 @@ import {
 const servers      = ref([])
 const serverModal  = ref(false)
 const serverSaving = ref(false)
-const serverEdit   = ref({ name: '', base_url: '', api_key: '', enabled: true })
+const serverEdit   = ref({ name: '', base_url: '', api_key: '',
+  transport: 'http', command: '', args: '', enabled: true })
 
 const loadServers = async () => {
   const res = await listMcpServers()
@@ -229,20 +247,38 @@ const loadServers = async () => {
 const openServerModal = (server) => {
   serverEdit.value = server
     ? { id: server.id, name: server.name, base_url: server.base_url,
-        api_key: '', enabled: server.enabled }
-    : { name: '', base_url: '', api_key: '', enabled: true }
+        api_key: '', transport: server.transport || 'http',
+        command: server.command || '',
+        args: Array.isArray(server.args) ? server.args.join(', ') : '',
+        enabled: server.enabled }
+    : { name: '', base_url: '', api_key: '',
+        transport: 'http', command: '', args: '', enabled: true }
   serverModal.value = true
 }
 
 const saveServer = async () => {
-  if (!serverEdit.value.name || !serverEdit.value.base_url) {
-    ElMessage({ message: '名称与 Base URL 必填', type: 'warning', duration: 2000 })
+  if (!serverEdit.value.name) {
+    ElMessage({ message: '名称必填', type: 'warning', duration: 2000 })
+    return
+  }
+  if (serverEdit.value.transport === 'http' && !serverEdit.value.base_url) {
+    ElMessage({ message: 'HTTP 传输需要填写 Base URL', type: 'warning', duration: 2000 })
+    return
+  }
+  if (serverEdit.value.transport === 'stdio' && !serverEdit.value.command) {
+    ElMessage({ message: 'stdio 传输需要填写启动命令', type: 'warning', duration: 2000 })
     return
   }
   serverSaving.value = true
   try {
     const payload = { ...serverEdit.value }
     if (!payload.api_key) delete payload.api_key
+    if (payload.transport === 'stdio') {
+      payload.args = String(payload.args || '').split(',')
+        .map(s => s.trim()).filter(Boolean)
+      delete payload.base_url
+      delete payload.api_key
+    }
     const res = serverEdit.value.id
       ? await updateMcpServer(serverEdit.value.id, payload)
       : await createMcpServer(payload)
@@ -447,6 +483,11 @@ onMounted(() => {
 .server-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 180px; }
 .server-name { font-size: 0.9rem; font-weight: 600; color: #333; }
 .server-url { font-size: 0.76rem; color: #999; word-break: break-all; }
+.server-transport {
+  font-size: 0.68rem; color: #2f9e7a; background: #effaf5;
+  padding: 1px 8px; border-radius: 10px; text-transform: uppercase;
+  align-self: flex-start;
+}
 .server-tools {
   font-size: 0.7rem; color: #7c3aed; background: #faf5ff;
   padding: 1px 8px; border-radius: 10px; align-self: flex-start;
