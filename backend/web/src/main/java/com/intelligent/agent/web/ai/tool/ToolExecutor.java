@@ -22,6 +22,37 @@ import java.util.stream.Collectors;
  */
 public class ToolExecutor {
 
+    /** 模型误用工具名的容错别名（G3 基线暴露：datetime vs time_tool 一类问题）。
+     *  命中别名按同名工具执行，规避"工具名记错"导致的整轮失败。 */
+    static final Map<String, String> TOOL_ALIASES = Map.ofEntries(
+            Map.entry("datetime", "time_tool"),
+            Map.entry("time", "time_tool"),
+            Map.entry("current_time", "time_tool"),
+            Map.entry("get_time", "time_tool"),
+            Map.entry("calc", "calculator"),
+            Map.entry("calculate", "calculator"),
+            Map.entry("math", "calculator"),
+            Map.entry("web", "web_search"),
+            Map.entry("search", "web_search"),
+            Map.entry("websearch", "web_search"),
+            Map.entry("internet_search", "web_search"),
+            Map.entry("unit_convert", "advanced_calculator"),
+            Map.entry("unit_conversion", "advanced_calculator"),
+            Map.entry("convert_units", "advanced_calculator"),
+            Map.entry("remember", "store_memory"),
+            Map.entry("save_memory", "store_memory"),
+            Map.entry("memory_store", "store_memory"),
+            Map.entry("memory_search", "search_memories"),
+            Map.entry("search_memory", "search_memories"),
+            Map.entry("image", "image_generation"),
+            Map.entry("generate_image", "image_generation"),
+            Map.entry("txt2img", "image_generation"),
+            Map.entry("system", "system_info"),
+            Map.entry("system_status", "system_info"),
+            Map.entry("send_message", "channel_message"),
+            Map.entry("im_message", "channel_message"),
+            Map.entry("send_im", "channel_message"));
+
     private final Map<String, AgentTool> tools;
     private final int maxRounds;
     private final ExecutorService timeoutExecutor;
@@ -63,7 +94,7 @@ public class ToolExecutor {
         Objects.requireNonNull(call, "call must not be null");
         Objects.requireNonNull(context, "context must not be null");
 
-        AgentTool tool = tools.get(call.name());
+        AgentTool tool = resolve(call.name());
         if (tool == null) {
             return ToolResult.notFound("tool not found: " + call.name());
         }
@@ -137,5 +168,17 @@ public class ToolExecutor {
     /** 已注册工具的定义列表（/api/tools/list 与 LLM 工具提示用）。 */
     public List<ToolDefinition> definitions() {
         return tools.values().stream().map(AgentTool::definition).toList();
+    }
+
+    /** 精确名优先，未命中时尝试容错别名（见 {@link #TOOL_ALIASES}）。 */
+    private AgentTool resolve(String name) {
+        AgentTool tool = tools.get(name);
+        if (tool == null) {
+            String alias = TOOL_ALIASES.get(name);
+            if (alias != null) {
+                tool = tools.get(alias);
+            }
+        }
+        return tool;
     }
 }

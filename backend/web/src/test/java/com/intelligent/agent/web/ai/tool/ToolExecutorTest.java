@@ -51,6 +51,18 @@ class ToolExecutorTest {
         }
     };
 
+    private static final AgentTool TIME_TOOL = new AgentTool() {
+        @Override
+        public ToolDefinition definition() {
+            return new ToolDefinition("time_tool", "获取当前时间", true, null, null);
+        }
+
+        @Override
+        public Object execute(Map<String, Object> arguments) {
+            return "2026-08-21 22:30:00";
+        }
+    };
+
     private static final AgentTool SLOW_TOOL = new AgentTool() {
         @Override
         public ToolDefinition definition() {
@@ -118,6 +130,24 @@ class ToolExecutorTest {
                 .isEqualTo("denied");
         assertThat(executor.execute(ToolCall.of("admin_op", Map.of()), admin).status())
                 .isEqualTo("success");
+    }
+
+    @Test
+    void resolvesCommonMisnamedToolAliases() {
+        ToolExecutionContext ctx = ToolExecutionContext.of("u1", "user");
+        ToolExecutor aliasExecutor = new ToolExecutor(List.of(READ_TOOL, TIME_TOOL));
+
+        // G3 基线暴露的典型误用：datetime / time → time_tool
+        assertThat(aliasExecutor.execute(ToolCall.of("datetime", Map.of()), ctx).status())
+                .isEqualTo("success");
+        assertThat(aliasExecutor.execute(ToolCall.of("time", Map.of()), ctx).status())
+                .isEqualTo("success");
+        // 别名只做容错，不会把未注册名字变成成功
+        assertThat(aliasExecutor.execute(ToolCall.of("no_such_tool", Map.of()), ctx).status())
+                .isEqualTo("not_found");
+        // 别名本身不在注册表里（定义列表不受影响）
+        assertThat(aliasExecutor.definitions()).extracting(d -> d.name())
+                .doesNotContain("datetime");
     }
 
     @Test
