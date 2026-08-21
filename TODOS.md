@@ -78,7 +78,17 @@
 
 ### B. 验收遗留（需真实服务运行 + IM 凭证）
 
-- [ ] IM 真实送达验证（飞书 / 企微 / Telegram，需真实应用凭证）
+- [ ] IM 真实送达验证（飞书 / 企微已验，Telegram 无凭证）
+      ✅ 2026-08-21（commit `5ca9b2b` + `ecb945c`）飞书真实送达：`FeishuMessageSender.sendTextByOpenId` 对
+      FEISHU_HEARTBEAT_RECEIVER_ID 实测成功（返回 message_id，飞书端可查收）；
+      企微：`WeComMessageSender.getAccessToken` 用 .env.docker 凭证实测成功
+      （送达仍需一个真实 WECOM userid，当前未配置）。
+      落地方式：新增 `@Tag("im-verify")` 手动套件（ImDeliveryVerifyTest），
+      默认 excludedGroups=eval,im-verify 排除、不进 CI；运行
+      `mvn test -Dgroups=im-verify -DexcludedGroups=`。
+      顺带修复：FeishuMessageSender 此前固定 receive_id_type=chat_id，
+      无法主动给用户 open_id 发消息；新增 open_id 发送 + FeishuChannelAdapter
+      按 `ou_` 前缀路由，channel_message 工具现在能真正发给用户。
 - [x] 全栈 E2E ✅ 2026-08-15：Java E2E（tests/e2e-java）对真实后端+Ollama 首跑
       68 用例全绿（2 跳过：云端/dolphin 未配置）；前端不参与（REST 黑盒）
 
