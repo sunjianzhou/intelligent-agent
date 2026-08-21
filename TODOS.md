@@ -89,7 +89,7 @@
 
 ### D. 需求驱动待办（归档，有人提出需求再做）
 
-- [x] 图片生成 P3（Java 侧，2026-08-21 完成，commit 待提交后回填）：
+- [x] 图片生成 P3（Java 侧，2026-08-21 完成，commit `fb11def`）：
       ComfyUI 工作流热重载 API（GET/PUT/DELETE /api/image/comfyui-workflow，落盘
       data/image/comfyui-workflow.json，{{prompt}}/{{model}}/{{width}} 等占位符替换）/
       LoRA 注入（GET /api/image/loras + 生成请求 loras 参数，SD15/SDXL 走 LoraLoader 链、
