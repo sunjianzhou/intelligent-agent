@@ -106,6 +106,10 @@ spring:
       fail-on-unknown-properties: false
     serialization:
       write-dates-as-timestamps: false
+  mvc:
+    async:
+      # REST /api/chat 异步化后，长 LLM 调用（默认 chat_timeout 600s）必须超过容器 30s 默认异步超时
+      request-timeout: 660000
   web:
     resources:
       # 静态文件优先：可通过 FRONTEND_DIST 环境变量指定绝对路径
