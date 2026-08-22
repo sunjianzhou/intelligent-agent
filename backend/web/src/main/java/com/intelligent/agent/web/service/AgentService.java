@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
+import reactor.core.Disposable;
 
 /**
  * 聊天编排服务（Java-only，Python Agent 已于 2026-08-08 退役）：
@@ -158,9 +159,17 @@ public class AgentService {
         int[]         toolCallCount = {0};
         boolean[]     chatDoneEmitted = {false};
         try {
-            localChatService.stream(request).subscribe(
+            Disposable[] disposable = new Disposable[1];
+            disposable[0] = localChatService.stream(request)
+                    // 槽位释放统一走 doFinally：complete/error/cancel（含断线主动取消）都只释放一次
+                    .doFinally(signal -> releaseChatSlot())
+                    .subscribe(
                     event -> {
                         if (!session.isOpen()) {
+                            // 客户端已断开：取消下游推理流，避免继续占用 boundedElastic 与推理闸门
+                            if (disposable[0] != null) {
+                                disposable[0].dispose();
+                            }
                             return;
                         }
                         Map<String, Object> wsMsg = toWsMessage(
@@ -192,13 +201,11 @@ public class AgentService {
                             errMsg.put("request_id", requestId);
                             JsonUtil.sendJsonMessageQuiet(session, errMsg);
                         } catch (Exception ignored) {}
-                        releaseChatSlot();
                     },
                     () -> {
                         if (!chatDoneEmitted[0]) {
                             sendFallbackDone(session, requestId, startTime);
                         }
-                        releaseChatSlot();
                     });
         } catch (Exception e) {
             log.error("本地流式聊天启动失败, requestId: {}", requestId, e);

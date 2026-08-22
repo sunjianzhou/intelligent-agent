@@ -12,6 +12,7 @@ import org.springframework.web.socket.WebSocketSession;
 import reactor.core.publisher.Flux;
 
 import java.util.Map;
+import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -68,6 +69,33 @@ class AgentServiceStreamLimitTest {
 
         agentService.streamChatAsync(new ChatRequest("hi", true, true),
                 session, "req-2", 0);
+
+        long deadline = System.currentTimeMillis() + 5000;
+        while (limiter.active() != 0 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        assertThat(limiter.active()).isZero();
+        executor.shutdownNow();
+    }
+
+    @Test
+    void streamChatAsyncCancelsAndReleasesSlotWhenSessionDisconnects() throws Exception {
+        ActiveChatLimiter limiter = new ActiveChatLimiter(1);
+        LocalChatService localChatService = mock(LocalChatService.class);
+        when(localChatService.stream(any(ChatRequest.class)))
+                .thenReturn(Flux.just(ModelEvent.token("hi"), ModelEvent.done(Map.of()))
+                        .delayElements(Duration.ofMillis(50)));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        AgentService agentService = new AgentService(
+                new ObjectMapper(), executor, localChatService,
+                null, null, null, limiter);
+
+        WebSocketSession session = mock(WebSocketSession.class);
+        when(session.isOpen()).thenReturn(false); // 客户端已断开
+        when(session.getId()).thenReturn("s3");
+
+        agentService.streamChatAsync(new ChatRequest("hi", true, true),
+                session, "req-3", 0);
 
         long deadline = System.currentTimeMillis() + 5000;
         while (limiter.active() != 0 && System.currentTimeMillis() < deadline) {

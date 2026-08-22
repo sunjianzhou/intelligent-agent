@@ -22,8 +22,8 @@ class InferenceGateTest {
         Thread waiter = new Thread(() -> {
             try {
                 gate.acquire();
-                entered.countDown();
                 afterAcquire.set(gate.active());
+                entered.countDown();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }

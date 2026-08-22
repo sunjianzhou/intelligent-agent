@@ -41,6 +41,14 @@
 >   默认走公共槽位；`setMaxConcurrency` 对所有槽位生效，`active()` 汇总。
 > - 会话文件改为紧凑 JSON（`JsonFileStore.writeCompact`），高频 append 写放大进一步下降。
 >
+> **2026-08-22 第四轮（环境修复 + WS 资源回收，全量测试 495 后端 + 20 前端 + 12 客户端 + 70 E2E 绿）**：
+> - `.env` `JWT_SECRET` 轮换为 64 字符随机 hex（原 29 字符 232 bits < 256 导致 jjwt 登录 500）；
+>   经核查 `cloud_providers.json` / `mcp_servers.json` 等加密存量均为空，轮换零影响。
+> - E2E 冒烟发现并修复：REST `/api/chat` 异步化后被容器默认 30s 异步超时掐断返回 503，
+>   `spring.mvc.async.request-timeout` 提升到 660s（commit `b360347`）。
+> - WS 断线取消推理流：`AgentService.localStreamChat` 在 `session.isOpen()==false` 时 dispose
+>   下游流，槽位释放统一走 `doFinally`（complete/error/cancel 只释放一次）。
+>
 > **2026-08-15 架构审查产出**：新增「Java 迁移收尾」清单（P0 安全/数据 4 项、
 > P1 功能等价 5 项、P2 架构/体验 8 项），见下文专节。核查结论：Python 源码已全删
 > （仅 tests/e2e 为 pytest 测试），但 LLM 工具从 22 个降到 9 个、任务无持久化、
