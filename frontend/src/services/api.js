@@ -49,7 +49,18 @@ const request = async (url, options = {}) => {
       return null
     }
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    if (!res.ok) {
+      // 尽量取服务端错误消息（如 503 的"服务繁忙，请稍后再试"），避免只显示 HTTP 状态码
+      let serverMsg = null
+      try {
+        const body = await res.json()
+        serverMsg = body?.data?.message || body?.message || null
+      } catch (e) {
+        // 非 JSON 错误体，忽略
+      }
+      const friendly = res.status === 503 ? '服务繁忙，请稍后再试' : null
+      throw new Error(serverMsg || friendly || `HTTP ${res.status}`)
+    }
     return await res.json()
   } catch (err) {
     clearTimeout(timeoutId)

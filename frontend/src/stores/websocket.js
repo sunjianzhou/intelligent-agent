@@ -323,14 +323,18 @@ export const useWebSocketStore = defineStore('websocket', () => {
         break
       }
 
-      case 'error':
+      case 'error': {
+        const wasStreaming = isStreaming.value && streamingIndex.value !== -1
         // 若正在流式输出时收到 error，在已接收内容末尾加截断标记，让用户知道回复不完整
-        if (isStreaming.value && streamingIndex.value !== -1) {
+        if (wasStreaming) {
           messages.value[streamingIndex.value].content += String.fromCharCode(10, 10) + '⚠️ *[响应被中断]*'
         }
         finalizeStream(null)
-        addMessage({ role: 'system', content: `错误: ${data.message}`, timestamp: new Date() })
+        const errText = data.message || '未知错误'
+        // 未开始流式的错误（如并发繁忙被拒）直接提示，避免"错误:"前缀显得生硬
+        addMessage({ role: 'system', content: wasStreaming ? `错误: ${errText}` : `⚠️ ${errText}`, timestamp: new Date() })
         break
+      }
 
       default:
         console.warn('[WS] 未知消息类型:', data.type)
