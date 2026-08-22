@@ -23,6 +23,7 @@ logs/
 backend/web/target/
 backend/web/*.iml
 tests/e2e-java/target/
+tests/perf-java/target/
 
 # 前端
 frontend/node_modules/

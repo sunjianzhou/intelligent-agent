@@ -49,6 +49,14 @@
 > - WS 断线取消推理流：`AgentService.localStreamChat` 在 `session.isOpen()==false` 时 dispose
 >   下游流，槽位释放统一走 `doFinally`（complete/error/cancel 只释放一次）。
 >
+> **2026-08-22 第五轮（压测/基线工具）**：
+> - 新增 `tests/perf-java`：`@Tag("perf")` 负载测试（JDK HttpClient，零新增运行时依赖），
+>   覆盖 health / 非流式 chat / SSE 流式三场景，输出 P50/P90/P95/P99、RPS、错误率、
+>   流式首 token 延迟；支持 `-Dperf.saveBaseline` / `-Dperf.baseline` 保存与对比基线
+>   （P95 劣化 >20% 告警）。默认被 surefire excludedGroups 跳过。
+> - 首次实跑基线（qwen2.5:7b，并发 4）：health ~3300 RPS（p99 2ms）、
+>   chat p50 ~3.2s / p95 ~6.2s、stream p50 ~2.8s（首 token ~2.8s）/ p95 ~6.4s。
+>
 > **2026-08-15 架构审查产出**：新增「Java 迁移收尾」清单（P0 安全/数据 4 项、
 > P1 功能等价 5 项、P2 架构/体验 8 项），见下文专节。核查结论：Python 源码已全删
 > （仅 tests/e2e 为 pytest 测试），但 LLM 工具从 22 个降到 9 个、任务无持久化、
