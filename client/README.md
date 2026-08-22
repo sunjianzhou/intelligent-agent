@@ -15,6 +15,10 @@
 - **消息撤回**：`retract <sessionId> <ids>`；REPL 内 `!retract <编号>`（编号取自 `!history`）
 - **会话持久化**：每次对话自动保存到 `datas/session_<timestamp>_<id>.json`
 - **REPL**：`repl` 进入交互模式，支持 `!history` / `!sessions` / `!clear` / `!exit`
+- **进阶选项**：`chat --load <session.json>` 恢复历史会话、`--timeout <秒>` 覆盖请求超时（默认 600）、
+  `--no-stream` 走非流式、`--no-save` 不落盘会话文件
+
+> 后端 `/api/chat/stream` 已显式 UTF-8 输出（2026-08-22 修复），CLI 流式中文输出正常。
 
 ---
 

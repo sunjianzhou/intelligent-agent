@@ -1,8 +1,10 @@
 # 智能体项目 — AI 上下文速查文档
 
 > **本文档专为大模型阅读设计**。新对话开始时先读此文件，5 分钟内建立完整项目认知，无需再反复询问基础背景。
-> 最后更新：2026-08-11（W13 Java 统一迁移完成：Python Agent 已退役，全部 AI 逻辑并入 Java 单后端；
-> 涉及 Python 的章节均已标注为历史，仅作对照参考，不再代表当前实现）
+> 最后更新：2026-08-22（W13 Java 统一迁移完成 + 性能优化 + 迁移缺口收口：Python Agent 已退役，
+> 全部 AI 逻辑并入 Java 单后端；涉及 Python 的章节均已标注为历史，仅作对照参考，不再代表当前实现。
+> 2026-08-22 新增：异步 REST/流式并发上限/推理闸门超时与按模型分槽/向量记忆按用户分文件/
+> 技能运行时匹配注入/压测基线工具，详见「九、当前运行状态」）
 
 ---
 
@@ -250,14 +252,15 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 
 ### 4.1 职责
 
-纯粹的 WebSocket 网关 + HTTP 反向代理，不含任何 AI 业务逻辑。
+自包含的 Java 单后端：WebSocket 网关 + JWT 认证 + 全部 AI 逻辑（ReAct 编排、记忆/RAG、
+提示词/角色/灵魂、工具、调度、IM 通道、领域 API），无任何 Python 服务或回滚路径。
 
 ### 4.2 控制器
 
 | 控制器 | 路由前缀 | 说明 |
 |--------|---------|------|
 | `WebSocketController` | `/ws` | WS 连接，处理 chat_message/ping/get_system_info |
-| `ChatController` | `/api/chat` | 同步 REST 聊天（飞书/直接 API 调用） |
+| `ChatController` | `/api/chat` | 异步 REST 聊天（CompletableFuture + chatExecutor，满时 503）；`/api/chat/stream` SSE 流式（UTF-8） |
 | `HealthController` | `/api/health`, `/api/models`, `/api/config/*` | 健康检查、模型管理、运行时配置 |
 | `AuthController` | `/api/auth/*` | 登录、token 刷新 |
 | `PersonaProxyController` | `/api/personas/*` | 旧版角色代理（保留兼容） |
@@ -466,10 +469,11 @@ Python CLI 已于 2026-08-08 随 Agent 一起退役。
 
 ---
 
-## 九、当前运行状态（2026-07-09）
+## 九、当前运行状态（2026-08-22）
 
 - **已提交到 GitHub**：所有修改均已推送 master 分支
-- **测试覆盖**：Java 后端全量 324 用例绿（0 失败）；E2E 为 JUnit 黑盒（tests/e2e-java，仅测 Java 后端）
+- **测试覆盖**：Java 后端全量 505 用例绿（0 失败）；E2E 为 JUnit 黑盒（tests/e2e-java，70 用例）；
+  前端 Vitest 20 用例；压测/基线工具 `tests/perf-java`（@Tag("perf")，CI 手动 job，默认排除）
 - **全局默认模型**：`qwen2.5:7b`（所有渠道统一；embedding 用 `nomic-embed-text`；云端配置按需在 `/admin/models` 激活）
 - **Python 环境**：Python Agent/CLI 已于 2026-08-08 退役，无 Python 运行时依赖
 - **Ollama keep_alive**：`-1`（永久常驻显存，避免冷启动延迟）
@@ -499,7 +503,17 @@ Python CLI 已于 2026-08-08 随 Agent 一起退役。
 - **IM 渠道用户隔离**：`feishu:{open_id}` / `wecom:{userName}` 各有独立记忆和模型偏好
 - **飞书心跳巡检**：已暂停（dolphin 无法正确执行开放式主动联系决策，每次输出无意义占位消息；如需恢复建议搭配云端模型）
 - **移动端 PWA**：iPhone 16 适配完成（底部 Tab Bar / safe-area / dvh / 键盘遮挡修复）
-- **待办**：TODO-12（性能优化 #4/#5/#8，待触发条件）/ TODO-90（Ollama 量化模型 + keep_alive 调优）/ TODO-91（L3/L4 命中率监控）/ TODO-92（迁移验证首跑 + 全量回归 + 归档）/ TODO-IMG P3 远期遗留（ComfyUI 工作流热重载/LoRA/多模型模板等）
+- **2026-08-22 性能与迁移收口**：
+  - REST `/api/chat` 异步化（chatExecutor 8/32/队列200，满时 503）；记忆蒸馏/摘要/项目提取后台执行；
+  - 流式对话并发上限 `ActiveChatLimiter`（WS/SSE 共用，默认 32，runtime `stream_concurrency` 可调）；
+  - 推理闸门排队超时（`LLM_INFERENCE_QUEUE_TIMEOUT` 默认 120s）+ 按模型分槽；
+  - 向量记忆按用户分文件 `memory/{userId}.json`（旧 `vector_memory.json` 启动自动迁移）；
+  - 技能运行时匹配/注入：`SkillMatcher`（关键词 + LLM 裁决，`[SKILL]` 提示词注入 + forced_tools 工具过滤，
+    配置 `ai.skills.runtime-enabled` / `ai.skills.llm-timeout`）；
+  - Trace 体系：`/api/traces` + OTLP 导出（OpenInference 属性）；压测工具与 CI 手动 job；
+  - `.env` `JWT_SECRET` 需 ≥32 字符（jjwt 0.12 强制 ≥256 bits；轮换会失效 `SecretCrypto` 加密存量）。
+- **待办**：Telegram 真实送达验证（缺 bot token）；`[PROGRESS RECOVERY]` 与 Prometheus `/metrics`
+  未迁移（分别由任务树/待办注入和 trace+health 体系替代）；其余历史 TODO 均已完成或已归档。
 
 ---
 
@@ -512,8 +526,9 @@ start_java_mode.bat                                 # 或 cd backend/web && mvnw
 cd frontend && npm run dev                          # 前端 dev server
 
 # 测试
-cd backend/web && mvnw test                         # Java 后端全量单元/契约测试（~270 个）
+cd backend/web && mvnw test                         # Java 后端全量单元/契约测试（505 个）
 cd backend/web && ./mvnw.cmd -f ../../tests/e2e-java/pom.xml test   # Java E2E（需 backend + Ollama 运行）
+cd backend/web && ./mvnw.cmd -f ../../tests/perf-java/pom.xml test -Dgroups=perf -DexcludedGroups= -Dperf.saveBaseline=target/perf-report/baseline.json   # 压测/基线（需 backend + Ollama）
 
 # Docker 全栈（按需选 profile）
 docker compose up -d                                            # backend + frontend

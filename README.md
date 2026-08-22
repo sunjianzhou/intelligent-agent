@@ -322,6 +322,10 @@ cd frontend && npm install && npm run dev       # http://localhost:5173
 | `EMBEDDING_ENABLED` | `true` | 真实 embedding 开关（Ollama `/api/embed`，失败回退 n-gram） |
 | `EMBEDDING_MODEL` | `nomic-embed-text` | 嵌入模型名（768 维） |
 | `PROJECT_EXTRACTION_INTERVAL` | `8` | 项目上下文 LLM 提取轮次间隔 |
+| `MAX_CONCURRENT_STREAMS` | `32` | WS/SSE 流式对话并发上限（runtime `stream_concurrency` 可调） |
+| `LLM_INFERENCE_QUEUE_TIMEOUT` | `120s` | 推理闸门排队超时，超过返回"推理队列繁忙" |
+| `AI_SKILLS_RUNTIME_ENABLED` | `true` | 技能运行时匹配/注入开关（关键词 + LLM 裁决） |
+| `AI_SKILLS_LLM_TIMEOUT` | `10s` | 技能 LLM 意图裁决超时 |
 | `CLOUD_PROVIDER` | 空 | 云端 LLM fallback（`dashscope` / `deepseek` / `zhipu` / `moonshot` 等） |
 | `CLOUD_API_KEY` | 空 | 云端 LLM API Key |
 | `CORS_ALLOWED_ORIGINS` | `*` | 生产环境应改为具体域名 |
@@ -329,7 +333,8 @@ cd frontend && npm install && npm run dev       # http://localhost:5173
 | `FEISHU_OAUTH_REDIRECT_URI` | 空 | 飞书 OAuth 公网 callback URL（Cloudflare Tunnel 等）|
 
 > 说明：蒸馏间隔（5 轮）/ 摘要间隔（10 轮）/ 会话消息上限（200）为代码内固定值；
-> 并发上限与缓存大小在 `/admin/mcp` 运行时调节（持久化到 `backend/web/data/runtime_config.json`）；
+> 推理并发、流式对话并发（`stream_concurrency`）与缓存大小在 `/admin/mcp` 运行时调节
+> （持久化到 `backend/web/data/runtime_config.json`）；
 > 云端 API Key 与飞书 user_token 落盘加密由 `SecretCrypto` 处理（密钥由 `JWT_SECRET` 派生，无需额外环境变量）。
 
 ### 客户端配置
@@ -417,6 +422,10 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 | 精确语义缓存 | `SemanticResponseCache` persona/model 感知 key 精确命中，24h TTL |
 | 语义相似命中 | 余弦相似度 ≥ 0.8 时直接返回历史响应（`EmbeddingService` 真实 embedding / n-gram 兜底） |
 | 流式输出 | SSE 逐 token 推送，前端 `requestAnimationFrame` 节流渲染，完成后整体重渲染 Markdown，避免逐 token 重排版的性能损耗 |
+| 异步 REST | `/api/chat` 走 `CompletableFuture` + 专用 `chatExecutor`（8/32/队列200），Tomcat 线程不被长推理占用，满时快速 503 |
+| 流式并发上限 | `ActiveChatLimiter`（WS/SSE 共用，默认 32），超限立即回"服务繁忙"，不排队堆积 |
+| 推理并发闸门 | `InferenceGate` 按模型分槽 + 排队超时（默认 120s），等待线程不再无限期占用 |
+| 持久化写放大 | 向量记忆按用户分文件 `memory/{userId}.json` + 紧凑 JSON + 分片锁；会话按用户分片锁 |
 | 前端代码分割 | 路由级懒加载（`() => import('@/views/XxxView.vue')`），首屏仅加载聊天页所需代码 |
 | 上下文 token 预算 | `MAX_CONTEXT_TOKENS=8000` 控制发送给 LLM 的上下文长度（配合 `OLLAMA_NUM_CTX=8192`）；`SoulLoader.max_total_chars=14000` 告警阈值，超过时提示 token 预算风险 |
 
@@ -443,6 +452,7 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 | Channel 健康端点 | `GET /health/channels` 返回各 IM channel 的 ChannelMetric（成功率/平均延迟/限流拒绝次数），用于生产监控 |
 | 实时系统监控面板 | `/admin/system` 页面展示 CPU / 内存 / GPU / 磁盘占用与进程排行 |
 | 运营统计面板 | `/admin/stats` 页面展示满意度、响应时间分布、工具调用排名 |
+| Agent 运行追踪 | `/api/traces`（requestId 全链路 spans）+ 可选 OTLP/HTTP 导出（OpenInference 属性，兼容 Jaeger/Tempo/Phoenix） |
 | 分级日志 | `LOG_LEVEL` 环境变量控制（`DEBUG`/`INFO`/`WARNING`），Java 后端统一配置 |
 
 ### 安全
@@ -459,10 +469,11 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 | 层 | 测试框架 | 覆盖范围 |
 |------|------|------|
-| Java 后端测试 | `mvnw test`（~270 个） | ReAct/分支检测、LLM provider 契约、记忆/蒸馏/缓存、角色/会话/项目/任务领域、工具、调度、IM 通道、迁移校验、E2E 契约（MockMvc）等 |
+| Java 后端测试 | `mvnw test`（505 个） | ReAct/分支检测、LLM provider 契约、记忆/蒸馏/缓存、角色/会话/项目/任务领域、工具、调度、IM 通道、技能匹配、迁移校验、E2E 契约（MockMvc）等 |
 | Backend 单元测试 | JUnit 5 | WebSocket 消息序列化、JWT 工具类、JSON 工具类 |
-| Frontend 单元测试 | Vitest | JWT 处理逻辑等关键工具函数 |
-| E2E 端到端测试 | JUnit + JDK HttpClient（tests/e2e-java） | 从客户端发起 HTTP 请求打通 Java:8080 全链路，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知/消息撤回 |
+| Frontend 单元测试 | Vitest（20 个） | JWT 处理逻辑等关键工具函数 |
+| E2E 端到端测试 | JUnit + JDK HttpClient（tests/e2e-java，70 个） | 从客户端发起 HTTP 请求打通 Java:8080 全链路，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知/消息撤回/追踪 |
+| 压测/基线 | JUnit + JDK HttpClient（tests/perf-java，`@Tag("perf")`） | health / 非流式 chat / SSE 流式，输出 P50/P95/P99、RPS、首 token 延迟，支持基线对比；CI 手动 job |
 
 ### 离线与移动端体验
 
@@ -549,8 +560,8 @@ intelligent_agent/
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/chat` | 非流式聊天（REST 直调）|
-| POST | `/api/chat/stream` | SSE 流式聊天（Java 消费）|
+| POST | `/api/chat` | 非流式聊天（异步执行，线程池满时返回 503）|
+| POST | `/api/chat/stream` | SSE 流式聊天（UTF-8；并发超限回 error 事件）|
 
 **请求体**：
 
@@ -601,6 +612,9 @@ intelligent_agent/
 | POST | `/api/cloud/providers` | 新建云端服务商配置 |
 | POST | `/api/cloud/providers/{id}/activate` | 激活指定服务商（切换全局 provider）|
 | POST | `/api/cloud/deactivate` | 停用云端，切回 Ollama |
+| GET | `/api/traces?limit=50` | Agent 运行追踪列表（requestId 全链路 spans）|
+| GET | `/api/config/runtime` | 运行时配置与用量（并发/缓存/流式槽位）|
+| GET | `/api/skills/templates/list` | 内置技能模板（技能命中后自动注入 `[SKILL]` 策略）|
 | GET | `/api/feishu/oauth/authorize?open_id=xxx` | 获取飞书 OAuth 授权 URL（需 JWT）|
 | GET | `/api/feishu/oauth/callback` | OAuth 回调，返回 HTML（无 JWT，由飞书服务器重定向）|
 | GET | `/api/feishu/oauth/status?open_id=xxx` | 查询 OAuth 授权状态（需 JWT）|
@@ -674,7 +688,11 @@ intelligent_agent/
 
 ### 性能调优
 
-- 并发上限：`/admin/mcp` 系统资源配置中调 `inference_concurrency`（CPU 跑大模型建议 1）
+- 并发上限：`/admin/mcp` 系统资源配置中调 `inference_concurrency`（CPU 跑大模型建议 1）与
+  `stream_concurrency`（WS/SSE 流式对话上限，默认 32）
+- 推理排队超时：`LLM_INFERENCE_QUEUE_TIMEOUT`（默认 120s），避免长排队占用等待线程
+- 技能注入：不需要可设 `AI_SKILLS_RUNTIME_ENABLED=false`；需要时在技能页创建/应用模板，
+  命中后自动注入 `[SKILL]` 策略并过滤工具集
 - `OLLAMA_TIMEOUT`：CPU 7B 约 60-120s，16B 约 200s，按实际硬件调整
 - `MAX_CONTEXT_TOKENS`：CPU 推理建议 ≤ 8192，显存充足可放到 16384
 
@@ -710,6 +728,9 @@ cd backend/web
 
 # E2E（需 backend + Ollama 运行）
 cd backend/web && ./mvnw.cmd -f ../../tests/e2e-java/pom.xml test
+
+# 压测/基线（需 backend + Ollama 运行；P50/P95/P99、RPS、首 token 延迟）
+cd backend/web && ./mvnw.cmd -f ../../tests/perf-java/pom.xml test -Dgroups=perf -DexcludedGroups= -Dperf.saveBaseline=target/perf-report/baseline.json
 
 # Frontend
 cd frontend

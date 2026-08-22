@@ -1,6 +1,7 @@
 # Java Backend 模块
 
-> 最后更新：2026-08-11（Java-only 单后端：Python 回滚路径已移除，控制器直连本地领域服务）
+> 最后更新：2026-08-22（Java-only 单后端：Python 回滚路径已移除；2026-08-22 完成高并发优化
+> ——异步 REST/流式并发上限/推理闸门超时与按模型分槽/向量记忆按用户分文件/技能运行时注入）
 
 ## 技术栈与运行环境
 
@@ -121,20 +122,24 @@ backend/web/src/main/java/.../
 
 ```
 WebSocketController.handleChatMessage()
-    │ threadPool.submit()
+    │ streamChatAsync()：ActiveChatLimiter.tryAcquire()（满 → 回"服务繁忙"）
     ▼
-AgentService.doStreamChat()
-    │ 本地 AgentOrchestrator.stream()
-    │ CloseableHttpClient（独立 HTTP 客户端，读超时 600s）
+AgentService.localStreamChat()
+    │ 本地 AgentOrchestrator.stream()（Reactor，阻塞 IO 在 boundedElastic）
+    │ JDK HttpClient 流式读 Ollama NDJSON（逐 token）
     ▼
 逐行读 SSE → 解析 JSON → 构造 WS 消息 → JsonUtil.sendJsonMessage(session, msg)
 ```
 
 **注意事项**：
-- 流式使用独立的 `CloseableHttpClient`（非 RestTemplate），避免影响普通 REST 请求
-- `streamHttpClient` 连接池：`PoolingHttpClientConnectionManager`，max-per-route=20，socket timeout=620s（防推理挂住时线程永久阻塞）
-- `streamExecutor`：专用线程池（核心2/最大10/队列100），队列满时返回 503（AbortPolicy）而不是卡 Tomcat 线程
-- `session.isOpen()` 检查：客户端断连时及时终止流读取
+- LLM 调用统一走 `AbstractHttpLlmProvider`（JDK HttpClient，`subscribeOn(boundedElastic)`），
+  不再有独立 CloseableHttpClient 流式客户端
+- 非流式 `/api/chat` 异步化：`chatExecutor`（8/32/队列200）承接最长 620s 推理，Tomcat 线程立即释放，满时 503
+- 流式并发上限：`ActiveChatLimiter`（WS/SSE 共用，默认 32）在入口 tryAcquire，超限直接回"服务繁忙"
+- 推理闸门：`InferenceGate` 按模型分槽 + 排队超时（`LLM_INFERENCE_QUEUE_TIMEOUT` 默认 120s）
+- 槽位释放：`AgentService` 的订阅统一 `doFinally` 释放（complete/error/cancel 只一次）
+- `session.isOpen()==false` 时主动 `dispose()` 下游推理流，断线不再白占 boundedElastic 与闸门槽位
+- 技能运行时注入：`SkillMatcher` 命中后向上下文插入 `[SKILL]` 系统消息并过滤本轮工具集
 - 任务通知推送：本地 `TaskSchedulerService` 通知队列广播 WS `notification` 事件
 
 ### 用户 ID 提取（Java-only）
@@ -179,6 +184,12 @@ Channel Adapter 层（设计对齐旧 Python im/ 实现）：
 | `auth.users` | admin / user 各一个 | 用户名 + 密码配置 |
 | `spring.websocket.allowed-origins` | `*` | WS CORS |
 | `LOG_LEVEL` | `WARN` (Docker) / `INFO` (本地) | 日志级别 |
+| `ai.chat.max-concurrent-streams` | `32` | WS/SSE 流式对话并发上限（runtime `stream_concurrency` 可调）|
+| `ai.llm.inference-queue-timeout` | `120s` | 推理闸门排队超时 |
+| `ai.skills.runtime-enabled` | `true` | 技能运行时匹配/注入开关 |
+| `ai.skills.llm-timeout` | `10s` | 技能 LLM 意图裁决超时 |
+| `spring.mvc.async.request-timeout` | `660000ms` | 异步 REST 最长等待（须覆盖 chat_timeout 600s）|
+| `spring.task.execution.pool.max-size` | `32` | MVC 异步（SSE）执行器线程上限 |
 
 ---
 
@@ -199,6 +210,12 @@ cd backend/web
 
 # 测试
 ./mvnw test
+
+# E2E（需 backend + Ollama 运行）
+./mvnw.cmd -f ../../tests/e2e-java/pom.xml test
+
+# 压测/基线（需 backend + Ollama 运行）
+./mvnw.cmd -f ../../tests/perf-java/pom.xml test -Dgroups=perf -DexcludedGroups= -Dperf.saveBaseline=target/perf-report/baseline.json
 ```
 
 **环境变量注入（本地）**：
@@ -218,5 +235,5 @@ $env:ADMIN_PASSWORD = "你的管理密码"
 |------|------|------|
 | J-01 | `java-service` 固定 token，无法向 Python 透传真实用户 | ✅ 已随 Python 回滚路径移除；用户 ID 由 JwtAuthFilter request attribute + UserContext 提供 |
 | J-02 | `PythonProxyService` 和 `AgentService` 各维护独立 serviceToken，重复逻辑 | ✅ 已随 Python 回滚路径移除（2026-08-11） |
-| J-03 | 流式 `CloseableHttpClient` 无连接池配置，高并发可能连接耗尽 | 已配置 `PoolingHttpClientConnectionManager`（max-per-route=20），低优先级 |
+| J-03 | 流式 HTTP 客户端连接管理 | ✅ 已解决：LLM provider 统一 JDK HttpClient + Reactor boundedElastic；外部集成用 HttpClient 5 连接池（max 50/route 20）|
 | J-04 | WebSocket 握手无 JWT 验证 | ✅ 已修复：`JwtHandshakeInterceptor` 在握手阶段校验 token，提取 userId 存入 session attributes |

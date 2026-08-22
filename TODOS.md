@@ -67,6 +67,8 @@
 >   ControlNet UI 块、api.js 的 controlnet 请求函数全部清理。
 > - 仍未迁移项（评估后暂缓）：[PROGRESS RECOVERY] 进度恢复（任务树+待办注入已替代）、
 >   Prometheus /metrics（trace/health/usage 已替代）、Telegram 真实送达验证（缺凭证）。
+> - 文档同步：README.md（根）、backend/web/README.md、client/README.md、AI_PROJECT_CONTEXT.md
+>   更新至 2026-08-22 状态（异步 REST/并发上限/技能注入/压测工具/新配置项/测试计数）。
 >
 > **2026-08-15 架构审查产出**：新增「Java 迁移收尾」清单（P0 安全/数据 4 项、
 > P1 功能等价 5 项、P2 架构/体验 8 项），见下文专节。核查结论：Python 源码已全删
