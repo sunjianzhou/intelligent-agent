@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.time.Duration;
 
 /**
  * LLM provider 路由器：按请求模型解析实际 provider。
@@ -22,6 +23,7 @@ public class LlmProviderRouter {
     private final Set<String> cloudModels = ConcurrentHashMap.newKeySet();
     private final CircuitBreakerRegistry breakerRegistry;
     private final InferenceGate gate;
+    private final Duration queueTimeout;
 
     public LlmProviderRouter(LlmProvider local,
                              OpenAiCompatibleLlmProvider cloud,
@@ -41,10 +43,22 @@ public class LlmProviderRouter {
                              List<String> cloudModels,
                              CircuitBreakerRegistry breakerRegistry,
                              InferenceGate gate) {
+        this(local, cloud, cloudModels, breakerRegistry, gate,
+                ConcurrencyLimitedLlmProvider.DEFAULT_QUEUE_TIMEOUT);
+    }
+
+    public LlmProviderRouter(LlmProvider local,
+                             OpenAiCompatibleLlmProvider cloud,
+                             List<String> cloudModels,
+                             CircuitBreakerRegistry breakerRegistry,
+                             InferenceGate gate,
+                             Duration queueTimeout) {
         this.local = Objects.requireNonNull(local, "local provider is required");
         this.cloud = cloud;
         this.breakerRegistry = breakerRegistry;
         this.gate = gate;
+        this.queueTimeout = queueTimeout == null
+                ? ConcurrencyLimitedLlmProvider.DEFAULT_QUEUE_TIMEOUT : queueTimeout;
         if (cloudModels != null) {
             for (String model : cloudModels) {
                 registerCloudModel(model);
@@ -64,7 +78,9 @@ public class LlmProviderRouter {
         // 并发闸门在内、熔断在外：熔断打开时快速失败，不必先排队等槽位；
         // 未注入 gate（如纯单元测试）时行为与之前完全一致。
         if (gate != null) {
-            target = new ConcurrencyLimitedLlmProvider(target, gate);
+            // 按模型分槽：显式模型名各自独立计数，默认（空）走公共槽位
+            String gateKey = model.isEmpty() ? "" : model;
+            target = new ConcurrencyLimitedLlmProvider(target, gate, queueTimeout, gateKey);
         }
         if (breakerRegistry != null) {
             // G6：按模型熔断（未指定模型时按 provider 名），熔断打开时快速失败

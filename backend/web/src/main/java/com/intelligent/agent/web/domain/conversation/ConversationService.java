@@ -25,6 +25,14 @@ public class ConversationService {
 
     private static final int MAX_SESSIONS_LISTED = 100;
     private static final int MAX_RETRACT_BATCH = 50;
+    /** 按用户分片的写锁：同用户串行化读-改-写，不同用户可并发，去掉全局串行瓶颈。 */
+    private static final int LOCK_STRIPES = 64;
+    private final Object[] sessionLocks = new Object[LOCK_STRIPES];
+    {
+        for (int i = 0; i < LOCK_STRIPES; i++) {
+            sessionLocks[i] = new Object();
+        }
+    }
 
     private final JsonFileStore store;
     private final int maxMessages;
@@ -111,7 +119,7 @@ public class ConversationService {
             session.put("parent_session_id", parentSessionId);
         }
         session.put("messages", trimMessages(messages));
-        store.write(new String[]{"conversations", userId, newSessionId + ".json"}, session);
+        store.writeCompact(new String[]{"conversations", userId, newSessionId + ".json"}, session);
         log.info("分支会话已创建: user={}, new={}, parent={}, msgs={}",
                 userId, newSessionId, parentSessionId, messages.size());
 
@@ -121,9 +129,14 @@ public class ConversationService {
         return result;
     }
 
-    /** 读-改-写同一会话文件，synchronized 防并发丢更新（单实例部署）。 */
-    public synchronized Map<String, Object> append(String userId, String sessionId,
-                                                   List<Map<String, Object>> messages) {
+    private Object lockFor(String userId) {
+        return sessionLocks[(userId == null ? "" : userId).hashCode() & (LOCK_STRIPES - 1)];
+    }
+
+    /** 读-改-写同一会话文件：按用户分片锁防并发丢更新，不同用户不再互相阻塞。 */
+    public Map<String, Object> append(String userId, String sessionId,
+                                      List<Map<String, Object>> messages) {
+        synchronized (lockFor(userId)) {
         String effectiveSessionId = sessionId == null || sessionId.isBlank()
                 ? UUID.randomUUID().toString() : sessionId;
         if (messages == null || messages.isEmpty()) {
@@ -159,17 +172,19 @@ public class ConversationService {
         existing.addAll(enriched);
         session.put("messages", trimMessages(existing));
         session.put("updated_at", Instant.now().toString());
-        store.write(new String[]{"conversations", userId, effectiveSessionId + ".json"}, session);
+        store.writeCompact(new String[]{"conversations", userId, effectiveSessionId + ".json"}, session);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("success", true);
         result.put("session_id", effectiveSessionId);
         return result;
+        }
     }
 
-    /** 读-改-写同一会话文件，synchronized 防并发丢更新（单实例部署）。 */
-    public synchronized Map<String, Object> retract(String userId, String sessionId,
-                                                    List<String> requestedIds) {
+    /** 读-改-写同一会话文件：按用户分片锁防并发丢更新，不同用户不再互相阻塞。 */
+    public Map<String, Object> retract(String userId, String sessionId,
+                                       List<String> requestedIds) {
+        synchronized (lockFor(userId)) {
         List<String> dedup = new ArrayList<>(new LinkedHashSet<>(
                 requestedIds == null ? List.of() : requestedIds));
         if (dedup.size() > MAX_RETRACT_BATCH) {
@@ -210,13 +225,14 @@ public class ConversationService {
         }
         session.put("messages", kept);
         session.put("updated_at", Instant.now().toString());
-        store.write(new String[]{"conversations", userId, sessionId + ".json"}, session);
+        store.writeCompact(new String[]{"conversations", userId, sessionId + ".json"}, session);
 
         result.put("deleted", removedIds.size());
         result.put("deleted_ids", removedIds);
         // 级联清理记忆用：被撤回消息的内容列表
         result.put("removed_contents", removedContents);
         return result;
+        }
     }
 
     // ── 内部辅助 ──────────────────────────────────────────────

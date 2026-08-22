@@ -6,6 +6,41 @@
 
 ## 当前待办总览（2026-08-15 更新）
 
+> **2026-08-22 高并发/高性能优化**（后端 + Java CLI，全量测试 478 后端 + 12 客户端绿）：
+> - REST `/api/chat` 异步化：新增 `chatExecutor`（8/32/队列 200），Tomcat worker 不再被最长 620s
+>   的 LLM 调用占用；线程池满快速 503。
+> - 记忆蒸馏/摘要/项目提取异步化：`ConversationMemoryService` 注入 `memoryExecutor`（2/4/队列 500），
+>   每 5/10/8 轮的 LLM 提取不再阻塞响应收尾路径。
+> - 飞书事件执行器 `CallerRunsPolicy` → `AbortPolicy`：队列满由 `submitEvent` 兜底回复"服务繁忙"，
+>   不再让 WS/回调事件线程执行长任务（避免整条飞书连接被卡死）。
+> - 语义缓存向量化：`SemanticResponseCache` 写入时预计算问题向量，`findSimilar` 只 embed 当前查询，
+>   不再每次对全部缓存条目批量 `/api/embed`。
+> - 去掉热路径磁盘读：`runtime_config.json` / `user_model_prefs.json` 内存缓存（变更时同步更新）；
+>   `ModelService` 的 Ollama `/api/tags` 加 30s TTL 缓存。
+> - `TraceService` 落盘索引化：list/prune 不再每次全目录扫描（OTLP 导出本就异步）。
+> - `EmbeddingService` 缓存满 512 清空 → LRU；Java CLI `BackendClient` 复用 ObjectMapper。
+>
+> **2026-08-22 第二轮（并发控制收口，全量测试 490 后端 + 12 客户端绿）**：
+> - 推理闸门排队超时：`InferenceGate.acquire(Duration)` + `ConcurrencyLimitedLlmProvider`
+>   排队超过 `LLM_INFERENCE_QUEUE_TIMEOUT`（默认 120s）返回"推理队列繁忙"，
+>   不再无限期占用 boundedElastic 等待线程。
+> - 流式对话并发上限：新增 `ActiveChatLimiter`（WS + SSE 共用，默认 32），
+>   满时 WS 回"服务繁忙"错误事件、SSE 回 error 事件；runtime 配置 `stream_concurrency` 可调。
+> - 会话写入按用户分片锁：`ConversationService.append/retract` 去掉全局 `synchronized`，
+>   不同用户可并发写，同用户仍串行化读-改-写。
+> - 工具执行线程池有界化：`ToolExecutor` 从 `newCachedThreadPool` 改为 4/16/队列 200。
+> - SSE 异步执行器有界化：`spring.task.execution.pool` max 32 / 队列 200。
+> - 顺带修复真实 bug：`/api/chat/stream` 未声明 UTF-8 charset，SSE 中的中文会被替换成 '?'
+>   （影响 CLI 流式中文输出）；现显式 `text/event-stream;charset=UTF-8` + `setContentType`。
+>
+> **2026-08-22 第三轮（持久化写放大 + 按模型分槽，全量测试 494 后端 + 12 客户端绿）**：
+> - 向量记忆库按用户分文件：`memory/{userId}.json`（紧凑 JSON + 按用户分片锁），
+>   写放大从"全库 5000 条全量重写 + 全局串行"降到"单用户全量"；旧 `vector_memory.json`
+>   启动时自动迁移拆分（落盘确认后删除旧文件）。
+> - 推理闸门按模型分槽：`InferenceGate` 内部按 key 计数，显式模型名独立额度、
+>   默认走公共槽位；`setMaxConcurrency` 对所有槽位生效，`active()` 汇总。
+> - 会话文件改为紧凑 JSON（`JsonFileStore.writeCompact`），高频 append 写放大进一步下降。
+>
 > **2026-08-15 架构审查产出**：新增「Java 迁移收尾」清单（P0 安全/数据 4 项、
 > P1 功能等价 5 项、P2 架构/体验 8 项），见下文专节。核查结论：Python 源码已全删
 > （仅 tests/e2e 为 pytest 测试），但 LLM 工具从 22 个降到 9 个、任务无持久化、

@@ -118,4 +118,41 @@ class LlmProviderRouterTest {
         assertThat(calls).hasValue(1);
         assertThat(gate.active()).isZero();
     }
+
+    @Test
+    void perModelGatesAreIndependent() throws Exception {
+        InferenceGate gate = new InferenceGate(1);
+        AtomicInteger calls = new AtomicInteger();
+        LlmProvider fake = new LlmProvider() {
+            @Override
+            public String name() {
+                return "fake";
+            }
+
+            @Override
+            public Flux<ModelEvent> stream(ChatTurn turn) {
+                return Flux.just(new ModelEvent("content", "ok"));
+            }
+
+            @Override
+            public Mono<String> complete(ChatTurn turn) {
+                calls.incrementAndGet();
+                return Mono.just("ok");
+            }
+        };
+        LlmProviderRouter gated = new LlmProviderRouter(fake, null, List.of(), null, gate);
+
+        // 占满 deepseek-chat 槽位，qwen2.5:7b 槽位应独立可用
+        gate.acquire("deepseek-chat");
+
+        String result = gated.forUser("u1", "qwen2.5:7b")
+                .complete(ChatTurn.of("fake", List.of()))
+                .block(Duration.ofSeconds(5));
+
+        assertThat(result).isEqualTo("ok");
+        assertThat(calls).hasValue(1);
+
+        gate.release("deepseek-chat");
+        assertThat(gate.active()).isZero();
+    }
 }

@@ -60,7 +60,8 @@ public class LlmProviderConfig {
             CircuitBreakerRegistry circuitBreakerRegistry,
             InferenceGate inferenceGate,
             @Value("${ai.llm.cloud.models:}") List<String> cloudModels,
-            @Value("${ai.llm.cloud.model:}") String cloudModel) {
+            @Value("${ai.llm.cloud.model:}") String cloudModel,
+            @Value("${ai.llm.inference-queue-timeout:120s}") Duration queueTimeout) {
         List<String> models = new ArrayList<>();
         if (cloudModel != null && !cloudModel.isBlank()) {
             models.add(cloudModel.trim());
@@ -73,7 +74,7 @@ public class LlmProviderConfig {
             }
         }
         return new LlmProviderRouter(ollamaLlmProvider, cloudLlmProvider, models,
-                circuitBreakerRegistry, inferenceGate);
+                circuitBreakerRegistry, inferenceGate, queueTimeout);
     }
 
     /** 全局并发推理闸门：上限由 runtime 配置 inference_concurrency 驱动（ConfigRuntimeService 注入）。 */

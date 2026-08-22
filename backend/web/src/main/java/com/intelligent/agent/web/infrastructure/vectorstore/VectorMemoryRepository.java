@@ -41,6 +41,15 @@ public class VectorMemoryRepository implements MemoryRepository {
     private final Map<String, MemoryRecord> records = new ConcurrentHashMap<>();
     /** 记录 id → 嵌入向量缓存（G5：随记录落盘，避免每次检索全量重嵌入）。 */
     private final Map<String, double[]> vectors = new ConcurrentHashMap<>();
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    /** 按用户分片的写锁 + 每用户独立文件：写放大从"全库全量重写"降到"单用户全量"，跨用户不再串行。 */
+    private static final int LOCK_STRIPES = 64;
+    private final Object[] userLocks = new Object[LOCK_STRIPES];
+    {
+        for (int i = 0; i < LOCK_STRIPES; i++) {
+            userLocks[i] = new Object();
+        }
+    }
     private final EmbeddingService embeddingService;
     private final Path dataDir;
     private final int maxRecords;
@@ -73,7 +82,7 @@ public class VectorMemoryRepository implements MemoryRepository {
         // 内容可能变化，作废旧向量，检索时惰性重嵌
         vectors.remove(record.id());
         evictIfNeeded();
-        persist();
+        persist(record.userId());
     }
 
     @Override
@@ -111,7 +120,7 @@ public class VectorMemoryRepository implements MemoryRepository {
             }
         }
         if (backfilled) {
-            persist();
+            persist(query.userId());
         }
         return scoredList.stream()
                 .sorted(Comparator.comparingDouble((Scored s) -> s.score()).reversed())
@@ -146,7 +155,7 @@ public class VectorMemoryRepository implements MemoryRepository {
                 .toList();
         removedIds.forEach(records::remove);
         removedIds.forEach(vectors::remove);
-        persist();
+        persist(userId);
     }
 
     @Override
@@ -158,7 +167,7 @@ public class VectorMemoryRepository implements MemoryRepository {
         boolean removed = records.remove(memoryId, existing);
         if (removed) {
             vectors.remove(memoryId);
-            persist();
+            persist(userId);
         }
         return removed;
     }
@@ -237,33 +246,56 @@ public class VectorMemoryRepository implements MemoryRepository {
                 .limit(excess)
                 .map(MemoryRecord::id)
                 .toList();
+        java.util.Set<String> affectedUsers = new java.util.LinkedHashSet<>();
         for (String id : evict) {
+            MemoryRecord removed = records.get(id);
+            if (removed != null) {
+                affectedUsers.add(removed.userId());
+            }
             records.remove(id);
             vectors.remove(id);
+        }
+        for (String user : affectedUsers) {
+            persist(user);
         }
         log.info("向量记忆达到上限 {}，淘汰 {} 条", maxRecords, evict.size());
     }
 
     // ── 磁盘持久化（dataDir 非空时启用） ───────────────────────────────
 
-    private synchronized void persist() {
+    private Object lockFor(String userId) {
+        return userLocks[(userId == null ? "" : userId).hashCode() & (LOCK_STRIPES - 1)];
+    }
+
+    private static String fileName(String userId) {
+        String safe = (userId == null ? "default" : userId)
+                .replaceAll("[^A-Za-z0-9_.@:\\-]", "_");
+        return safe.isBlank() ? "default" : safe;
+    }
+
+    /** 只重写该用户的记忆文件（紧凑 JSON），不再全库全量落盘；按用户分片锁。 */
+    private void persist(String userId) {
         if (dataDir == null) {
             return;
         }
-        try {
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("version", 1);
-            List<Map<String, Object>> list = new ArrayList<>(records.size());
-            for (MemoryRecord record : records.values()) {
-                list.add(toMap(record));
+        synchronized (lockFor(userId)) {
+            try {
+                Path memoryDir = dataDir.resolve("memory");
+                Files.createDirectories(memoryDir);
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("version", 1);
+                List<Map<String, Object>> list = new ArrayList<>();
+                for (MemoryRecord record : records.values()) {
+                    if (record.userId().equals(userId)) {
+                        list.add(toMap(record));
+                    }
+                }
+                data.put("records", list);
+                Files.writeString(memoryDir.resolve(fileName(userId) + ".json"),
+                        MAPPER.writeValueAsString(data), StandardCharsets.UTF_8);
+            } catch (Exception e) {
+                log.warn("向量记忆持久化失败 (user={}): {}", userId, e.getMessage());
             }
-            data.put("records", list);
-            Files.createDirectories(dataDir.resolve("memory"));
-            Files.writeString(dataDir.resolve("memory").resolve("vector_memory.json"),
-                    new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(data),
-                    StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            log.warn("向量记忆持久化失败: {}", e.getMessage());
         }
     }
 
@@ -271,14 +303,40 @@ public class VectorMemoryRepository implements MemoryRepository {
         if (dataDir == null) {
             return;
         }
-        Path file = dataDir.resolve("memory").resolve("vector_memory.json");
-        if (!Files.exists(file)) {
+        Path memoryDir = dataDir.resolve("memory");
+        if (!Files.isDirectory(memoryDir)) {
             return;
         }
         try {
-            Map<String, Object> data = new ObjectMapper().readValue(
+            Path legacy = memoryDir.resolve("vector_memory.json");
+            if (Files.exists(legacy)) {
+                loadFile(legacy);
+                // 迁移：旧单文件 → 按用户拆分，逐用户落盘确认后再移除旧文件
+                java.util.Set<String> users = new java.util.LinkedHashSet<>();
+                for (MemoryRecord record : records.values()) {
+                    users.add(record.userId());
+                }
+                for (String user : users) {
+                    persist(user);
+                }
+                Files.deleteIfExists(legacy);
+            }
+            try (var stream = Files.list(memoryDir)) {
+                stream.filter(p -> p.getFileName().toString().endsWith(".json"))
+                        .filter(p -> !p.getFileName().toString().equals("vector_memory.json"))
+                        .forEach(this::loadFile);
+            }
+        } catch (Exception e) {
+            log.warn("向量记忆加载失败（忽略，以空库启动）: {}", e.getMessage());
+        }
+    }
+
+    private void loadFile(Path file) {
+        try {
+            Map<String, Object> data = MAPPER.readValue(
                     Files.readString(file, StandardCharsets.UTF_8), new TypeReference<>() {});
             Object list = data.get("records");
+            int loaded = 0;
             if (list instanceof List) {
                 for (Object item : (List<?>) list) {
                     if (item instanceof Map) {
@@ -294,13 +352,14 @@ public class VectorMemoryRepository implements MemoryRepository {
                                 }
                                 vectors.put(record.id(), restored);
                             }
+                            loaded++;
                         }
                     }
                 }
             }
-            log.info("向量记忆已加载 {} 条: {}", records.size(), file);
+            log.info("向量记忆已加载 {} 条: {}", loaded, file);
         } catch (Exception e) {
-            log.warn("向量记忆加载失败（忽略，以空库启动）: {}", e.getMessage());
+            log.warn("向量记忆文件读取失败 {}（跳过）: {}", file, e.getMessage());
         }
     }
 

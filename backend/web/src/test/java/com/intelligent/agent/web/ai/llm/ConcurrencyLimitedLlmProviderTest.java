@@ -94,6 +94,49 @@ class ConcurrencyLimitedLlmProviderTest {
         awaitActiveZero(gate);
     }
 
+    @Test
+    void completeFailsWhenQueueTimesOut() throws Exception {
+        InferenceGate gate = new InferenceGate(1);
+        gate.acquire();
+        ConcurrencyLimitedLlmProvider provider = new ConcurrencyLimitedLlmProvider(
+                new CountingProvider(), gate, Duration.ofMillis(100));
+
+        StepVerifier.create(provider.complete(ChatTurn.of("fake", List.of())))
+                .expectErrorMatches(e -> e instanceof LlmProviderException
+                        && e.getMessage() != null
+                        && e.getMessage().contains("推理队列繁忙"))
+                .verify(Duration.ofSeconds(5));
+
+        gate.release();
+        assertThat(gate.active()).isZero();
+    }
+
+    @Test
+    void completeAcquiresSlotWithinTimeoutWhenCapacityFrees() throws Exception {
+        InferenceGate gate = new InferenceGate(1);
+        gate.acquire();
+        CountingProvider delegate = new CountingProvider();
+        ConcurrencyLimitedLlmProvider provider = new ConcurrencyLimitedLlmProvider(
+                delegate, gate, Duration.ofSeconds(2));
+        Thread releaser = new Thread(() -> {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            gate.release();
+        });
+        releaser.start();
+
+        String result = provider.complete(ChatTurn.of("fake", List.of()))
+                .block(Duration.ofSeconds(5));
+
+        assertThat(result).isEqualTo("pong");
+        releaser.join(2000);
+        awaitActiveZero(gate);
+        assertThat(delegate.calls).hasValue(1);
+    }
+
     /** doFinally 的释放发生在 boundedElastic 线程，主线程需有界等待，避免时序竞态。 */
     private static void awaitActiveZero(InferenceGate gate) {
         long deadline = System.currentTimeMillis() + 5000;

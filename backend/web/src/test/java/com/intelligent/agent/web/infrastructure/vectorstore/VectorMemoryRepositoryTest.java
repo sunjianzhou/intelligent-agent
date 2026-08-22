@@ -5,6 +5,8 @@ import com.intelligent.agent.web.ai.memory.MemorySearchQuery;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -79,7 +81,7 @@ class VectorMemoryRepositoryTest {
                 .contains("m1");
 
         String persisted = java.nio.file.Files.readString(
-                tempDir.resolve("memory/vector_memory.json"));
+                tempDir.resolve("memory/alice.json"));
         assertThat(persisted).contains("\"vector\"");
 
         // 重载后仍可检索（向量从磁盘恢复，不重新嵌入）
@@ -106,5 +108,39 @@ class VectorMemoryRepositoryTest {
         assertThat(repo.search("alice", "shared preference note", 5))
                 .extracting(MemoryRecord::id)
                 .containsExactly("new", "old");
+    }
+
+    @Test
+    void migratesLegacySingleFileToPerUserFiles() throws Exception {
+        Path memoryDir = tempDir.resolve("memory");
+        Files.createDirectories(memoryDir);
+        Map<String, Object> legacy = new java.util.LinkedHashMap<>();
+        legacy.put("version", 1);
+        legacy.put("records", List.of(
+                legacyRecord("m1", "alice", "alice fact"),
+                legacyRecord("m2", "bob", "bob fact")));
+        Files.writeString(memoryDir.resolve("vector_memory.json"),
+                new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(legacy),
+                StandardCharsets.UTF_8);
+
+        VectorMemoryRepository repo = new VectorMemoryRepository(tempDir);
+
+        assertThat(Files.exists(memoryDir.resolve("alice.json"))).isTrue();
+        assertThat(Files.exists(memoryDir.resolve("bob.json"))).isTrue();
+        assertThat(Files.exists(memoryDir.resolve("vector_memory.json"))).isFalse();
+        assertThat(repo.count(MemorySearchQuery.builder("alice", "", 10).build())).isEqualTo(1);
+        assertThat(repo.count(MemorySearchQuery.builder("bob", "", 10).build())).isEqualTo(1);
+    }
+
+    private static Map<String, Object> legacyRecord(String id, String userId, String content) {
+        return Map.of(
+                "id", id,
+                "userId", userId,
+                "content", content,
+                "metadata", Map.of(),
+                "importance", 0.8,
+                "createdAt", "2026-08-01T00:00:00Z",
+                "updatedAt", "2026-08-01T00:00:00Z",
+                "accessCount", 0);
     }
 }

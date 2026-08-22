@@ -7,6 +7,7 @@ import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.time.Duration;
 
 /**
  * Decorator that gates LLM calls behind a shared {@link InferenceGate}
@@ -16,12 +17,28 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class ConcurrencyLimitedLlmProvider implements LlmProvider {
 
+    public static final Duration DEFAULT_QUEUE_TIMEOUT = Duration.ofSeconds(120);
+
     private final LlmProvider delegate;
     private final InferenceGate gate;
+    private final Duration queueTimeout;
+    private final String gateKey;
 
     ConcurrencyLimitedLlmProvider(LlmProvider delegate, InferenceGate gate) {
+        this(delegate, gate, DEFAULT_QUEUE_TIMEOUT);
+    }
+
+    ConcurrencyLimitedLlmProvider(LlmProvider delegate, InferenceGate gate,
+                                  Duration queueTimeout) {
+        this(delegate, gate, queueTimeout, "");
+    }
+
+    ConcurrencyLimitedLlmProvider(LlmProvider delegate, InferenceGate gate,
+                                  Duration queueTimeout, String gateKey) {
         this.delegate = delegate;
         this.gate = gate;
+        this.queueTimeout = queueTimeout == null ? DEFAULT_QUEUE_TIMEOUT : queueTimeout;
+        this.gateKey = gateKey == null ? "" : gateKey;
     }
 
     @Override
@@ -33,7 +50,10 @@ public class ConcurrencyLimitedLlmProvider implements LlmProvider {
     public Flux<ModelEvent> stream(ChatTurn turn) {
         AtomicBoolean acquired = new AtomicBoolean();
         return Mono.fromCallable(() -> {
-                    gate.acquire();
+                    if (!gate.acquire(gateKey, queueTimeout)) {
+                        throw new LlmProviderException(
+                                "推理队列繁忙，排队超过 " + queueTimeout.toSeconds() + "s，请稍后再试");
+                    }
                     acquired.set(true);
                     return true;
                 })
@@ -41,7 +61,7 @@ public class ConcurrencyLimitedLlmProvider implements LlmProvider {
                 .flatMapMany(ignored -> delegate.stream(turn))
                 .doFinally(signal -> {
                     if (acquired.get()) {
-                        gate.release();
+                        gate.release(gateKey);
                     }
                 });
     }
@@ -50,7 +70,10 @@ public class ConcurrencyLimitedLlmProvider implements LlmProvider {
     public Mono<String> complete(ChatTurn turn) {
         AtomicBoolean acquired = new AtomicBoolean();
         return Mono.fromCallable(() -> {
-                    gate.acquire();
+                    if (!gate.acquire(gateKey, queueTimeout)) {
+                        throw new LlmProviderException(
+                                "推理队列繁忙，排队超过 " + queueTimeout.toSeconds() + "s，请稍后再试");
+                    }
                     acquired.set(true);
                     return true;
                 })
@@ -58,7 +81,7 @@ public class ConcurrencyLimitedLlmProvider implements LlmProvider {
                 .flatMap(ignored -> delegate.complete(turn))
                 .doFinally(signal -> {
                     if (acquired.get()) {
-                        gate.release();
+                        gate.release(gateKey);
                     }
                 });
     }
@@ -67,7 +90,10 @@ public class ConcurrencyLimitedLlmProvider implements LlmProvider {
     public Mono<LlmResponse> completeWithTools(ChatTurn turn, List<ToolDefinition> tools) {
         AtomicBoolean acquired = new AtomicBoolean();
         return Mono.fromCallable(() -> {
-                    gate.acquire();
+                    if (!gate.acquire(gateKey, queueTimeout)) {
+                        throw new LlmProviderException(
+                                "推理队列繁忙，排队超过 " + queueTimeout.toSeconds() + "s，请稍后再试");
+                    }
                     acquired.set(true);
                     return true;
                 })
@@ -75,7 +101,7 @@ public class ConcurrencyLimitedLlmProvider implements LlmProvider {
                 .flatMap(ignored -> delegate.completeWithTools(turn, tools))
                 .doFinally(signal -> {
                     if (acquired.get()) {
-                        gate.release();
+                        gate.release(gateKey);
                     }
                 });
     }

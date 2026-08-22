@@ -1,15 +1,21 @@
 package com.intelligent.agent.web.ai.llm;
 
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
+
 /**
- * Global gate limiting concurrent LLM inference (wires runtime inference_concurrency).
- * Semantics match the runtime config description: requests beyond the limit queue up
- * and wait for a slot. The limit can be adjusted at runtime.
+ * 推理并发闸门（runtime inference_concurrency 驱动）：超过上限的请求排队等待。
+ * <p>
+ * 支持按 key（模型名）独立计数：显式指定模型时各模型拥有自己的并发额度，
+ * 默认（空 key）走公共槽位；{@code setMaxConcurrency} 对全部 key 生效。
+ * 排队可限时（{@link #acquire(String, Duration)}），超时返回 false，避免无限期占用等待线程。
  */
 public class InferenceGate {
 
     private final Object lock = new Object();
+    private final Map<String, Integer> activeByKey = new HashMap<>();
     private volatile int maxConcurrency;
-    private int active;
 
     public InferenceGate() {
         this(1);
@@ -19,29 +25,71 @@ public class InferenceGate {
         this.maxConcurrency = Math.max(1, maxConcurrency);
     }
 
-    /** Acquire one inference slot; blocks while at capacity until a slot is released. */
+    /** 默认槽位（空 key）无限期获取。 */
     public void acquire() throws InterruptedException {
+        acquire("");
+    }
+
+    /** 指定 key 无限期获取。 */
+    public void acquire(String key) throws InterruptedException {
+        acquire(key, null);
+    }
+
+    /** 默认槽位限时获取：超时返回 false。 */
+    public boolean acquire(Duration timeout) throws InterruptedException {
+        return acquire("", timeout);
+    }
+
+    /** 指定 key 限时获取：超过 timeout 仍未拿到返回 false（调用方转成"推理繁忙"错误）。 */
+    public boolean acquire(String key, Duration timeout) throws InterruptedException {
+        String k = key == null ? "" : key;
+        boolean timed = timeout != null && !timeout.isZero() && !timeout.isNegative();
+        long deadline = timed ? System.nanoTime() + timeout.toNanos() : 0;
         synchronized (lock) {
-            while (active >= maxConcurrency) {
-                lock.wait();
+            while (activeByKey.getOrDefault(k, 0) >= maxConcurrency) {
+                if (!timed) {
+                    lock.wait();
+                    continue;
+                }
+                long remainingNanos = deadline - System.nanoTime();
+                if (remainingNanos <= 0) {
+                    return false;
+                }
+                lock.wait(remainingNanos / 1_000_000L,
+                        (int) (remainingNanos % 1_000_000L));
             }
-            active++;
+            activeByKey.merge(k, 1, Integer::sum);
+            return true;
         }
     }
 
-    /** Release one inference slot and wake waiters. */
+    /** 释放默认槽位。 */
     public void release() {
+        release("");
+    }
+
+    /** 释放指定 key 的槽位。 */
+    public void release(String key) {
+        String k = key == null ? "" : key;
         synchronized (lock) {
-            if (active > 0) {
-                active--;
+            Integer current = activeByKey.get(k);
+            if (current != null && current > 0) {
+                if (current == 1) {
+                    activeByKey.remove(k);
+                } else {
+                    activeByKey.put(k, current - 1);
+                }
+                lock.notifyAll();
             }
-            lock.notifyAll();
         }
     }
 
+    /** 全部 key 的活跃推理数之和。 */
     public int active() {
         synchronized (lock) {
-            return active;
+            return activeByKey.values().stream()
+                    .mapToInt(Integer::intValue)
+                    .sum();
         }
     }
 
@@ -49,6 +97,7 @@ public class InferenceGate {
         return maxConcurrency;
     }
 
+    /** 调整并发上限：对默认与全部已存在 key 立即生效。 */
     public void setMaxConcurrency(int max) {
         synchronized (lock) {
             this.maxConcurrency = Math.max(1, max);
