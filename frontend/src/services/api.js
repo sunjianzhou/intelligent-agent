@@ -247,8 +247,6 @@ export const retractMessages = (sessionId, messageIds) =>
 
 export const getImageProviderStatus = () => request(`${BASE}/image/provider-status`)
 export const getImageProgress       = () => request(`${BASE}/image/progress`)
-export const getControlnetModules   = () => request(`${BASE}/image/controlnet/modules`)
-export const getControlnetModels    = () => request(`${BASE}/image/controlnet/models`)
 export const listImageModels        = () => request(`${BASE}/image/models`)
 export const switchImageModel       = (model) =>
   request(`${BASE}/image/switch-model`, {

@@ -54,6 +54,10 @@ ai:
   # 流式对话并发上限（WS + SSE 共用；runtime 配置 stream_concurrency 可调）
   chat:
     max-concurrent-streams: ${MAX_CONCURRENT_STREAMS:32}
+  # 技能运行时匹配/注入（迁移自 Python skills/manager + applicator）
+  skills:
+    runtime-enabled: ${AI_SKILLS_RUNTIME_ENABLED:true}
+    llm-timeout: ${AI_SKILLS_LLM_TIMEOUT:10s}
   # G6 planning 前置：复杂任务先出计划再执行（启发式门控 + 低温度 LLM 计划生成）
   planning:
     enabled: ${AI_PLANNING_ENABLED:true}

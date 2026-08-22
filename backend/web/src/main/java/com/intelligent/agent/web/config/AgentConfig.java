@@ -17,6 +17,7 @@ import com.intelligent.agent.web.ai.memory.SemanticResponseCache;
 import com.intelligent.agent.web.ai.prompt.PromptService;
 import com.intelligent.agent.web.ai.prompt.SoulLoader;
 import com.intelligent.agent.web.ai.prompt.SystemPromptBuilder;
+import com.intelligent.agent.web.ai.skill.SkillMatcher;
 import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
 import com.intelligent.agent.web.infrastructure.vectorstore.EmbeddingService;
 import com.intelligent.agent.web.infrastructure.monitoring.SystemResourceService;
@@ -40,6 +41,7 @@ import com.intelligent.agent.web.ai.tool.builtin.SystemInfoTool;
 import com.intelligent.agent.web.ai.tool.builtin.AdvancedCalculatorTool;
 import com.intelligent.agent.web.ai.tool.builtin.HeartRecordTool;
 import com.intelligent.agent.web.domain.role.RoleService;
+import com.intelligent.agent.web.domain.skill.SkillService;
 import com.intelligent.agent.web.domain.task.TaskService;
 import com.intelligent.agent.web.im.ChannelAdapterManager;
 import com.intelligent.agent.web.integration.feishu.FeishuChannelClient;
@@ -205,10 +207,21 @@ public class AgentConfig {
                                                ConfigRuntimeService configRuntimeService,
                                                TaskPlanner taskPlanner,
                                                AnswerReflector answerReflector,
-                                               ApprovalGate approvalGate) {
+                                               ApprovalGate approvalGate,
+                                               SkillMatcher skillMatcher) {
         return new AgentOrchestrator(llmProviderRouter, toolExecutor, conversationMemoryService,
                 promptService, branchFailureDetector, AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS,
-                traceService, configRuntimeService, taskPlanner, answerReflector, approvalGate);
+                traceService, configRuntimeService, taskPlanner, answerReflector, approvalGate,
+                skillMatcher);
+    }
+
+    /** 技能运行时匹配/注入（迁移自 Python skills/manager.py + applicator.py）。 */
+    @Bean
+    public SkillMatcher skillMatcher(SkillService skillService,
+                                     LlmProviderRouter llmProviderRouter,
+                                     @Value("${ai.skills.runtime-enabled:true}") boolean enabled,
+                                     @Value("${ai.skills.llm-timeout:10s}") Duration llmTimeout) {
+        return new SkillMatcher(skillService, llmProviderRouter, enabled, llmTimeout);
     }
 
     /** G6 planning 前置：LLM 计划器（启发式门控 + 低温度计划生成，失败降级）。 */

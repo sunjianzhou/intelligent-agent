@@ -16,6 +16,8 @@ import com.intelligent.agent.web.ai.memory.AgentContext;
 import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
 import com.intelligent.agent.web.ai.memory.MemoryRecord;
 import com.intelligent.agent.web.ai.prompt.PromptService;
+import com.intelligent.agent.web.ai.skill.SkillMatcher;
+import com.intelligent.agent.web.ai.tool.ToolDefinition;
 import com.intelligent.agent.web.ai.tool.TextToolCallParser;
 import com.intelligent.agent.web.ai.tool.ToolCall;
 import com.intelligent.agent.web.ai.tool.ToolExecutionContext;
@@ -66,6 +68,7 @@ public class AgentOrchestrator {
     private final TaskPlanner planner;
     private final AnswerReflector reflector;
     private final ApprovalGate approvalGate;
+    private final SkillMatcher skillMatcher;
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor) {
         this(router, toolExecutor, DEFAULT_MAX_TOOL_ROUNDS);
@@ -139,6 +142,18 @@ public class AgentOrchestrator {
                              TraceService traceService, ConfigRuntimeService configRuntimeService,
                              TaskPlanner planner, AnswerReflector reflector,
                              ApprovalGate approvalGate) {
+        this(router, toolExecutor, memoryService, promptService, branchFailureDetector,
+                maxToolRounds, traceService, configRuntimeService, planner, reflector,
+                approvalGate, null);
+    }
+
+    public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
+                             ConversationMemoryService memoryService,
+                             PromptService promptService,
+                             BranchFailureDetector branchFailureDetector, int maxToolRounds,
+                             TraceService traceService, ConfigRuntimeService configRuntimeService,
+                             TaskPlanner planner, AnswerReflector reflector,
+                             ApprovalGate approvalGate, SkillMatcher skillMatcher) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.toolExecutor = Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
         this.toolCallParser = new TextToolCallParser();
@@ -152,6 +167,7 @@ public class AgentOrchestrator {
         this.planner = planner;
         this.reflector = reflector;
         this.approvalGate = approvalGate;
+        this.skillMatcher = skillMatcher;
     }
 
     public Flux<ModelEvent> stream(AgentRequestContext context) {
@@ -170,16 +186,23 @@ public class AgentOrchestrator {
                     .doOnError(e -> endTrace(traceId, false));
         }
         StringBuilder tokens = new StringBuilder();
-        return planningMono(context, traceId)
-                .flatMapMany(plan -> {
+        Mono<SkillMatch> skillMono = Mono.fromCallable(() -> matchSkill(context))
+                .subscribeOn(Schedulers.boundedElastic());
+        Mono<Optional<ExecutionPlan>> planMono = planningMono(context, traceId);
+        // 技能匹配（可能触发 LLM 裁决）与 planning 并发执行，避免串行多一次 LLM 往返
+        return Mono.zip(skillMono, planMono)
+                .flatMapMany(tuple -> {
+                    SkillMatch skillMatch = tuple.getT1();
+                    Optional<ExecutionPlan> plan = tuple.getT2();
                     List<ChatMessage> messages = plan.isPresent()
-                            ? withPlan(initialMessages(context, memory), plan.get())
-                            : initialMessages(context, memory);
+                            ? withPlan(initialMessages(context, memory, skillMatch.prompt()), plan.get())
+                            : initialMessages(context, memory, skillMatch.prompt());
                     // HITL：审批请求等中途事件经 midEvents 与主事件流合并（审批前先推送）
                     Sinks.Many<ModelEvent> midEvents =
                             Sinks.many().unicast().onBackpressureBuffer();
                     Flux<ModelEvent> rounds = runToolRounds(context, messages,
-                                    0, List.of(), traceId, midEvents::tryEmitNext)
+                                    0, List.of(), traceId, midEvents::tryEmitNext,
+                                    skillMatch.toolDefs())
                             .doFinally(signal -> midEvents.tryEmitComplete())
                             .flatMapMany(state -> streamFinal(context, state, traceId));
                     Flux<ModelEvent> merged = Flux.merge(midEvents.asFlux(), rounds);
@@ -213,12 +236,18 @@ public class AgentOrchestrator {
                     })
                     .doOnError(e -> endTrace(traceId, false));
         }
-        return planningMono(context, traceId)
-                .flatMap(plan -> {
+        Mono<SkillMatch> skillMono = Mono.fromCallable(() -> matchSkill(context))
+                .subscribeOn(Schedulers.boundedElastic());
+        Mono<Optional<ExecutionPlan>> planMono = planningMono(context, traceId);
+        return Mono.zip(skillMono, planMono)
+                .flatMap(tuple -> {
+                    SkillMatch skillMatch = tuple.getT1();
+                    Optional<ExecutionPlan> plan = tuple.getT2();
                     List<ChatMessage> messages = plan.isPresent()
-                            ? withPlan(initialMessages(context, memory), plan.get())
-                            : initialMessages(context, memory);
-                    return runToolRounds(context, messages, 0, List.of(), traceId)
+                            ? withPlan(initialMessages(context, memory, skillMatch.prompt()), plan.get())
+                            : initialMessages(context, memory, skillMatch.prompt());
+                    return runToolRounds(context, messages, 0, List.of(), traceId,
+                                    skillMatch.toolDefs())
                             .flatMap(state -> completeFinal(context, state, traceId));
                 })
                 .doOnSuccess(answer -> {
@@ -322,7 +351,28 @@ public class AgentOrchestrator {
         return json.length() <= 200 ? json : json.substring(0, 200) + "...";
     }
 
+    /** 技能运行时匹配：命中则生成 [SKILL] 提示词并过滤工具集；未命中用全量工具。 */
+    private SkillMatch matchSkill(AgentRequestContext ctx) {
+        if (skillMatcher == null || !ctx.useTools()) {
+            return SkillMatch.none(toolExecutor.definitions());
+        }
+        java.util.Optional<Map<String, Object>> matched =
+                skillMatcher.findSkill(ctx.userId(), ctx.message());
+        if (matched.isEmpty()) {
+            return SkillMatch.none(toolExecutor.definitions());
+        }
+        Map<String, Object> skill = matched.get();
+        String prompt = "[SKILL: " + String.valueOf(skill.getOrDefault("name", "")) + "]\n"
+                + SkillMatcher.buildInjectionPrompt(skill);
+        return new SkillMatch(prompt, skillMatcher.filterTools(toolExecutor.definitions(), skill));
+    }
+
     private List<ChatMessage> initialMessages(AgentRequestContext ctx, AgentContext memory) {
+        return initialMessages(ctx, memory, "");
+    }
+
+    private List<ChatMessage> initialMessages(AgentRequestContext ctx, AgentContext memory,
+                                              String skillPrompt) {
         List<ChatMessage> messages = new ArrayList<>();
         if (promptService != null) {
             messages.add(ChatMessage.system(promptService.buildSystemPrompt(ctx)));
@@ -375,6 +425,9 @@ public class AgentOrchestrator {
                 }
             }
             messages.addAll(memory.history());
+        }
+        if (skillPrompt != null && !skillPrompt.isBlank()) {
+            messages.add(ChatMessage.system(skillPrompt));
         }
         messages.add(ChatMessage.user(ctx.message()));
         return messages;
@@ -505,27 +558,43 @@ public class AgentOrchestrator {
                                            int round, List<ToolCall> executedCalls,
                                            String traceId) {
         return runToolRounds(ctx, messages, round, executedCalls,
-                new ArrayList<>(), new ArrayList<>(), traceId, null);
+                new ArrayList<>(), new ArrayList<>(), traceId, null, toolExecutor.definitions());
     }
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
                                            int round, List<ToolCall> executedCalls,
                                            String traceId, Consumer<ModelEvent> eventSink) {
         return runToolRounds(ctx, messages, round, executedCalls,
-                new ArrayList<>(), new ArrayList<>(), traceId, eventSink);
+                new ArrayList<>(), new ArrayList<>(), traceId, eventSink, toolExecutor.definitions());
+    }
+
+    private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
+                                           int round, List<ToolCall> executedCalls,
+                                           String traceId, List<ToolDefinition> toolDefs) {
+        return runToolRounds(ctx, messages, round, executedCalls,
+                new ArrayList<>(), new ArrayList<>(), traceId, null, toolDefs);
+    }
+
+    private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
+                                           int round, List<ToolCall> executedCalls,
+                                           String traceId, Consumer<ModelEvent> eventSink,
+                                           List<ToolDefinition> toolDefs) {
+        return runToolRounds(ctx, messages, round, executedCalls,
+                new ArrayList<>(), new ArrayList<>(), traceId, eventSink, toolDefs);
     }
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
                                            int round, List<ToolCall> executedCalls,
                                            List<ToolResult> failures,
                                            List<String> assistantTexts, String traceId,
-                                           Consumer<ModelEvent> eventSink) {
+                                           Consumer<ModelEvent> eventSink,
+                                           List<ToolDefinition> toolDefs) {
         if (round >= maxToolRounds) {
             return Mono.just(new ReActState(messages, "", true, executedCalls, false));
         }
         LlmProvider provider = router.forUser(ctx.userId(), ctx.model());
         Mono<LlmResponse> responseMono = ctx.useTools()
-                ? provider.completeWithTools(buildTurn(ctx, messages), toolExecutor.definitions())
+                ? provider.completeWithTools(buildTurn(ctx, messages), toolDefs)
                 : provider.complete(buildTurn(ctx, messages))
                         .map(content -> new LlmResponse(content, List.of()));
         responseMono = traceLlmCall(traceId, responseMono, ctx, false);
@@ -543,7 +612,7 @@ public class AgentOrchestrator {
                 })
                 .flatMap(state -> state.continueLoop()
                         ? runToolRounds(ctx, state.messages(), round + 1,
-                        state.executedCalls(), failures, assistantTexts, traceId, eventSink)
+                        state.executedCalls(), failures, assistantTexts, traceId, eventSink, toolDefs)
                         : Mono.just(state));
     }
 
@@ -791,5 +860,12 @@ public class AgentOrchestrator {
     /** ReAct 状态：消息列表 + 当前无工具回复内容 + 是否执行过工具 + 已执行调用。 */
     private record ReActState(List<ChatMessage> messages, String content, boolean toolsRan,
                               List<ToolCall> executedCalls, boolean continueLoop) {
+    }
+
+    /** 技能匹配结果：注入提示词（空 = 未命中）+ 本次请求的可用工具集。 */
+    private record SkillMatch(String prompt, List<ToolDefinition> toolDefs) {
+        static SkillMatch none(List<ToolDefinition> toolDefs) {
+            return new SkillMatch("", toolDefs);
+        }
     }
 }

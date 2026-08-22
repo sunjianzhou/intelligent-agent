@@ -59,6 +59,15 @@
 > - CI 接入：`.github/workflows/ci.yml` 新增 `workflow_dispatch` 手动 job（`run_perf` 输入），
 >   起 Ollama + 后端后跑 perf 套件并把报告作为 artifact 上传；pom 默认排除 `@Tag("perf")`。
 >
+> **2026-08-22 第六轮（Python→Java 迁移缺口收口，全量测试 505 后端 + 20 前端绿）**：
+> - 补技能运行时匹配/注入：新增 `SkillMatcher`（关键词命中 + LLM 意图裁决 + `[SKILL]`
+>   提示词注入 + forced_tools 工具过滤，名称归一化兼容 CalculatorTool/time_tool 旧名），
+>   配置 `ai.skills.runtime-enabled`（默认开）/ `ai.skills.llm-timeout`；编排器按请求匹配并过滤工具集。
+> - 前端移除 controlnet 死代码（后端 ComfyUI-only，无 controlnet 端点）：ImageView 的
+>   ControlNet UI 块、api.js 的 controlnet 请求函数全部清理。
+> - 仍未迁移项（评估后暂缓）：[PROGRESS RECOVERY] 进度恢复（任务树+待办注入已替代）、
+>   Prometheus /metrics（trace/health/usage 已替代）、Telegram 真实送达验证（缺凭证）。
+>
 > **2026-08-15 架构审查产出**：新增「Java 迁移收尾」清单（P0 安全/数据 4 项、
 > P1 功能等价 5 项、P2 架构/体验 8 项），见下文专节。核查结论：Python 源码已全删
 > （仅 tests/e2e 为 pytest 测试），但 LLM 工具从 22 个降到 9 个、任务无持久化、
