@@ -10,6 +10,10 @@ on:
         description: "Run E2E suite (needs Ollama + backend, slow)"
         type: boolean
         default: false
+      run_perf:
+        description: "Run perf/baseline suite (needs Ollama + backend, slow)"
+        type: boolean
+        default: false
 
 jobs:
   backend:
@@ -78,3 +82,49 @@ jobs:
           curl -sf http://localhost:8080/api/health
       - name: Run Java E2E suite (replaces retired Python pytest E2E)
         run: cd backend/web && ./mvnw -f ../../tests/e2e-java/pom.xml test
+
+  perf:
+    name: Perf baseline (manual · needs Ollama)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.run_perf
+    env:
+      JWT_SECRET: ci-e2e-jwt-secret-0123456789abcdef
+      ADMIN_PASSWORD: admin123
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Start Ollama and pull models
+        run: |
+          docker run -d --name ollama -p 11434:11434 -v ollama:/root/.ollama ollama/ollama
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:11434/api/tags >/dev/null; then break; fi
+            sleep 2
+          done
+          docker exec ollama ollama pull qwen2.5:7b
+          docker exec ollama ollama pull nomic-embed-text
+      - name: Start Java backend
+        run: |
+          cd backend/web
+          nohup ./mvnw spring-boot:run > /tmp/backend.log 2>&1 &
+          for i in $(seq 1 120); do
+            if curl -sf http://localhost:8080/api/health >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -sf http://localhost:8080/api/health
+      - name: Run perf suite (health/chat/stream, save CI baseline)
+        run: |
+          cd backend/web
+          ./mvnw -f ../../tests/perf-java/pom.xml test \
+            -Dgroups=perf -DexcludedGroups= \
+            -Dperf.concurrency=2 -Dperf.healthIterations=200 \
+            -Dperf.chatIterations=2 -Dperf.streamIterations=2 \
+            -Dperf.saveBaseline=target/perf-report/ci-baseline.json
+      - name: Upload perf report
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-report
+          path: tests/perf-java/target/perf-report/*.json

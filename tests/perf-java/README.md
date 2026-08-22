@@ -49,4 +49,6 @@ cd backend/web
 - `chat` / `stream` 走真实 LLM 推理，耗时取决于本机 Ollama；默认并发 4 配合
   `inference_concurrency=1` 会形成排队，恰好能观察闸门行为。
 - 结果对机器负载敏感，基线对比建议在相近负载条件下进行。
-- 该套件 `@Tag("perf")`，默认 surefire `excludedGroups` 会跳过，不影响日常 CI。
+- 该套件 `@Tag("perf")`，pom 默认 `excludedGroups=perf`，普通 `mvn test` 会跳过，
+  不影响日常 CI；CI 里已挂 `workflow_dispatch` 手动 job（`run_perf` 输入），
+  跑完把报告作为 artifact 上传。

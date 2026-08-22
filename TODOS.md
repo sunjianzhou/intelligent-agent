@@ -56,6 +56,8 @@
 >   （P95 劣化 >20% 告警）。默认被 surefire excludedGroups 跳过。
 > - 首次实跑基线（qwen2.5:7b，并发 4）：health ~3300 RPS（p99 2ms）、
 >   chat p50 ~3.2s / p95 ~6.2s、stream p50 ~2.8s（首 token ~2.8s）/ p95 ~6.4s。
+> - CI 接入：`.github/workflows/ci.yml` 新增 `workflow_dispatch` 手动 job（`run_perf` 输入），
+>   起 Ollama + 后端后跑 perf 套件并把报告作为 artifact 上传；pom 默认排除 `@Tag("perf")`。
 >
 > **2026-08-15 架构审查产出**：新增「Java 迁移收尾」清单（P0 安全/数据 4 项、
 > P1 功能等价 5 项、P2 架构/体验 8 项），见下文专节。核查结论：Python 源码已全删

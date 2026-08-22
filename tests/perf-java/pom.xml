@@ -16,6 +16,9 @@
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <jackson.version>2.18.2</jackson.version>
+        <!-- 默认排除 @Tag("perf")，避免普通 mvn test 触发真实压测；
+             手动跑：mvn test -Dgroups=perf -DexcludedGroups= -->
+        <excludedGroups>perf</excludedGroups>
     </properties>
 
     <dependencies>
