@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.config;
 
 import com.intelligent.agent.web.ai.agent.AgentOrchestrator;
+import com.intelligent.agent.web.ai.agent.ActiveChatLimiter;
 import com.intelligent.agent.web.ai.agent.BranchFailureDetector;
 import com.intelligent.agent.web.ai.agent.planning.LlmTaskPlanner;
 import com.intelligent.agent.web.ai.agent.planning.PlanningComplexityDetector;
@@ -47,12 +48,14 @@ import com.intelligent.agent.web.service.ImageService;
 import com.intelligent.agent.web.service.ConfigRuntimeService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 
 /**
  * Agent 编排相关 Spring 装配。
@@ -65,6 +68,13 @@ public class AgentConfig {
     @Bean
     public ToolExecutor toolExecutor(@Autowired(required = false) List<AgentTool> tools) {
         return new ToolExecutor(tools == null ? List.of() : tools);
+    }
+
+    /** 流式对话并发上限（WS + SSE 共用），runtime 配置 stream_concurrency 可调。 */
+    @Bean
+    public ActiveChatLimiter activeChatLimiter(
+            @Value("${ai.chat.max-concurrent-streams:32}") int maxConcurrency) {
+        return new ActiveChatLimiter(Math.max(1, maxConcurrency));
     }
 
     /** TODO-110 Task 1 + 2026-08-15 补齐：内置工具注册（12 个 AgentTool bean）。 */
@@ -324,8 +334,10 @@ public class AgentConfig {
     public ConversationMemoryService conversationMemoryService(
             VectorMemoryRepository vectorMemoryRepository,
             SemanticResponseCache semanticResponseCache,
-            MemoryDistillationService memoryDistillationService) {
+            MemoryDistillationService memoryDistillationService,
+            @Qualifier("memoryExecutor") ExecutorService memoryExecutor) {
         return new ConversationMemoryService(
-                vectorMemoryRepository, semanticResponseCache, memoryDistillationService);
+                vectorMemoryRepository, semanticResponseCache, memoryDistillationService,
+                memoryExecutor);
     }
 }

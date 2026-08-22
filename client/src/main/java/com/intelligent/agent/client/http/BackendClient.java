@@ -219,12 +219,12 @@ public class BackendClient {
         return body;
     }
 
-    private static String rawText(String jsonData) {
+    private String rawText(String jsonData) {
         if (jsonData == null || jsonData.isEmpty() || "{}".equals(jsonData)) {
             return "";
         }
         try {
-            return new ObjectMapper().readTree(jsonData).asText();
+            return objectMapper.readTree(jsonData).asText();
         } catch (Exception e) {
             String trimmed = jsonData;
             if (trimmed.startsWith("\"")) {

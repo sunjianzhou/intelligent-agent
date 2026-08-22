@@ -210,17 +210,9 @@ public class WebSocketController extends TextWebSocketHandler {
 
         // 异步流式处理；线程池满时向客户端返回 503 而不是卡住 Tomcat 线程
         long startTime = System.currentTimeMillis();
-        try {
-            agentService.streamChatAsync(chatRequest, session, requestId, startTime);
-        } catch (java.util.concurrent.RejectedExecutionException e) {
-            log.warn("流式线程池已满，拒绝请求: {}", requestId);
-            Map<String, Object> busyMsg = new HashMap<>();
-            busyMsg.put("type",       WebSocketMessageType.ERROR);
-            busyMsg.put("message",    "服务繁忙，请稍后再试");
-            busyMsg.put("request_id", requestId);
-            busyMsg.put("timestamp",  LocalDateTime.now().toString());
-            JsonUtil.sendJsonMessageQuiet(session, busyMsg);
-        }
+        // 并发上限（ActiveChatLimiter）与线程池拒绝均在 AgentService 内部处理，
+        // 统一回 "服务繁忙" 错误事件，避免调用方线程执行长任务。
+        agentService.streamChatAsync(chatRequest, session, requestId, startTime);
     }
 
     private void sendSystemInfo(WebSocketSession session) throws IOException {

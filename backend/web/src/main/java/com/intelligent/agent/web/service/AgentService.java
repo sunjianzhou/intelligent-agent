@@ -5,6 +5,7 @@ import com.intelligent.agent.web.api.chat.LocalChatService;
 import com.intelligent.agent.web.dto.request.ChatRequest;
 import com.intelligent.agent.web.dto.WebSocketMessageType;
 import com.intelligent.agent.web.domain.conversation.ConversationService;
+import com.intelligent.agent.web.ai.agent.ActiveChatLimiter;
 import com.intelligent.agent.web.ai.tool.ToolExecutor;
 import com.intelligent.agent.web.util.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * 聊天编排服务（Java-only，Python Agent 已于 2026-08-08 退役）：
@@ -39,11 +41,23 @@ public class AgentService {
     private final ModelService modelService;
     private final ToolExecutor toolExecutor;
     private final ConversationService conversationService;
+    private final ActiveChatLimiter activeChatLimiter;
 
     public AgentService(ObjectMapper objectMapper,
                         @Qualifier("streamExecutor") ExecutorService streamExecutor,
                         LocalChatService localChatService) {
-        this(objectMapper, streamExecutor, localChatService, null, null, null);
+        this(objectMapper, streamExecutor, localChatService, null, null, null, null);
+    }
+
+    /** 兼容构造：limiter 为 null（测试/非 Spring 装配路径）。 */
+    public AgentService(ObjectMapper objectMapper,
+                        @Qualifier("streamExecutor") ExecutorService streamExecutor,
+                        LocalChatService localChatService,
+                        ModelService modelService,
+                        ToolExecutor toolExecutor,
+                        ConversationService conversationService) {
+        this(objectMapper, streamExecutor, localChatService, modelService, toolExecutor,
+                conversationService, null);
     }
 
     @Autowired
@@ -52,13 +66,15 @@ public class AgentService {
                         LocalChatService localChatService,
                         ModelService modelService,
                         ToolExecutor toolExecutor,
-                        ConversationService conversationService) {
+                        ConversationService conversationService,
+                        ActiveChatLimiter activeChatLimiter) {
         this.objectMapper = objectMapper;
         this.streamExecutor = streamExecutor;
         this.localChatService = localChatService;
         this.modelService = modelService;
         this.toolExecutor = toolExecutor;
         this.conversationService = conversationService;
+        this.activeChatLimiter = activeChatLimiter;
     }
 
     // ── 非流式（ChatController / 飞书接入用）──────────────────
@@ -76,8 +92,40 @@ public class AgentService {
 
     public void streamChatAsync(ChatRequest request, WebSocketSession session,
                                 String requestId, long startTime) {
-        streamExecutor.submit(() ->
-                localStreamChat(request, session, requestId, startTime));
+        if (activeChatLimiter != null && !activeChatLimiter.tryAcquire()) {
+            log.warn("流式对话并发已达上限，拒绝请求: {}", requestId);
+            sendBusy(session, requestId);
+            return;
+        }
+        try {
+            streamExecutor.submit(() ->
+                    localStreamChat(request, session, requestId, startTime));
+        } catch (RejectedExecutionException e) {
+            if (activeChatLimiter != null) {
+                activeChatLimiter.release();
+            }
+            log.warn("流式线程池已满，拒绝请求: {}", requestId);
+            sendBusy(session, requestId);
+        }
+    }
+
+    private void sendBusy(WebSocketSession session, String requestId) {
+        try {
+            Map<String, Object> busyMsg = new HashMap<>();
+            busyMsg.put("type", WebSocketMessageType.ERROR);
+            busyMsg.put("message", "服务繁忙，请稍后再试");
+            busyMsg.put("request_id", requestId);
+            busyMsg.put("timestamp", LocalDateTime.now().toString());
+            JsonUtil.sendJsonMessageQuiet(session, busyMsg);
+        } catch (Exception ignored) {
+            // best effort
+        }
+    }
+
+    private void releaseChatSlot() {
+        if (activeChatLimiter != null) {
+            activeChatLimiter.release();
+        }
     }
 
     private Map<String, Object> localChatFull(ChatRequest request) {
@@ -144,14 +192,17 @@ public class AgentService {
                             errMsg.put("request_id", requestId);
                             JsonUtil.sendJsonMessageQuiet(session, errMsg);
                         } catch (Exception ignored) {}
+                        releaseChatSlot();
                     },
                     () -> {
                         if (!chatDoneEmitted[0]) {
                             sendFallbackDone(session, requestId, startTime);
                         }
+                        releaseChatSlot();
                     });
         } catch (Exception e) {
             log.error("本地流式聊天启动失败, requestId: {}", requestId, e);
+            releaseChatSlot();
             sendFallbackDone(session, requestId, startTime);
         }
     }

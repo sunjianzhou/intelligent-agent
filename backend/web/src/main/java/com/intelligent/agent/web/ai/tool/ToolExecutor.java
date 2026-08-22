@@ -4,10 +4,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
@@ -69,11 +70,17 @@ public class ToolExecutor {
                 register(tool);
             }
         }
-        this.timeoutExecutor = Executors.newCachedThreadPool(r -> {
-            Thread t = new Thread(r, "tool-executor");
-            t.setDaemon(true);
-            return t;
-        });
+        // 有界工具执行池：避免并发工具调用（shell/web search 等）无限起线程；
+        // 满时拒绝，由调用方兜底成 tool failed / error 结果。
+        this.timeoutExecutor = new ThreadPoolExecutor(
+                4, 16, 60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(200),
+                r -> {
+                    Thread t = new Thread(r, "tool-executor");
+                    t.setDaemon(true);
+                    return t;
+                },
+                new ThreadPoolExecutor.AbortPolicy());
     }
 
     /** 运行期注册工具（G2：MCP 服务器连接成功后动态加入）。 */

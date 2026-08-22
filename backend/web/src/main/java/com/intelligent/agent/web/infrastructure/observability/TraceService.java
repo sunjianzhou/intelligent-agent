@@ -14,6 +14,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
@@ -37,6 +38,10 @@ public class TraceService {
 
     /** 进行中的 trace：requestId → 聚合器（spans 追加）。 */
     private final Map<String, MutableTrace> active = new ConcurrentHashMap<>();
+    /** 已落盘 trace 索引（lastModified, name 升序），避免每次完成都全目录扫描。 */
+    private final TreeMap<Path, Long> traceFiles = new TreeMap<>(
+            Comparator.comparingLong((Path p) -> p.toFile().lastModified())
+                    .thenComparing(p -> p.getFileName().toString()));
 
     public TraceService(Path dataDir) {
         this(dataDir, DEFAULT_MAX_TRACES, null);
@@ -55,6 +60,7 @@ public class TraceService {
         } catch (IOException e) {
             throw new IllegalStateException("无法创建 traces 目录: " + tracesDir, e);
         }
+        loadIndex();
     }
 
     /** 开始一次追踪；requestId 为空时自动生成。 */
@@ -102,20 +108,18 @@ public class TraceService {
     /** 最近 N 条（按完成时间倒序，userId 隔离）。 */
     public List<Map<String, Object>> list(String userId, int limit) {
         List<Map<String, Object>> result = new ArrayList<>();
-        try (Stream<Path> files = Files.list(tracesDir)) {
-            files.filter(p -> p.getFileName().toString().endsWith(".json"))
-                    .sorted(Comparator.comparingLong((Path p) -> p.toFile().lastModified())
-                            .thenComparing(p -> p.getFileName().toString()).reversed())
-                    .limit(Math.max(1, Math.min(limit, 500)))
-                    .forEach(p -> {
-                        AgentRunTrace trace = readFile(p);
-                        if (trace != null && (userId == null || userId.isBlank()
-                                || userId.equals(trace.userId()))) {
-                            result.add(summary(trace));
-                        }
-                    });
-        } catch (IOException e) {
-            log.warn("traces 列表读取失败: {}", e.getMessage());
+        int take = Math.max(1, Math.min(limit, 500));
+        List<Path> files = new ArrayList<>(take);
+        var it = traceFiles.descendingMap().entrySet().iterator();
+        while (it.hasNext() && files.size() < take) {
+            files.add(it.next().getKey());
+        }
+        for (Path file : files) {
+            AgentRunTrace trace = readFile(file);
+            if (trace != null && (userId == null || userId.isBlank()
+                    || userId.equals(trace.userId()))) {
+                result.add(summary(trace));
+            }
         }
         return result;
     }
@@ -148,7 +152,10 @@ public class TraceService {
             return false;
         }
         try {
-            return Files.deleteIfExists(fileOf(requestId));
+            Path file = fileOf(requestId);
+            boolean deleted = Files.deleteIfExists(file);
+            traceFiles.remove(file);
+            return deleted;
         } catch (IOException e) {
             log.warn("trace 删除失败 {}: {}", requestId, e.getMessage());
             return false;
@@ -196,6 +203,7 @@ public class TraceService {
                     .writeValueAsString(data), StandardCharsets.UTF_8);
             Files.move(tmp, file, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
                     java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            traceFiles.put(file, file.toFile().lastModified());
         } catch (Exception e) {
             log.warn("trace 落盘失败 {}: {}", trace.requestId(), e.getMessage(), e);
         }
@@ -242,23 +250,29 @@ public class TraceService {
     }
 
     private void pruneIfNeeded() {
-        List<Path> files;
-        try (Stream<Path> stream = Files.list(tracesDir)) {
-            files = stream.filter(p -> p.getFileName().toString().endsWith(".json"))
-                    .sorted(Comparator.comparingLong(
-                            (Path p) -> p.toFile().lastModified())
-                            .thenComparing(p -> p.getFileName().toString()))
-                    .toList();
-        } catch (IOException e) {
-            return;
-        }
-        int excess = files.size() - maxTraces;
-        for (int i = 0; i < excess; i++) {
+        int excess = traceFiles.size() - maxTraces;
+        var it = traceFiles.entrySet().iterator();
+        int removed = 0;
+        while (it.hasNext() && removed < excess) {
+            Path file = it.next().getKey();
+            it.remove();
             try {
-                Files.deleteIfExists(files.get(i));
+                if (Files.deleteIfExists(file)) {
+                    removed++;
+                }
             } catch (IOException ignored) {
                 // best effort
             }
+        }
+    }
+
+    /** 启动时把既有 trace 文件装入内存索引，之后 list/prune 不再扫描目录。 */
+    private void loadIndex() {
+        try (Stream<Path> files = Files.list(tracesDir)) {
+            files.filter(p -> p.getFileName().toString().endsWith(".json"))
+                    .forEach(p -> traceFiles.put(p, p.toFile().lastModified()));
+        } catch (IOException e) {
+            log.warn("traces 索引加载失败（以空索引启动）: {}", e.getMessage());
         }
     }
 

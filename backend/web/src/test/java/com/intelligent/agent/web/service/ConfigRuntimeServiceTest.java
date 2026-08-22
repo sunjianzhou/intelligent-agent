@@ -3,6 +3,7 @@ package com.intelligent.agent.web.service;
 import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
 import com.intelligent.agent.web.ai.memory.MemoryRepository;
 import com.intelligent.agent.web.ai.memory.SemanticResponseCache;
+import com.intelligent.agent.web.ai.agent.ActiveChatLimiter;
 import com.intelligent.agent.web.ai.llm.InferenceGate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -118,5 +119,26 @@ class ConfigRuntimeServiceTest {
                 .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
                 .containsEntry("active_inferences", 2)
                 .containsEntry("concurrency_slots", 3.0);
+    }
+
+    @Test
+    void patchAppliesStreamConcurrencyToLimiter() {
+        ActiveChatLimiter limiter = new ActiveChatLimiter(32);
+        ConfigRuntimeService service = new ConfigRuntimeService(
+                mock(MemoryRepository.class),
+                mock(ConversationMemoryService.class),
+                new SemanticResponseCache(),
+                new InferenceGate(1),
+                limiter);
+        ReflectionTestUtils.setField(service, "dataDir", tempDir.toString());
+
+        service.patch(Map.of("stream_concurrency", 8));
+
+        assertThat(limiter.maxConcurrency()).isEqualTo(8);
+        assertThat(service.streamConcurrency()).isEqualTo(8);
+        assertThat(service.get().get("usage"))
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("stream_slots", 8.0)
+                .containsEntry("active_streams", 0);
     }
 }

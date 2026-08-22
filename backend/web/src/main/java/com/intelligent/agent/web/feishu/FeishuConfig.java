@@ -27,7 +27,9 @@ public class FeishuConfig {
      *  模型判定 NO_REPLY 时用 👍 表情轻量回应代替纯静默。*/
     private boolean emojiReactionEnabled = true;
 
-    /** 5 线程 + 有界队列 100 + CallerRunsPolicy，与主 streamExecutor 完全隔离 */
+    /** 5 线程 + 有界队列 100 + AbortPolicy：
+     *  队列满时抛 RejectedExecutionException，由事件入口兜底回复"服务繁忙"；
+     *  绝不让长任务在 WS/回调事件线程上执行（此前 CallerRunsPolicy 会把整个飞书通道读循环卡死）。 */
     @Bean(name = "feishuStreamExecutor", destroyMethod = "shutdown")
     public ExecutorService feishuStreamExecutor() {
         final AtomicInteger count = new AtomicInteger(1);
@@ -43,7 +45,7 @@ public class FeishuConfig {
                         return t;
                     }
                 },
-                new ThreadPoolExecutor.CallerRunsPolicy()
+                new ThreadPoolExecutor.AbortPolicy()
         );
     }
 

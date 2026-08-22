@@ -13,7 +13,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 会话记忆服务：短期历史（按用户 deque，TTL 24h，最近 100 条）、
@@ -21,6 +27,7 @@ import java.util.stream.Collectors;
  */
 public class ConversationMemoryService {
 
+    private static final Logger log = LoggerFactory.getLogger(ConversationMemoryService.class);
     public static final Duration SHORT_TERM_TTL = Duration.ofHours(24);
     public static final int SHORT_TERM_MAX_SIZE = 100;
     public static final int RAG_TOP_K = 3;
@@ -34,6 +41,27 @@ public class ConversationMemoryService {
     private final MemoryDistillationService distiller;
     private final int episodicTopK;
     private final int semanticTopK;
+    private final Executor background;
+
+    private static volatile ExecutorService sharedBackground;
+
+    private static ExecutorService sharedBackground() {
+        ExecutorService current = sharedBackground;
+        if (current == null) {
+            synchronized (ConversationMemoryService.class) {
+                current = sharedBackground;
+                if (current == null) {
+                    current = Executors.newSingleThreadExecutor(r -> {
+                        Thread t = new Thread(r, "memory-shared-worker");
+                        t.setDaemon(true);
+                        return t;
+                    });
+                    sharedBackground = current;
+                }
+            }
+        }
+        return current;
+    }
 
     private final Map<String, Deque<StampedMessage>> shortTerm = new ConcurrentHashMap<>();
     private final Map<String, Integer> turnCounts = new ConcurrentHashMap<>();
@@ -45,18 +73,36 @@ public class ConversationMemoryService {
     public ConversationMemoryService(MemoryRepository memoryRepository,
                                      SemanticResponseCache semanticCache,
                                      MemoryDistillationService distiller) {
-        this(memoryRepository, semanticCache, distiller, EPISODIC_TOP_K, SEMANTIC_TOP_K);
+        this(memoryRepository, semanticCache, distiller, EPISODIC_TOP_K, SEMANTIC_TOP_K,
+                sharedBackground());
+    }
+
+    public ConversationMemoryService(MemoryRepository memoryRepository,
+                                     SemanticResponseCache semanticCache,
+                                     MemoryDistillationService distiller,
+                                     Executor background) {
+        this(memoryRepository, semanticCache, distiller, EPISODIC_TOP_K, SEMANTIC_TOP_K, background);
     }
 
     public ConversationMemoryService(MemoryRepository memoryRepository,
                                      SemanticResponseCache semanticCache,
                                      MemoryDistillationService distiller,
                                      int episodicTopK, int semanticTopK) {
+        this(memoryRepository, semanticCache, distiller, episodicTopK, semanticTopK,
+                sharedBackground());
+    }
+
+    public ConversationMemoryService(MemoryRepository memoryRepository,
+                                     SemanticResponseCache semanticCache,
+                                     MemoryDistillationService distiller,
+                                     int episodicTopK, int semanticTopK,
+                                     Executor background) {
         this.memoryRepository = memoryRepository;
         this.semanticCache = semanticCache;
         this.distiller = distiller;
         this.episodicTopK = Math.max(1, episodicTopK);
         this.semanticTopK = Math.max(1, semanticTopK);
+        this.background = background;
     }
 
     /** 加载单次请求的记忆上下文；useMemory=false 时返回空上下文。 */
@@ -116,22 +162,34 @@ public class ConversationMemoryService {
 
         int turns = turnCounts.merge(userId, 1, Integer::sum);
         List<ChatMessage> history = historyMessages(userId);
+        // 蒸馏/摘要/项目提取是 LLM 重活：丢到后台执行器执行，避免阻塞聊天响应收尾路径
+        // （每 5/10/8 轮触发一次最长 30s 的 LLM 调用，不再占用请求线程/推理闸门排队）。
         if (turns % distiller.interval() == 0) {
-            distiller.distill(userId, ctx.model(), history, memoryRepository);
+            runAsync(() -> distiller.distill(userId, ctx.model(), history, memoryRepository));
         }
         if (turns % distiller.summaryInterval() == 0) {
-            distiller.summarize(userId, history, memoryRepository);
+            runAsync(() -> distiller.summarize(userId, history, memoryRepository));
         }
         if (ctx.projectId() != null && !ctx.projectId().isBlank()) {
             String projectKey = userId + "|" + ctx.projectId();
             int projectTurns = projectTurnCounts.merge(projectKey, 1, Integer::sum);
             if (projectTurns % distiller.projectInterval() == 0) {
-                distiller.extractProjectContext(userId, ctx.projectId(), history, memoryRepository);
+                runAsync(() -> distiller.extractProjectContext(
+                        userId, ctx.projectId(), history, memoryRepository));
             }
         }
 
         if (answer != null && !answer.isBlank() && ctx.message() != null && !ctx.message().isBlank()) {
             semanticCache.put(userId, ctx.persona(), ctx.model(), ctx.message(), answer);
+        }
+    }
+
+    /** 后台任务有界队列满时丢弃并告警，绝不让提取任务反压到请求线程。*/
+    private void runAsync(Runnable task) {
+        try {
+            background.execute(task);
+        } catch (RejectedExecutionException e) {
+            log.warn("记忆后台任务队列已满，跳过本次提取");
         }
     }
 

@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.api.chat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.intelligent.agent.web.ai.agent.ActiveChatLimiter;
 import com.intelligent.agent.web.ai.llm.ModelEvent;
 import com.intelligent.agent.web.controller.ChatController;
 import com.intelligent.agent.web.dto.request.ChatRequest;
@@ -21,6 +22,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -60,7 +63,16 @@ class ChatContractTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new ChatController(agentService, localChatService, mapper)).build();
+                new ChatController(agentService, localChatService, mapper,
+                        testChatExecutor(), new ActiveChatLimiter(64))).build();
+    }
+
+    private static ExecutorService testChatExecutor() {
+        return Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "test-chat-worker");
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     @Test
@@ -69,10 +81,14 @@ class ChatContractTest {
                 "response", "你好",
                 "tool_calls", List.of()));
 
-        mockMvc.perform(post("/api/chat")
+        MvcResult result = mockMvc.perform(post("/api/chat")
                         .requestAttr("userId", "jwt-user")
                         .contentType(APPLICATION_JSON)
                         .content("{\"message\":\"hi\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(result))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.response").isString())
@@ -93,10 +109,14 @@ class ChatContractTest {
                 "user_message_id", "msg_user_1",
                 "assistant_message_id", "msg_assistant_1"));
 
-        mockMvc.perform(post("/api/chat")
+        MvcResult result = mockMvc.perform(post("/api/chat")
                         .requestAttr("userId", "jwt-user")
                         .contentType(APPLICATION_JSON)
                         .content("{\"message\":\"hi\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(result))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.user_message_id").value("msg_user_1"))
                 .andExpect(jsonPath("$.data.assistant_message_id").value("msg_assistant_1"));

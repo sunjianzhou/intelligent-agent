@@ -109,7 +109,7 @@ public class FeishuEventController {
             final boolean finalMentioned  = mentioned;
             final boolean finalQuietProbe = quietProbe;
 
-            executor.submit(() -> {
+            submitEvent(finalChatId, finalQuietProbe, () -> {
                 if (!finalQuietProbe) {
                     try {
                         sender.sendText(finalChatId, "⏳ 思考中...");
@@ -163,6 +163,20 @@ public class FeishuEventController {
     }
 
     FeishuConfig getConfig() { return config; }
+
+    /** 提交飞书事件处理任务：有界队列满时拒绝并告知用户，绝不在调用方线程（WS/回调线程）执行长任务。*/
+    private void submitEvent(String chatId, boolean quietProbe, Runnable task) {
+        try {
+            executor.execute(task);
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            log.warn("飞书事件处理队列已满，拒绝消息 chatId={}", chatId);
+            if (!quietProbe) {
+                try {
+                    sender.sendText(chatId, "服务繁忙，请稍后再试");
+                } catch (Exception ignored) {}
+            }
+        }
+    }
 
     /** 判断群聊消息的 mentions 列表中是否包含机器人自身。
      *  未配置 {@code feishu.bot-open-id} 时退化为"群里有人被 @ 就当作可能 @ 了机器人"的低精度启发式。*/

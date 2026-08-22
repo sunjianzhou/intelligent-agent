@@ -21,7 +21,7 @@ class ConversationMemoryServiceTest {
     private final SemanticResponseCache cache = new SemanticResponseCache();
     private final MemoryDistillationService distiller = new MemoryDistillationService();
     private final ConversationMemoryService service =
-            new ConversationMemoryService(repository, cache, distiller);
+            new ConversationMemoryService(repository, cache, distiller, Runnable::run);
 
     // ── 语义缓存键隔离 ────────────────────────────────────────
 

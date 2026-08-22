@@ -67,14 +67,18 @@ public class FeishuWebSocketClient implements SmartLifecycle {
                 .build();
 
         // Client.start() 在连接失败时会同步重试（默认间隔 120s），放executor 异步执行，避免阻塞应用启动
-        executor.submit(() -> {
-            try {
-                client.start();
-                log.info("飞书 WS 已连接");
-            } catch (Exception e) {
-                log.error("飞书 WS 连接失败", e);
-            }
-        });
+        try {
+            executor.submit(() -> {
+                try {
+                    client.start();
+                    log.info("飞书 WS 已连接");
+                } catch (Exception e) {
+                    log.error("飞书 WS 连接失败", e);
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            log.error("飞书 WS 启动任务被拒绝（事件线程池已满），连接未建立", e);
+        }
     }
 
     @Override

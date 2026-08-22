@@ -11,10 +11,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 真实 embedding 服务（Ollama {@code /api/embed}），n-gram 哈希兜底。
@@ -37,7 +37,14 @@ public class EmbeddingService {
     private final Duration timeout;
     private final boolean enabled;
     private final HttpClient httpClient;
-    private final Map<String, double[]> cache = new ConcurrentHashMap<>();
+    /** LRU 缓存（access-order）：满 512 淘汰最久未用，避免旧实现"满即清空"引发的惊群重算。*/
+    private final Map<String, double[]> cache = Collections.synchronizedMap(
+            new LinkedHashMap<>(64, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, double[]> eldest) {
+                    return size() > MAX_CACHE_SIZE;
+                }
+            });
     /** 首次成功后锁定真实模式，避免后续静默降级造成频繁重试；仅用于日志节流。*/
     private volatile boolean realMode;
 
@@ -171,9 +178,6 @@ public class EmbeddingService {
     }
 
     private void cachePut(String key, double[] vector) {
-        if (cache.size() >= MAX_CACHE_SIZE) {
-            cache.clear();
-        }
         cache.put(key, vector);
     }
 

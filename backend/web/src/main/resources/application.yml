@@ -41,6 +41,8 @@ ai:
       failure-threshold: ${LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD:5}
       cooldown: ${LLM_CIRCUIT_BREAKER_COOLDOWN:30s}
       window-size: ${LLM_CIRCUIT_BREAKER_WINDOW_SIZE:100}
+    # 推理闸门排队超时：超过后返回"推理繁忙"错误，不再无限期占用等待线程
+    inference-queue-timeout: ${LLM_INFERENCE_QUEUE_TIMEOUT:120s}
   # 真实 embedding（Ollama /api/embed，TODO-110 Task 5）
   embedding:
     enabled: ${EMBEDDING_ENABLED:true}
@@ -49,6 +51,9 @@ ai:
   memory:
     # 项目上下文 LLM 提取轮次间隔（与 Python ContextExtractor 每 8 轮一致）
     project-extraction-interval: ${PROJECT_EXTRACTION_INTERVAL:8}
+  # 流式对话并发上限（WS + SSE 共用；runtime 配置 stream_concurrency 可调）
+  chat:
+    max-concurrent-streams: ${MAX_CONCURRENT_STREAMS:32}
   # G6 planning 前置：复杂任务先出计划再执行（启发式门控 + 低温度 LLM 计划生成）
   planning:
     enabled: ${AI_PLANNING_ENABLED:true}
@@ -108,6 +113,14 @@ spring:
       static-locations: "${FRONTEND_DIST_LOCATION:classpath:/static/}"
       cache:
         period: 3600
+  task:
+    execution:
+      # 默认 applicationTaskExecutor 是 MVC 异步（SSE）的执行器：
+      # 限制线程增长，避免高并发 SSE 无限起线程
+      pool:
+        max-size: 32
+        queue-capacity: 200
+      thread-name-prefix: mvc-async-
 
 # 智能体配置（可通过环境变量覆盖）
 intelligent-agent:

@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.service;
 
 import com.intelligent.agent.web.ai.llm.InferenceGate;
+import com.intelligent.agent.web.ai.agent.ActiveChatLimiter;
 import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
 import com.intelligent.agent.web.ai.memory.MemoryRepository;
 import com.intelligent.agent.web.ai.memory.MemorySearchQuery;
@@ -8,6 +9,7 @@ import com.intelligent.agent.web.ai.memory.SemanticResponseCache;
 import com.intelligent.agent.web.infrastructure.filesystem.JsonFileStore;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +29,7 @@ public class ConfigRuntimeService {
 
     private static final Map<String, double[]> LIMITS = Map.ofEntries(
             Map.entry("inference_concurrency", new double[]{1, 20}),
+            Map.entry("stream_concurrency", new double[]{1, 100}),
             Map.entry("response_cache_max_size", new double[]{10, 10000}),
             Map.entry("response_cache_ttl_secs", new double[]{60, 86400}),
             Map.entry("semantic_cache_threshold", new double[]{0.5, 1.0}),
@@ -54,22 +57,39 @@ public class ConfigRuntimeService {
     private final ConversationMemoryService conversationMemoryService;
     private final SemanticResponseCache semanticResponseCache;
     private final InferenceGate inferenceGate;
+    private final ActiveChatLimiter activeChatLimiter;
     private final Map<String, Object> runtimeConfig = new ConcurrentHashMap<>();
+    /** 持久化配置的内存缓存：首次读取后常驻，patch 时同步更新，避免每次聊天都读磁盘。*/
+    private volatile Map<String, Object> persistedCache;
 
     public ConfigRuntimeService(MemoryRepository memoryRepository,
                                 ConversationMemoryService conversationMemoryService,
                                 SemanticResponseCache semanticResponseCache,
                                 InferenceGate inferenceGate) {
+        this(memoryRepository, conversationMemoryService, semanticResponseCache,
+                inferenceGate, null);
+    }
+
+    @Autowired
+    public ConfigRuntimeService(MemoryRepository memoryRepository,
+                                ConversationMemoryService conversationMemoryService,
+                                SemanticResponseCache semanticResponseCache,
+                                InferenceGate inferenceGate,
+                                ActiveChatLimiter activeChatLimiter) {
         this.memoryRepository = memoryRepository;
         this.conversationMemoryService = conversationMemoryService;
         this.semanticResponseCache = semanticResponseCache;
         this.inferenceGate = inferenceGate;
+        this.activeChatLimiter = activeChatLimiter;
     }
 
-    /** 启动时把持久化（或默认）的 inference_concurrency 应用到全局闸门。 */
+    /** 启动时把持久化（或默认）的 inference_concurrency / stream_concurrency 应用到闸门与限流器。 */
     @PostConstruct
     public void applyInferenceConcurrency() {
         inferenceGate.setMaxConcurrency(inferenceConcurrency());
+        if (activeChatLimiter != null) {
+            activeChatLimiter.setMaxConcurrency(streamConcurrency());
+        }
     }
 
     public Map<String, Object> get() {
@@ -80,6 +100,8 @@ public class ConfigRuntimeService {
         Map<String, Object> usage = new LinkedHashMap<>();
         usage.put("active_inferences", inferenceGate.active());
         usage.put("concurrency_slots", config.get("inference_concurrency"));
+        usage.put("active_streams", activeChatLimiter == null ? 0 : activeChatLimiter.active());
+        usage.put("stream_slots", config.get("stream_concurrency"));
         usage.put("l1_cache_entries", 0);
         usage.put("l2_cache_entries", semanticResponseCache.entries());
         usage.put("short_term_entries", conversationMemoryService.shortTermCount("default"));
@@ -112,6 +134,10 @@ public class ConfigRuntimeService {
         Object concurrency = updated.get("inference_concurrency");
         if (concurrency instanceof Number n) {
             inferenceGate.setMaxConcurrency(n.intValue());
+        }
+        Object streams = updated.get("stream_concurrency");
+        if (streams instanceof Number n && activeChatLimiter != null) {
+            activeChatLimiter.setMaxConcurrency(n.intValue());
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("updated", updated);
@@ -157,9 +183,22 @@ public class ConfigRuntimeService {
         return v instanceof Number n ? n.intValue() : 1;
     }
 
+    /** 流式对话并发上限（默认 32，runtime 配置 stream_concurrency 覆盖）。 */
+    public int streamConcurrency() {
+        Object v = runtimeConfig.get("stream_concurrency");
+        if (v == null) {
+            v = persisted().get("stream_concurrency");
+        }
+        if (v == null) {
+            v = defaults().get("stream_concurrency");
+        }
+        return v instanceof Number n ? n.intValue() : 32;
+    }
+
     private Map<String, Object> defaults() {
         Map<String, Object> defaults = new LinkedHashMap<>();
         defaults.put("inference_concurrency", 1);
+        defaults.put("stream_concurrency", 32);
         defaults.put("response_cache_max_size", 1000);
         defaults.put("response_cache_ttl_secs", 300);
         defaults.put("semantic_cache_threshold", 0.8);
@@ -175,8 +214,20 @@ public class ConfigRuntimeService {
     }
 
     private Map<String, Object> persisted() {
-        Map<String, Object> config = new JsonFileStore(Path.of(dataDir)).read("runtime_config.json");
-        return config == null ? Map.of() : config;
+        Map<String, Object> cached = persistedCache;
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (this) {
+            cached = persistedCache;
+            if (cached == null) {
+                Map<String, Object> config =
+                        new JsonFileStore(Path.of(dataDir)).read("runtime_config.json");
+                cached = config == null ? Map.of() : config;
+                persistedCache = cached;
+            }
+        }
+        return cached;
     }
 
     private void persist(Map<String, Object> updated) {
@@ -184,6 +235,7 @@ public class ConfigRuntimeService {
             Map<String, Object> config = new LinkedHashMap<>(persisted());
             config.putAll(updated);
             new JsonFileStore(Path.of(dataDir)).write(new String[]{"runtime_config.json"}, config);
+            persistedCache = config;
         } catch (Exception e) {
             log.warn("运行时配置持久化失败: {}", e.getMessage());
         }
