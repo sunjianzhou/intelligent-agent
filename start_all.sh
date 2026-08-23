@@ -55,6 +55,14 @@ start_bg() {
     ok "Started $name (pid=$pid, log=logs/$name.log)"
 }
 
+ensure_jar() {
+    local dir="$1" jar="$2"
+    if [[ ! -f "$ROOT/$jar" ]]; then
+        info "Building $jar (first run)..."
+        ( cd "$ROOT/$dir" && "$MVN" -q package -DskipTests )
+    fi
+}
+
 stop_all() {
     step "Stopping all services"
     local found=0
@@ -104,6 +112,9 @@ native_start() {
     command -v npm &>/dev/null || { err "npm not found. Install Node.js."; exit 1; }
     [[ -x "$MVN" ]] || { err "Maven wrapper not found at $MVN"; exit 1; }
 
+    ensure_jar backend/web backend/web/target/web-1.0-SNAPSHOT.jar
+    ensure_jar client client/target/client-1.0-SNAPSHOT.jar
+
     step "[1/3] Backend (port 8080, java mode)"
     start_bg backend bash -c "cd '$ROOT/backend/web' && '$JAVA' -jar target/web-1.0-SNAPSHOT.jar"
 
@@ -130,6 +141,7 @@ native_start() {
 }
 
 client_only() {
+    ensure_jar client client/target/client-1.0-SNAPSHOT.jar
     cd "$ROOT/client"
     exec "$JAVA" -jar target/client-1.0-SNAPSHOT.jar repl --url "${2:-http://localhost:8080}"
 }

@@ -66,7 +66,7 @@ services:
       - "8080:8080"
     volumes:
       # 灵魂层（soul/）：PromptService 读取 + heart_record 工具写入 rules/heart
-      - ${SOUL_DIR:-../../soul}:/app/soul
+      - ${SOUL_DIR:-./soul}:/app/soul
       # 业务数据（会话/角色/记忆/图片/技能/配置/任务）：命名卷持久化，
       # 重建容器不丢数据（2026-08-15 架构审查补齐）
       - intelligent-agent-data:/app/data

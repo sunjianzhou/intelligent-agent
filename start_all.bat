@@ -12,6 +12,7 @@ set "ROOT=%ROOT:~0,-1%"
 
 set "ACTION=%~1"
 if "%ACTION%"=="" set "ACTION=start"
+shift
 
 if /I "%ACTION%"=="docker" goto :docker_mode
 if /I "%ACTION%"=="client" goto :client_only
@@ -75,12 +76,17 @@ if not exist "%ROOT%\.env.docker" (
     pause & exit /b 1
 )
 cd /d "%ROOT%"
-docker compose up -d
+REM 注意：cmd 的 %* 不受 shift 影响（仍含 ACTION 本身），须用 %1..%9 显式透传剩余参数
+docker compose up -d %1 %2 %3 %4 %5 %6 %7 %8 %9
 echo.
 echo  All containers started.
 echo  Frontend : http://localhost:3000
 echo  Backend  : http://localhost:8080
 echo.
+echo  Profiles : --profile local   (+ Ollama + ComfyUI)
+echo             --profile https   (+ Nginx TLS)
+echo             --profile tunnel  (+ Cloudflare Tunnel)
+echo  Usage    : start_all.bat docker [--profile local] [--build]
 echo  Stop: docker compose down
 pause
 
