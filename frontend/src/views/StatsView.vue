@@ -211,7 +211,7 @@
         <div v-for="r in records" :key="r.id" class="record-item"
              @click="toggleExpand(r.id)">
           <div class="record-header">
-            <span class="record-rating" :class="r.rating">
+            <span v-if="r.rating" class="record-rating" :class="r.rating">
               {{ r.rating === 'like' ? '👍' : '👎' }}
             </span>
             <span class="record-msg">{{ r.message || '（无问题）' }}</span>

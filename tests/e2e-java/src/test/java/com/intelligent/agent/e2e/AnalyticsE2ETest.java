@@ -52,7 +52,7 @@ class AnalyticsE2ETest extends E2EBaseTest {
                 "message_id", "e2e-msg-001",
                 "message", "你好",
                 "response", "你好，有什么可以帮助你的？",
-                "rating", "up"));
+                "rating", "like"));
         assertThat(r.status()).isEqualTo(200);
         assertThat(client.json(r).get("success")).isNotEqualTo(false);
     }

@@ -118,18 +118,18 @@ native_start() {
     step "[1/3] Backend (port 8080, java mode)"
     start_bg backend bash -c "cd '$ROOT/backend/web' && '$JAVA' -jar target/web-1.0-SNAPSHOT.jar"
 
-    step "[2/3] Frontend (port 5173)"
+    step "[2/3] Frontend (port 3000)"
     start_bg frontend bash -c "cd '$ROOT/frontend' && npm run dev"
 
     step "Waiting for services to come up"
     wait_port 8080 "Backend"
-    wait_port 5173 "Frontend"
+    wait_port 3000 "Frontend"
 
     echo ""
     ok "All services running!"
     echo ""
     echo "  Backend  : http://localhost:8080"
-    echo "  Frontend : http://localhost:5173"
+    echo "  Frontend : http://localhost:3000"
     echo ""
     echo "  Logs : logs/  |  Stop : ./start_all.sh stop"
 

@@ -30,6 +30,13 @@ public class AnalyticsService {
     public Map<String, Object> addFeedback(String username, Map<String, Object> body) {
         List<Map<String, Object>> records = feedbackRecords(username);
         Map<String, Object> record = new LinkedHashMap<>(body == null ? Map.of() : body);
+        // 归一化 rating：旧契约/存量数据用 up/down，统一为 like/dislike（与前端一致）
+        String rating = str(record.get("rating"));
+        if ("up".equals(rating)) {
+            record.put("rating", "like");
+        } else if ("down".equals(rating)) {
+            record.put("rating", "dislike");
+        }
         record.put("id", "fb_" + System.currentTimeMillis() + "_" + records.size());
         record.put("created_at", Instant.now().toString());
         record.put("username", username);
@@ -64,8 +71,8 @@ public class AnalyticsService {
             List<Map<String, Object>> timeTrend = new ArrayList<>();
             for (Map<String, Object> record : records) {
                 String rating = str(record.get("rating"));
-                if ("like".equals(rating)) likes++;
-                if ("dislike".equals(rating)) dislikes++;
+                if ("like".equals(rating) || "up".equals(rating)) likes++;
+                if ("dislike".equals(rating) || "down".equals(rating)) dislikes++;
                 Object rt = record.get("response_time");
                 if (rt instanceof Number) {
                     totalTime += ((Number) rt).doubleValue();
@@ -117,10 +124,13 @@ public class AnalyticsService {
     public Map<String, Object> feedbackRecords(String username, int limit, String rating) {
         List<Map<String, Object>> records = feedbackRecords(username);
         if (rating != null && !rating.isBlank()) {
+            String normalized = normalizedRating(rating);
             records = records.stream()
-                    .filter(r -> rating.equals(r.get("rating"))).toList();
+                    .filter(r -> normalized.equals(normalizedRating(str(r.get("rating"))))).toList();
         }
         records = new ArrayList<>(records);
+        // 输出归一化：存量 up/down → like/dislike，保证前端/统计契约一致
+        records.forEach(r -> r.put("rating", normalizedRating(str(r.get("rating")))));
         records.sort((a, b) -> String.valueOf(b.getOrDefault("created_at", ""))
                 .compareTo(String.valueOf(a.getOrDefault("created_at", ""))));
         if (records.size() > Math.max(1, limit)) {
@@ -242,6 +252,13 @@ public class AnalyticsService {
 
     private List<Map<String, Object>> feedbackRecords(String username) {
         return recordsAt("analytics", "feedback", username + ".json");
+    }
+
+    /** 旧契约 up/down → like/dislike 归一化（存量数据兼容）。 */
+    private static String normalizedRating(String rating) {
+        if ("up".equals(rating)) return "like";
+        if ("down".equals(rating)) return "dislike";
+        return rating == null ? "" : rating;
     }
 
     private void saveFeedback(String username, List<Map<String, Object>> records) {

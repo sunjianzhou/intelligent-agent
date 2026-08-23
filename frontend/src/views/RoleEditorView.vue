@@ -300,7 +300,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, defineComponent, onMounted, toRaw } from 'vue'
+import { ref, reactive, computed, onMounted, toRaw } from 'vue'
 import {
   ElTabs, ElTabPane,
   ElSelect, ElOption,
@@ -326,45 +326,7 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { saveRole, loadRole, listRoles, deleteRole, newRoleConfig } from '@/services/roleStorage'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-
-// ── TagInput 内联局部组件 ─────────────────────────────────────────────────
-const TagInput = defineComponent({
-  name: 'TagInput',
-  props: { modelValue: Array, placeholder: String },
-  emits: ['update:modelValue'],
-  setup(props, { emit }) {
-    const inputVal = ref('')
-    function onEnter() {
-      const v = inputVal.value.trim()
-      if (!v) return
-      emit('update:modelValue', [...(props.modelValue || []), v])
-      inputVal.value = ''
-    }
-    function remove(i) {
-      const tags = [...(props.modelValue || [])]
-      tags.splice(i, 1)
-      emit('update:modelValue', tags)
-    }
-    return { inputVal, onEnter, remove }
-  },
-  template: `
-    <div class="tag-input-wrap">
-      <el-tag
-        v-for="(t, i) in (modelValue || [])"
-        :key="i" closable size="small"
-        style="margin:2px"
-        @close="remove(i)"
-      >{{ t }}</el-tag>
-      <el-input
-        v-model="inputVal"
-        size="small"
-        :placeholder="placeholder"
-        style="width:150px;margin:2px"
-        @keydown.enter.prevent="onEnter"
-      />
-    </div>
-  `,
-})
+import TagInput from '@/components/common/TagInput.vue'
 
 // ── 后端 API（可选） ──────────────────────────────────────────────────────
 async function apiRequest(method, path, body) {

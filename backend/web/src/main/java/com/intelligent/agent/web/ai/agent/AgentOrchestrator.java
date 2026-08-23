@@ -555,28 +555,28 @@ public class AgentOrchestrator {
     }
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
-                                           int round, List<ToolCall> executedCalls,
+                                           int round, List<Map<String, Object>> executedCalls,
                                            String traceId) {
         return runToolRounds(ctx, messages, round, executedCalls,
                 new ArrayList<>(), new ArrayList<>(), traceId, null, toolExecutor.definitions());
     }
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
-                                           int round, List<ToolCall> executedCalls,
+                                           int round, List<Map<String, Object>> executedCalls,
                                            String traceId, Consumer<ModelEvent> eventSink) {
         return runToolRounds(ctx, messages, round, executedCalls,
                 new ArrayList<>(), new ArrayList<>(), traceId, eventSink, toolExecutor.definitions());
     }
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
-                                           int round, List<ToolCall> executedCalls,
+                                           int round, List<Map<String, Object>> executedCalls,
                                            String traceId, List<ToolDefinition> toolDefs) {
         return runToolRounds(ctx, messages, round, executedCalls,
                 new ArrayList<>(), new ArrayList<>(), traceId, null, toolDefs);
     }
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
-                                           int round, List<ToolCall> executedCalls,
+                                           int round, List<Map<String, Object>> executedCalls,
                                            String traceId, Consumer<ModelEvent> eventSink,
                                            List<ToolDefinition> toolDefs) {
         return runToolRounds(ctx, messages, round, executedCalls,
@@ -584,7 +584,7 @@ public class AgentOrchestrator {
     }
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
-                                           int round, List<ToolCall> executedCalls,
+                                           int round, List<Map<String, Object>> executedCalls,
                                            List<ToolResult> failures,
                                            List<String> assistantTexts, String traceId,
                                            Consumer<ModelEvent> eventSink,
@@ -617,7 +617,7 @@ public class AgentOrchestrator {
     }
 
     private Mono<ReActState> handleRound(AgentRequestContext ctx, List<ChatMessage> messages,
-                                         LlmResponse response, List<ToolCall> executedCalls,
+                                         LlmResponse response, List<Map<String, Object>> executedCalls,
                                          List<ToolResult> failures,
                                          List<String> assistantTexts, String traceId,
                                          Consumer<ModelEvent> eventSink) {
@@ -680,11 +680,11 @@ public class AgentOrchestrator {
                         ? results.get(execIdx++)
                         : ToolResult.denied("用户拒绝了该工具调用（或审批超时），未执行"));
             }
-            List<ToolCall> executed = new ArrayList<>(executedCalls);
+            List<Map<String, Object>> executed = new ArrayList<>(executedCalls);
             for (int i = 0; i < calls.size(); i++) {
                 ToolCall call = calls.get(i);
                 ToolResult result = resultByIndex.get(i);
-                executed.add(call);
+                executed.add(executedEntry(call, result.status()));
                 if (!ToolResult.SUCCESS.equals(result.status())
                         && !ToolResult.DENIED.equals(result.status())) {
                     failures.add(result);
@@ -857,9 +857,17 @@ public class AgentOrchestrator {
         return e.getMessage();
     }
 
+    /** tool_calls_done 载荷条目：工具名 + 参数 + 执行成败（前端据此显示成功/失败）。 */
+    private static Map<String, Object> executedEntry(ToolCall call, String status) {
+        return Map.of(
+                "name", call.name(),
+                "arguments", call.arguments(),
+                "success", ToolResult.SUCCESS.equals(status));
+    }
+
     /** ReAct 状态：消息列表 + 当前无工具回复内容 + 是否执行过工具 + 已执行调用。 */
     private record ReActState(List<ChatMessage> messages, String content, boolean toolsRan,
-                              List<ToolCall> executedCalls, boolean continueLoop) {
+                              List<Map<String, Object>> executedCalls, boolean continueLoop) {
     }
 
     /** 技能匹配结果：注入提示词（空 = 未命中）+ 本次请求的可用工具集。 */

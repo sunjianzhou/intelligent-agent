@@ -275,9 +275,9 @@
         <div class="rc-usage-item">
           <span class="ru-label">等待队列</span>
           <div class="ru-bar-wrap">
-            <div class="ru-bar ru-bar-queue" :style="{ width: usagePct(rcCfg.inference_queue_size - (rcUsage.queue_slots ?? rcCfg.inference_queue_size), rcCfg.inference_queue_size) + '%' }" />
+            <div class="ru-bar ru-bar-queue" :style="{ width: usagePct(queueUsed, queueMax) + '%' }" />
           </div>
-          <span class="ru-val">已用 {{ rcCfg.inference_queue_size - (rcUsage.queue_slots ?? rcCfg.inference_queue_size) }} / {{ rcCfg.inference_queue_size }}</span>
+          <span class="ru-val">已用 {{ queueUsed }} / {{ queueMax || '—' }}</span>
         </div>
         <div class="rc-usage-item">
           <span class="ru-label">精确缓存</span>
@@ -393,6 +393,10 @@ const rcCfg   = ref({})
 const rcUsage = ref({})
 
 const usagePct = (used, total) => total > 0 ? Math.min(100, Math.round((used ?? 0) / total * 100)) : 0
+
+// 等待队列：后端暂未上报排队人数（queue_slots），缺失时按 0 使用、上限缺失显示 —，避免 NaN
+const queueMax = computed(() => rcCfg.value.inference_queue_size ?? 0)
+const queueUsed = computed(() => Math.max(0, queueMax.value - (rcUsage.value.queue_slots ?? queueMax.value)))
 
 const loadRuntimeConfig = async () => {
   const data = await getRuntimeConfig()

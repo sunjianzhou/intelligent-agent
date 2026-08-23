@@ -42,12 +42,12 @@ if not exist "%ROOT%\backend\web\target\web-1.0-SNAPSHOT.jar" (
 echo  [1/3] Backend      (port 8080, java mode) ...
 start "Backend[8080]" cmd /k "title Backend [port 8080] && call %ROOT%\start_java_mode.bat"
 
-echo  [2/3] Frontend     (port 5173) ...
-start "Frontend[5173]" cmd /k "title Frontend [port 5173] && cd /d %ROOT%\frontend && npm run dev"
+echo  [2/3] Frontend     (port 3000) ...
+start "Frontend[3000]" cmd /k "title Frontend [port 3000] && cd /d %ROOT%\frontend && npm run dev"
 
 echo.
 echo  Two service windows opened. Backend waits for nothing (self-contained).
-echo  Frontend : http://localhost:5173   Backend : http://localhost:8080
+echo  Frontend : http://localhost:3000   Backend : http://localhost:8080
 echo.
 pause
 goto :end
