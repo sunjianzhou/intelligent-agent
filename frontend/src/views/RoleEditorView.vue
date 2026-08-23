@@ -190,7 +190,8 @@
       <!-- ── Tab 4：角色记忆（只读展示 + 检索规则） ── -->
       <el-tab-pane label="角色记忆" name="memory">
         <el-alert type="warning" :closable="false" style="margin-bottom:16px">
-          短期记忆存于 Python 运行时（⚠️ 服务重启后清空）；长期记忆持久化在 ChromaDB。
+          短期记忆存于 Java 后端进程内（⚠️ 服务重启后清空，保留最近 100 条 / 24 小时）；
+          长期记忆持久化为按用户的 JSON 文件。
         </el-alert>
 
         <el-divider>承诺列表</el-divider>
@@ -380,7 +381,7 @@ async function apiRequest(method, path, body) {
   return res.json()
 }
 
-// camelCase 前端表单 → snake_case Python RoleConfig
+// camelCase 前端表单 → snake_case 后端 RoleConfig
 function formToApiPayload(f) {
   const p = JSON.parse(JSON.stringify(f))
   return {

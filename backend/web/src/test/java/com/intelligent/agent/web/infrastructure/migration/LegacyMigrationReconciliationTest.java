@@ -7,20 +7,22 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 真实逻辑数据对账（Plan 3 / Task 6 确认项 1）：
- * 对 docs/migration/export 的 manifest + business 数据执行 SHA-256 校验与
- * 导入 dry-run（目标为临时目录，不污染 Java 数据目录），输出报告。
+ * 对 test resources 中迁移归档的 manifest + business 数据执行 SHA-256 校验与
+ * 导入 dry-run（目标为临时目录，不污染 Java 数据目录），报告归档到 target/。
  */
 class LegacyMigrationReconciliationTest {
 
     @Test
     void reconcilesLegacyExportAgainstDryRunTarget() throws Exception {
-        Path exportDir = Path.of("..", "..", "docs", "migration", "export")
-                .toAbsolutePath().normalize();
+        // fixture 于 2026-08-23 随 Python 时代遗留清理迁入 test resources
+        Path exportDir = Path.of(Objects.requireNonNull(
+                getClass().getResource("/migration/export")).toURI());
         assertThat(Files.exists(exportDir.resolve("manifest.json")))
                 .as("export manifest must exist").isTrue();
 
@@ -35,9 +37,8 @@ class LegacyMigrationReconciliationTest {
         String report = buffer.toString(StandardCharsets.UTF_8);
         assertThat(code).isZero();
         assertThat(report).contains("对账通过：无记录丢失");
-        // 归档报告（幂等：不覆盖已有历史报告）
-        Path archiveDir = Path.of("..", "..", "docs", "migration", "reports")
-                .toAbsolutePath().normalize();
+        // 归档报告到构建输出目录（幂等：不覆盖已有历史报告），不再写入仓库
+        Path archiveDir = Path.of("target", "migration-reports").toAbsolutePath().normalize();
         Files.createDirectories(archiveDir);
         Path reportFile = archiveDir.resolve("reconciliation-" + System.currentTimeMillis() + ".txt");
         Files.writeString(reportFile, report, StandardCharsets.UTF_8);

@@ -21,8 +21,9 @@ Java backend (Spring Boot :8080)        ← the only server: JWT auth, WS manage
 
 For a deep dive (full module breakdown, API reference, known tech debt by ID), read
 `AI_PROJECT_CONTEXT.md` first. `README.md` has user-facing setup/ops instructions in Chinese.
-`TODOS.md` tracks open work items. Historical Python-era design notes live under
-`docs/migration/` and are kept only as reference.
+`TODOS.md` tracks open work items. Python-era migration artifacts under `docs/migration/`
+were removed on 2026-08-23 (recoverable from git history); the reconciliation fixture lives
+in `backend/web/src/test/resources/migration/export`.
 
 This repo also vendors an unrelated set of frontend design skills under `skills-src/`
 (ui-design, accessibility, color-theory, etc.) — these are Claude Code skills, not part of

@@ -1,5 +1,0 @@
-{
-    "model": "qwen2.5:7b",
-    "prompt": "你好，我是谁？",
-    "stream": false
-}

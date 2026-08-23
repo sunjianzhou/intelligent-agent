@@ -74,8 +74,11 @@ public class WeComMessageSender {
         }
     }
 
-    /** 发送文本消息给指定用户（userId = WeCom open userid）。*/
-    public void sendText(String toUser, String content) {
+    /**
+     * 发送文本消息给指定成员（toUser = WeCom 成员账号 userid）。
+     * 成功返回企微 msgid，失败返回 {@code null}（错误已记日志）。
+     */
+    public String sendText(String toUser, String content) {
         String token = getAccessToken();
         String url   = WECOM_API + "/cgi-bin/message/send?access_token=" + token;
 
@@ -99,11 +102,15 @@ public class WeComMessageSender {
             int errcode = errcodeObj instanceof Number ? ((Number) errcodeObj).intValue() : -1;
             if (errcode != 0) {
                 log.error("企业微信发送失败，errcode={}, errmsg={}", errcode, resp.get("errmsg"));
+                return null;
             } else {
-                log.info("企业微信消息发送成功，toUser={}", toUser);
+                Object msgId = resp.get("msgid");
+                log.info("企业微信消息发送成功，toUser={}, msgid={}", toUser, msgId);
+                return msgId == null ? null : String.valueOf(msgId);
             }
         } catch (Exception e) {
             log.error("企业微信发送消息异常，toUser={}: {}", toUser, e.getMessage());
+            return null;
         }
     }
 }

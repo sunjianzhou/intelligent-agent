@@ -6,6 +6,18 @@
 
 ## 当前待办总览（2026-08-15 更新）
 
+> **2026-08-23 收尾（Python 时代遗留清理 + 企微送达闭环，待提交）**：
+> - 企微真实送达验证闭环（详见 B 节）：`WeComMessageSender.sendText` 改为返回 msgid，
+>   `ImDeliveryVerifyTest` 新增 `wecomTextReachesHeartbeatReceiver` 真实发送用例，
+>   `.env.docker` 配置 `WECOM_HEARTBEAT_RECEIVER_ID=SunJianZhou`（用户端已确认收到）。
+> - Python 时代遗留清理：删除 `docs/migration/`（ChromaDB 二进制归档 / 70+ 对账报告 /
+>   验收记录 / 导出脚本，git 历史可恢复）、`test_json/`、`PROJECT_FULL_ANALYSIS.md`
+>   （2026-06 过时快照，以 AI_PROJECT_CONTEXT.md 为准）；对账 fixture 从
+>   `docs/migration/export` 迁至 `backend/web/src/test/resources/migration/export`，
+>   `LegacyMigrationReconciliationTest` 改 classpath 读取、报告归档写
+>   `target/migration-reports`（不再污染仓库）；RoleEditorView 记忆说明更新为
+>   Java 记忆模型（短期进程内 / 长期 JSON 持久化）。
+
 > **2026-08-22 高并发/高性能优化**（后端 + Java CLI，全量测试 478 后端 + 12 客户端绿）：
 > - REST `/api/chat` 异步化：新增 `chatExecutor`（8/32/队列 200），Tomcat worker 不再被最长 620s
 >   的 LLM 调用占用；线程池满快速 503。
@@ -142,11 +154,16 @@
 
 ### B. 验收遗留（需真实服务运行 + IM 凭证）
 
-- [ ] IM 真实送达验证（飞书 / 企微已验，Telegram 无凭证）
+- [x] IM 真实送达验证（飞书 / 企微已验，Telegram 无凭证）
+      ✅ 2026-08-23 企微真实送达闭环：`WeComMessageSender.sendText` 对
+      WECOM_HEARTBEAT_RECEIVER_ID=SunJianZhou 实测成功（errcode=0 + msgid +
+      invaliduser 空，用户端已确认收到）；`ImDeliveryVerifyTest` 补
+      `wecomTextReachesHeartbeatReceiver` 真实发送用例（需 WECOM_AGENT_ID /
+      WECOM_HEARTBEAT_RECEIVER_ID），sendText 改为返回 msgid 以支持断言。
       ✅ 2026-08-21（commit `5ca9b2b` + `ecb945c`）飞书真实送达：`FeishuMessageSender.sendTextByOpenId` 对
       FEISHU_HEARTBEAT_RECEIVER_ID 实测成功（返回 message_id，飞书端可查收）；
       企微：`WeComMessageSender.getAccessToken` 用 .env.docker 凭证实测成功
-      （送达仍需一个真实 WECOM userid，当前未配置）。
+      （真实送达已由 2026-08-23 用例闭环）。
       落地方式：新增 `@Tag("im-verify")` 手动套件（ImDeliveryVerifyTest），
       默认 excludedGroups=eval,im-verify 排除、不进 CI；运行
       `mvn test -Dgroups=im-verify -DexcludedGroups=`。
