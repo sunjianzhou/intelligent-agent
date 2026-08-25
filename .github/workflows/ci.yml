@@ -14,6 +14,14 @@ on:
         description: "Run perf/baseline suite (needs Ollama + backend, slow)"
         type: boolean
         default: false
+      run_eval:
+        description: "Run LLM eval suite (needs Ollama + backend, slow)"
+        type: boolean
+        default: false
+      eval_min_score:
+        description: "Eval min-score gate (2=protect line, 7=quality gate)"
+        type: string
+        default: "2"
 
 jobs:
   backend:
@@ -128,3 +136,45 @@ jobs:
         with:
           name: perf-report
           path: tests/perf-java/target/perf-report/*.json
+
+  eval:
+    name: Eval suite (manual 路 needs Ollama)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.run_eval
+    env:
+      JWT_SECRET: ci-e2e-jwt-secret-0123456789abcdef
+      ADMIN_PASSWORD: admin123
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Start Ollama and pull models
+        run: |
+          docker run -d --name ollama -p 11434:11434 -v ollama:/root/.ollama ollama/ollama
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:11434/api/tags >/dev/null; then break; fi
+            sleep 2
+          done
+          docker exec ollama ollama pull qwen2.5:7b
+          docker exec ollama ollama pull nomic-embed-text
+      - name: Start Java backend
+        run: |
+          cd backend/web
+          nohup ./mvnw spring-boot:run > /tmp/backend.log 2>&1 &
+          for i in $(seq 1 120); do
+            if curl -sf http://localhost:8080/api/health >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -sf http://localhost:8080/api/health
+      - name: Run eval suite (min-score configurable)
+        run: |
+          cd backend/web
+          ./mvnw -Peval test -Deval.min-score=${{ inputs.eval_min_score }}
+      - name: Upload eval report
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: backend/web/target/eval-results/*.jsonl

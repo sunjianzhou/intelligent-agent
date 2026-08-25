@@ -34,7 +34,12 @@ public class ConversationMemoryService {
     // G5 分层记忆：按层配额（episodic=summary 类，semantic=fact 类）
     public static final int EPISODIC_TOP_K = 2;
     public static final int SEMANTIC_TOP_K = 3;
-    public static final double CACHE_SIMILARITY_THRESHOLD = 0.8;
+    /**
+     * 语义缓存命中阈值（R-06 实测校准 0.8 → 0.9）：
+     * 同一问题复述的余弦 ≈0.95，而"我住在哪个城市"与"中国的首都是哪座城市"
+     * （同主题不同意图）仅 ≈0.83 —— 0.8 会误命中，导致返回错误缓存答案。
+     */
+    public static final double CACHE_SIMILARITY_THRESHOLD = 0.9;
     /** R-01 上下文压缩时最多注入的最近摘要条数（summary 类型按创建时间倒序）。 */
     public static final int COMPACTION_SUMMARY_LIMIT = 2;
 

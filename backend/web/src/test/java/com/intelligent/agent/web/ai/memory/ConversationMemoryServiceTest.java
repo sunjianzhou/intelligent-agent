@@ -55,6 +55,15 @@ class ConversationMemoryServiceTest {
                 "how to migrate java backend", 0.6)).contains("answer");
     }
 
+    @Test
+    void semanticCacheDoesNotCrossHitSameTopicDifferentIntent() {
+        cache.put("u", "writer", "qwen", "中国的首都是哪座城市？", "北京");
+
+        // R-06 实测：nomic 下该对余弦 ≈0.83 < 0.9（0.8 会误命中 → 返回错误缓存答案）
+        assertThat(cache.findSimilar("u", "writer", "qwen", "我住在哪个城市？",
+                ConversationMemoryService.CACHE_SIMILARITY_THRESHOLD)).isEmpty();
+    }
+
     // ── loadContext ───────────────────────────────────────────
 
     @Test
