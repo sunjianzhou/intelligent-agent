@@ -43,6 +43,13 @@ ai:
       window-size: ${LLM_CIRCUIT_BREAKER_WINDOW_SIZE:100}
     # 推理闸门排队超时：超过后返回"推理繁忙"错误，不再无限期占用等待线程
     inference-queue-timeout: ${LLM_INFERENCE_QUEUE_TIMEOUT:120s}
+    # R-02：模型 fallback 链（别名 → 有序模型列表，如 {"default":["qwen2.5:7b","deepseek-chat"]}；
+    # 云端条目需在 CLOUD_MODELS / CLOUD_MODEL 中注册）。熔断 OPEN 直接切换，
+    # 仅超时/5xx/429 消耗日限额；整链延迟预算上限 60s。
+    fallback-chains: ${LLM_FALLBACK_CHAINS:{}}
+    fallback:
+      budget: ${LLM_FALLBACK_BUDGET:60s}
+      daily-limit: ${LLM_FALLBACK_DAILY_LIMIT:50}
   # 真实 embedding（Ollama /api/embed，TODO-110 Task 5）
   embedding:
     enabled: ${EMBEDDING_ENABLED:true}

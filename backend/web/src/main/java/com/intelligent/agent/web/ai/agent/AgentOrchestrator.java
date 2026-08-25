@@ -190,6 +190,9 @@ public class AgentOrchestrator {
     public Flux<ModelEvent> stream(AgentRequestContext context) {
         Objects.requireNonNull(context, "context must not be null");
         String traceId = beginTrace(context);
+        long requestStart = System.currentTimeMillis();
+        LlmProviderRouter.FallbackTracker tracker =
+                new LlmProviderRouter.FallbackTracker(effectiveModel(context));
         AgentContext memory = loadMemory(context, traceId);
         if (memory.cachedAnswer().isPresent()) {
             String cached = memory.cachedAnswer().get();
@@ -197,7 +200,7 @@ public class AgentOrchestrator {
                             Flux.just(ModelEvent.token(cached)),
                             Flux.just(ModelEvent.done(Map.of())))
                     .doOnComplete(() -> {
-                        recordTurn(context, cached, traceId);
+                        recordTurn(context, cached, traceId, false);
                         endTrace(traceId, true);
                     })
                     .doOnError(e -> endTrace(traceId, false));
@@ -219,9 +222,9 @@ public class AgentOrchestrator {
                             Sinks.many().unicast().onBackpressureBuffer();
                     Flux<ModelEvent> rounds = runToolRounds(context, messages,
                                     0, List.of(), traceId, midEvents::tryEmitNext,
-                                    skillMatch.toolDefs())
+                                    skillMatch.toolDefs(), tracker)
                             .doFinally(signal -> midEvents.tryEmitComplete())
-                            .flatMapMany(state -> streamFinal(context, state, traceId));
+                            .flatMapMany(state -> streamFinal(context, state, traceId, tracker));
                     Flux<ModelEvent> merged = Flux.merge(midEvents.asFlux(), rounds);
                     if (plan.isPresent()) {
                         return Flux.concat(Flux.just(ModelEvent.plan(plan.get())), merged);
@@ -234,7 +237,14 @@ public class AgentOrchestrator {
                     }
                 })
                 .doOnComplete(() -> {
-                    recordTurn(context, TaskSentinelUtils.strip(tokens.toString()), traceId);
+                    if (tracker.used()) {
+                        addSpan(traceId, "model_fallback", requestStart, Map.of(
+                                "from", effectiveModel(context) == null ? "" : effectiveModel(context),
+                                "to", tracker.effectiveModel(),
+                                "reason", tracker.reason() == null ? "" : tracker.reason()));
+                    }
+                    recordTurn(context, TaskSentinelUtils.strip(tokens.toString()),
+                            traceId, tracker.used());
                     endTrace(traceId, true);
                 })
                 .doOnError(e -> endTrace(traceId, false));
@@ -243,12 +253,15 @@ public class AgentOrchestrator {
     public Mono<String> complete(AgentRequestContext context) {
         Objects.requireNonNull(context, "context must not be null");
         String traceId = beginTrace(context);
+        long requestStart = System.currentTimeMillis();
+        LlmProviderRouter.FallbackTracker tracker =
+                new LlmProviderRouter.FallbackTracker(effectiveModel(context));
         AgentContext memory = loadMemory(context, traceId);
         if (memory.cachedAnswer().isPresent()) {
             String cached = memory.cachedAnswer().get();
             return Mono.just(cached).doOnSuccess(answer ->
                     {
-                        recordTurn(context, TaskSentinelUtils.strip(answer), traceId);
+                        recordTurn(context, TaskSentinelUtils.strip(answer), traceId, false);
                         endTrace(traceId, true);
                     })
                     .doOnError(e -> endTrace(traceId, false));
@@ -264,11 +277,17 @@ public class AgentOrchestrator {
                             ? withPlan(initialMessages(context, memory, skillMatch.prompt(), traceId), plan.get())
                             : initialMessages(context, memory, skillMatch.prompt(), traceId);
                     return runToolRounds(context, messages, 0, List.of(), traceId,
-                                    skillMatch.toolDefs())
-                            .flatMap(state -> completeFinal(context, state, traceId));
+                                    skillMatch.toolDefs(), tracker)
+                            .flatMap(state -> completeFinal(context, state, traceId, tracker));
                 })
                 .doOnSuccess(answer -> {
-                    recordTurn(context, answer, traceId);
+                    if (tracker.used()) {
+                        addSpan(traceId, "model_fallback", requestStart, Map.of(
+                                "from", effectiveModel(context) == null ? "" : effectiveModel(context),
+                                "to", tracker.effectiveModel(),
+                                "reason", tracker.reason() == null ? "" : tracker.reason()));
+                    }
+                    recordTurn(context, answer, traceId, tracker.used());
                     endTrace(traceId, true);
                 })
                 .doOnError(e -> endTrace(traceId, false));
@@ -285,10 +304,11 @@ public class AgentOrchestrator {
         return memory;
     }
 
-    private void recordTurn(AgentRequestContext ctx, String answer, String traceId) {
+    private void recordTurn(AgentRequestContext ctx, String answer, String traceId,
+                            boolean skipCacheWrite) {
         long start = System.currentTimeMillis();
         if (memoryService != null) {
-            memoryService.recordTurn(ctx, answer);
+            memoryService.recordTurn(ctx, answer, skipCacheWrite);
         }
         addSpan(traceId, "memory", start, Map.of("op", "record"));
     }
@@ -607,31 +627,37 @@ public class AgentOrchestrator {
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
                                            int round, List<Map<String, Object>> executedCalls,
-                                           String traceId) {
+                                           String traceId,
+                                           LlmProviderRouter.FallbackTracker tracker) {
         return runToolRounds(ctx, messages, round, executedCalls,
-                new ArrayList<>(), new ArrayList<>(), traceId, null, toolExecutor.definitions());
-    }
-
-    private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
-                                           int round, List<Map<String, Object>> executedCalls,
-                                           String traceId, Consumer<ModelEvent> eventSink) {
-        return runToolRounds(ctx, messages, round, executedCalls,
-                new ArrayList<>(), new ArrayList<>(), traceId, eventSink, toolExecutor.definitions());
-    }
-
-    private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
-                                           int round, List<Map<String, Object>> executedCalls,
-                                           String traceId, List<ToolDefinition> toolDefs) {
-        return runToolRounds(ctx, messages, round, executedCalls,
-                new ArrayList<>(), new ArrayList<>(), traceId, null, toolDefs);
+                new ArrayList<>(), new ArrayList<>(), traceId, null,
+                toolExecutor.definitions(), tracker);
     }
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
                                            int round, List<Map<String, Object>> executedCalls,
                                            String traceId, Consumer<ModelEvent> eventSink,
-                                           List<ToolDefinition> toolDefs) {
+                                           LlmProviderRouter.FallbackTracker tracker) {
         return runToolRounds(ctx, messages, round, executedCalls,
-                new ArrayList<>(), new ArrayList<>(), traceId, eventSink, toolDefs);
+                new ArrayList<>(), new ArrayList<>(), traceId, eventSink,
+                toolExecutor.definitions(), tracker);
+    }
+
+    private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
+                                           int round, List<Map<String, Object>> executedCalls,
+                                           String traceId, List<ToolDefinition> toolDefs,
+                                           LlmProviderRouter.FallbackTracker tracker) {
+        return runToolRounds(ctx, messages, round, executedCalls,
+                new ArrayList<>(), new ArrayList<>(), traceId, null, toolDefs, tracker);
+    }
+
+    private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
+                                           int round, List<Map<String, Object>> executedCalls,
+                                           String traceId, Consumer<ModelEvent> eventSink,
+                                           List<ToolDefinition> toolDefs,
+                                           LlmProviderRouter.FallbackTracker tracker) {
+        return runToolRounds(ctx, messages, round, executedCalls,
+                new ArrayList<>(), new ArrayList<>(), traceId, eventSink, toolDefs, tracker);
     }
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
@@ -639,15 +665,25 @@ public class AgentOrchestrator {
                                            List<ToolResult> failures,
                                            List<String> assistantTexts, String traceId,
                                            Consumer<ModelEvent> eventSink,
-                                           List<ToolDefinition> toolDefs) {
+                                           List<ToolDefinition> toolDefs,
+                                           LlmProviderRouter.FallbackTracker tracker) {
         if (round >= maxToolRounds) {
             return Mono.just(new ReActState(messages, "", true, executedCalls, false));
         }
-        LlmProvider provider = router.forUser(ctx.userId(), ctx.model());
-        Mono<LlmResponse> responseMono = ctx.useTools()
-                ? provider.completeWithTools(buildTurn(ctx, messages), toolDefs)
-                : provider.complete(buildTurn(ctx, messages))
-                        .map(content -> new LlmResponse(content, List.of()));
+        // R-02：fallback 链在 router 层包裹 gate+breaker，熔断 OPEN 直切、超时/5xx/429 消耗额度
+        Mono<LlmResponse> responseMono = router.completeWithFallback(
+                        ctx.userId(), ctx.model(), buildTurn(ctx, messages),
+                        ctx.useTools() ? toolDefs : null, tracker)
+                .map(result -> {
+                    if (result.fallbackUsed()) {
+                        addSpan(traceId, "model_fallback",
+                                System.currentTimeMillis() - result.elapsedMs(), Map.of(
+                                        "from", ctx.model() == null ? "" : ctx.model(),
+                                        "to", result.effectiveModel(),
+                                        "reason", tracker == null ? "" : tracker.reason()));
+                    }
+                    return result.response();
+                });
         responseMono = traceLlmCall(traceId, responseMono, ctx, false);
         return responseMono.flatMap(response -> {
                     String content = response.content();
@@ -663,7 +699,8 @@ public class AgentOrchestrator {
                 })
                 .flatMap(state -> state.continueLoop()
                         ? runToolRounds(ctx, state.messages(), round + 1,
-                        state.executedCalls(), failures, assistantTexts, traceId, eventSink, toolDefs)
+                        state.executedCalls(), failures, assistantTexts, traceId, eventSink,
+                        toolDefs, tracker)
                         : Mono.just(state));
     }
 
@@ -786,7 +823,8 @@ public class AgentOrchestrator {
     }
 
     private Flux<ModelEvent> streamFinal(AgentRequestContext ctx, ReActState state,
-                                         String traceId) {
+                                         String traceId,
+                                         LlmProviderRouter.FallbackTracker tracker) {
         // content 非空 = 已有最终答复（无工具路径或分支失败终止态），不再调用模型
         if (state.content() != null && !state.content().isBlank()) {
             Flux<ModelEvent> finalFlux = reflectFinalAnswer(ctx, state, state.content(), traceId)
@@ -799,8 +837,8 @@ public class AgentOrchestrator {
             return finalFlux;
         }
         List<ChatMessage> finalMessages = finalizeMessages(state.messages(), state.toolsRan());
-        Flux<ModelEvent> answer = router.forUser(ctx.userId(), ctx.model())
-                .stream(buildTurn(ctx, finalMessages))
+        Flux<ModelEvent> answer = router.streamWithFallback(ctx.userId(), ctx.model(),
+                        buildTurn(ctx, finalMessages), tracker)
                 .onErrorResume(e -> Flux.just(ModelEvent.error(safeMessage(e))));
         answer = traceLlmStream(traceId, answer, ctx);
         if (state.executedCalls().isEmpty()) {
@@ -814,14 +852,17 @@ public class AgentOrchestrator {
     }
 
     private Mono<String> completeFinal(AgentRequestContext ctx, ReActState state,
-                                       String traceId) {
+                                       String traceId,
+                                       LlmProviderRouter.FallbackTracker tracker) {
         if (state.content() != null && !state.content().isBlank()) {
             return reflectFinalAnswer(ctx, state,
                     TaskSentinelUtils.strip(state.content()), traceId);
         }
         List<ChatMessage> finalMessages = finalizeMessages(state.messages(), state.toolsRan());
-        Mono<String> result = router.forUser(ctx.userId(), ctx.model())
-                .complete(buildTurn(ctx, finalMessages))
+        Mono<String> result = router.completeWithFallback(ctx.userId(), ctx.model(),
+                        buildTurn(ctx, finalMessages), null, tracker)
+                .map(LlmProviderRouter.FallbackResult::response)
+                .map(LlmResponse::content)
                 .map(TaskSentinelUtils::strip)
                 .onErrorResume(e -> Mono.just(safeMessage(e)));
         return traceLlmCall(traceId, result.map(c -> new LlmResponse(c, List.of())),

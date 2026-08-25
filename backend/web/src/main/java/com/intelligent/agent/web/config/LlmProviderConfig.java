@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.config;
 
 import com.intelligent.agent.web.ai.llm.InferenceGate;
+import com.intelligent.agent.web.ai.llm.FallbackRateLimiter;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.ai.llm.OllamaOptions;
 import com.intelligent.agent.web.ai.llm.circuit.CircuitBreakerConfig;
@@ -61,7 +62,10 @@ public class LlmProviderConfig {
             InferenceGate inferenceGate,
             @Value("${ai.llm.cloud.models:}") List<String> cloudModels,
             @Value("${ai.llm.cloud.model:}") String cloudModel,
-            @Value("${ai.llm.inference-queue-timeout:120s}") Duration queueTimeout) {
+            @Value("${ai.llm.inference-queue-timeout:120s}") Duration queueTimeout,
+            @Value("#{${ai.llm.fallback-chains:{}}}") Map<String, List<String>> fallbackChains,
+            @Value("${ai.llm.fallback.budget:60s}") Duration fallbackBudget,
+            @Value("${ai.llm.fallback.daily-limit:50}") int fallbackDailyLimit) {
         List<String> models = new ArrayList<>();
         if (cloudModel != null && !cloudModel.isBlank()) {
             models.add(cloudModel.trim());
@@ -74,7 +78,9 @@ public class LlmProviderConfig {
             }
         }
         return new LlmProviderRouter(ollamaLlmProvider, cloudLlmProvider, models,
-                circuitBreakerRegistry, inferenceGate, queueTimeout);
+                circuitBreakerRegistry, inferenceGate, queueTimeout,
+                fallbackChains, fallbackBudget,
+                new FallbackRateLimiter(fallbackDailyLimit));
     }
 
     /** 全局并发推理闸门：上限由 runtime 配置 inference_concurrency 驱动（ConfigRuntimeService 注入）。 */

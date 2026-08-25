@@ -153,6 +153,20 @@ public class ConversationMemoryService {
 
     /** 记录一轮对话：写短期历史、按 5/10 轮触发蒸馏与摘要、回写语义缓存。 */
     public void recordTurn(AgentRequestContext ctx, String answer) {
+        doRecordTurn(ctx, answer, false);
+    }
+
+    /** R-02：skipCacheWrite=true 时跳过语义缓存回写（fallback 跨模型作答不污染缓存）。 */
+    public void recordTurn(AgentRequestContext ctx, String answer, boolean skipCacheWrite) {
+        if (!skipCacheWrite) {
+            // 兼容子类覆写的 2 参入口（如测试 StubMemoryService）
+            recordTurn(ctx, answer);
+            return;
+        }
+        doRecordTurn(ctx, answer, true);
+    }
+
+    private void doRecordTurn(AgentRequestContext ctx, String answer, boolean skipCacheWrite) {
         if (!ctx.useMemory()) {
             return;
         }
@@ -181,7 +195,8 @@ public class ConversationMemoryService {
             }
         }
 
-        if (answer != null && !answer.isBlank() && ctx.message() != null && !ctx.message().isBlank()) {
+        if (!skipCacheWrite && answer != null && !answer.isBlank()
+                && ctx.message() != null && !ctx.message().isBlank()) {
             semanticCache.put(userId, ctx.persona(), ctx.model(), ctx.message(), answer);
         }
     }

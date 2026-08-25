@@ -256,6 +256,19 @@ public class AgentService {
                 wsMsg.put("approval", eventData);
                 return wsMsg;
 
+            case WebSocketMessageType.MODEL_FALLBACK:
+                if (eventData instanceof Map) {
+                    Map<?, ?> fallback = (Map<?, ?>) eventData;
+                    wsMsg.put("type", WebSocketMessageType.MODEL_FALLBACK);
+                    wsMsg.put("from", fallback.get("from"));
+                    wsMsg.put("to", fallback.get("to"));
+                    wsMsg.put("reason", fallback.get("reason"));
+                } else {
+                    wsMsg.put("type", WebSocketMessageType.MODEL_FALLBACK);
+                }
+                log.info("模型降级（fallback 链生效）: {}", eventData);
+                return wsMsg;
+
             case "token":
                 String token = String.valueOf(eventData);
                 fullMsg.append(token);
@@ -312,7 +325,8 @@ public class AgentService {
             case "thinking_chunk", "token",
                     WebSocketMessageType.TOOL_CALL_START, "tool_call",
                     "task_update", "task_blocked", WebSocketMessageType.PLAN,
-                    WebSocketMessageType.APPROVAL_REQUIRED -> true;
+                    WebSocketMessageType.APPROVAL_REQUIRED,
+                    WebSocketMessageType.MODEL_FALLBACK -> true;
             default -> false;
         };
     }

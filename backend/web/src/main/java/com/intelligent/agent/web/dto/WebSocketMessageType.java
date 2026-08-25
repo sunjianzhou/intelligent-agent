@@ -53,6 +53,8 @@ public final class WebSocketMessageType {
     public static final String APPROVAL_DECISION = "approval_decision";
     /** G6 HITL：审批决议已生效（服务端 → 客户端，可选确认） */
     public static final String APPROVAL_RESOLVED = "approval_resolved";
+    /** R-02：模型降级（fallback 链生效，服务端 → 客户端） */
+    public static final String MODEL_FALLBACK    = "model_fallback";
 
     /** 当前协议版本，随协议变更递增 */
     public static final int PROTOCOL_VERSION = 1;

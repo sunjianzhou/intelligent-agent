@@ -38,6 +38,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const availableModels  = ref([])
   const cloudMode        = ref(false)
   const cloudModel       = ref('')
+  const effectiveModel   = ref('')  // R-02：fallback 链生效后的实际模型（模型徽章显示）
   const responseTimes = ref([])   // 最近20次响应时间
   const currentSessionId = ref(localStorage.getItem('ia_session_id') || _newSessionId())
   let ws = null
@@ -72,6 +73,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
   })
 
   const modelStatus = computed(() => {
+    // R-02：本次请求发生模型降级时，徽章显示实际生效模型，让用户可感知
+    if (effectiveModel.value) return `${effectiveModel.value} ⇣`
     // cloudMode comes from REST /api/models (per-user, authoritative).
     // systemInfo.cloud_mode is global config — intentionally excluded here
     // to prevent the global cloud setting from overriding a per-user local mode.
@@ -234,6 +237,12 @@ export const useWebSocketStore = defineStore('websocket', () => {
         // G6 HITL：工具调用等待用户审批
         const approvalMsg = approvalEventToMessage(data)
         if (approvalMsg) addMessage(approvalMsg)
+        break
+      }
+
+      case 'model_fallback': {
+        // R-02：模型降级（本地不可用 → 自动切换云端等），更新模型徽章
+        effectiveModel.value = data.to || ''
         break
       }
 
@@ -442,6 +451,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
   const sendChatMessage = (message, useTools = true, useMemory = true, projectId = null, pendingTasks = null, imageBase64 = null) => {
     const requestId = crypto.randomUUID()
+    effectiveModel.value = ''  // 新一轮请求，重置降级标记
     const payload = {
       type: 'chat_message', message,
       use_tools: useTools, use_memory: useMemory,
@@ -604,7 +614,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     isStreaming, streamingIndex, activeToolSteps, chatEndSignal,
     currentSessionId,
     // 计算属性
-    connectionStatus, modelStatus,
+    connectionStatus, modelStatus, effectiveModel,
     // 方法
     connect, disconnect, send, sendChatMessage, cancelStreaming,
     addMessage, clearMessages,

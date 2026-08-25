@@ -1,5 +1,6 @@
 package com.intelligent.agent.web.ai.llm;
 
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -23,6 +24,7 @@ public record ModelEvent(String type, Object data) {
     public static final String TYPE_APPROVAL_REQUIRED = "approval_required";
     public static final String TYPE_TASK_UPDATE = "task_update";
     public static final String TYPE_TASK_BLOCKED = "task_blocked";
+    public static final String TYPE_MODEL_FALLBACK = "model_fallback";
 
     public ModelEvent {
         Objects.requireNonNull(type, "type must not be null");
@@ -68,5 +70,13 @@ public record ModelEvent(String type, Object data) {
 
     public static ModelEvent taskBlocked(Object data) {
         return new ModelEvent(TYPE_TASK_BLOCKED, data);
+    }
+
+    /** R-02：模型降级事件（data 含 from/to/reason），前端模型徽章显示实际生效模型。 */
+    public static ModelEvent modelFallback(String from, String to, String reason) {
+        return new ModelEvent(TYPE_MODEL_FALLBACK, Map.of(
+                "from", from == null ? "" : from,
+                "to", to == null ? "" : to,
+                "reason", reason == null ? "" : reason));
     }
 }
