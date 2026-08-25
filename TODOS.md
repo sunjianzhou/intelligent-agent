@@ -20,7 +20,7 @@
 | R-03 ✅（2026-08-25 落地，commit `ef0817e`） | 缺网页正文抓取能力 | 仅 `WebSearchTool`（搜索摘要），无法读取页面正文；回答问题/调研能力受限 | 新增 `WebFetchTool`：白名单域名 + HTTP GET + HTML 正文提取（jsoup）+ 截断 + 不可信数据前缀；SSRF 防护含每跳重定向校验；前端工具列表可见 | 对白名单页面抓取正文成功、非白名单拒绝；注入/重定向校验测试通过 |
 | R-04 ✅（2026-08-25 落地，commit `7dbf610`） | 记忆纠错闭环缺失 | 记忆由蒸馏自动写入，用户无法便捷纠正错误记忆（MemoryView 仅有搜索/导出） | 聊天内识别纠正指令（"删掉/修改你记的 X"）→ 复用记忆 CRUD；MemoryView 增加编辑/置顶/失效操作 | 用户纠正后下一轮检索不再召回旧事实；前端 2 用例 + 后端 2 用例 |
 | R-05 ✅（2026-08-25 落地，commit `f41f6c2`） | RAG 无引用溯源 | 知识库分块写入向量记忆，回答不标注来源，难以验证 | 检索保留 chunk 元数据（fileId/chunkIndex），回答流式事件带 citation 或完成后附引用列表 | 知识问答返回带来源的引用；E2E 校验引用存在 |
-| R-06 | 评估套件过薄、无门禁 | 仅 8 个 golden cases（`golden-cases.json`），只跑本地 qwen，非 CI 门禁 | 扩充到 30+：工具组合、多轮、注入攻击、长会话压缩质量、记忆纠错；提供云端模型 baseline 对比；接入手动 CI job | 新用例可跑通；`-Deval.min-score` 门禁在 CI 可复用 |
+| R-06 ✅（2026-08-25 落地，commit `b3fc255`） | 评估套件过薄、无门禁 | 仅 8 个 golden cases（`golden-cases.json`），只跑本地 qwen，非 CI 门禁 | 扩充到 30+：工具组合、多轮、注入攻击、长会话压缩质量、记忆纠错；提供云端模型 baseline 对比；接入手动 CI job | 新用例可跑通；`-Deval.min-score` 门禁在 CI 可复用 |
 
 ### P1 — 中期
 
@@ -88,7 +88,21 @@
     在回答底部渲染"引用来源"列表（可点击跳转 /knowledge）。
   - 测试：`AgentOrchestratorCitationTest`（3：知识问答引用+标注 / 非 knowledge 无引用 /
     无来源元数据无引用）+ 前端 citations 用例（2）。
-- 下一跳：R-06 评估套件扩充 + CI 门禁（M2 最后一项）。
+- **R-06 ✅ 2026-08-25（commit `b3fc255`）**：评估套件扩充 + CI 门禁。
+  - golden-cases 从 8 → 36 例：工具组合（calc/unit/time 多轮链）、多轮对话（记忆保持）、
+    注入攻击（用户级 + 记忆 tool_result 级 canary）、长会话压缩质量（13 轮后关键事实保持）、
+    记忆纠错、场景（群聊 @ / 静默）等；多轮用例支持 `conversation` 字段 + 按用例隔离 userId。
+  - EvalSuite 升级：judge 走 `LlmProviderRouter`（`-Deval.model` 云端 baseline）；
+    `-Deval.samples=N` 多次采样取中位数；`-Deval.cases=id1,id2` 子集回归；
+    用例级 `minScore` 覆盖全局门槛（安全 canary 类已知短板）。
+  - CI：`.github/workflows/ci.yml` 新增手动 `eval` job（workflow_dispatch `run_eval` +
+    `eval_min_score` 可配），起 Ollama + 后端后跑 `mvn -Peval test` 并上传 JSONL 报告。
+  - **真机实测**：36/36 ok、平均 7.22（qwen2.5:7b）；修复两个真实问题——
+    ① 语义缓存阈值 0.8 误命中同主题不同意图问题（实测 0.83 < 同问句 0.95），
+    提升到 0.9 并加回归测试；② 评估暴露 qwen 对"生日"隐私话题拒答（换中性事实用例）。
+    injection-memory canary 当前 qwen 得分 5（标记 minScore 0 作为安全诊断指标）。
+- M2 全部完成（R-04 记忆纠错 / R-05 引用溯源 / R-06 评估门禁）。下一跳：M3
+  （R-07 子代理 → R-09 IM 审批 → R-10 成本指标 → R-11 密钥解耦 → R-12 会话管理）。
 - 2026-08-24 文档变更（AGENTS.md / TODOS.md / docs/agent-upgrade-design-2026-08-24.md）已于 2026-08-25 随 R-01 一并入库。
 
 ## 当前待办总览（2026-08-15 更新）
