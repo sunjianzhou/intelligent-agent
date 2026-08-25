@@ -19,7 +19,7 @@
 | R-02 ✅（2026-08-25 落地，commit `a7a1c25`） | 模型无 fallback 链 | 请求显式模型，熔断只拒绝不切换（`CircuitBreakerLlmProvider` OPEN 直接失败）；本地 qwen 不可用时整系统不可用 | 新增模型别名/fallback 链配置（如 default → qwen2.5:7b → 云端），失败/熔断自动降级并输出 `model_fallback` 事件；UI 显示实际生效模型 | 停掉 Ollama 后聊天自动走云端并可感知；新增熔断降级测试 |
 | R-03 ✅（2026-08-25 落地，commit `ef0817e`） | 缺网页正文抓取能力 | 仅 `WebSearchTool`（搜索摘要），无法读取页面正文；回答问题/调研能力受限 | 新增 `WebFetchTool`：白名单域名 + HTTP GET + HTML 正文提取（jsoup）+ 截断 + 不可信数据前缀；SSRF 防护含每跳重定向校验；前端工具列表可见 | 对白名单页面抓取正文成功、非白名单拒绝；注入/重定向校验测试通过 |
 | R-04 ✅（2026-08-25 落地，commit `7dbf610`） | 记忆纠错闭环缺失 | 记忆由蒸馏自动写入，用户无法便捷纠正错误记忆（MemoryView 仅有搜索/导出） | 聊天内识别纠正指令（"删掉/修改你记的 X"）→ 复用记忆 CRUD；MemoryView 增加编辑/置顶/失效操作 | 用户纠正后下一轮检索不再召回旧事实；前端 2 用例 + 后端 2 用例 |
-| R-05 | RAG 无引用溯源 | 知识库分块写入向量记忆，回答不标注来源，难以验证 | 检索保留 chunk 元数据（fileId/chunkIndex），回答流式事件带 citation 或完成后附引用列表 | 知识问答返回带来源的引用；E2E 校验引用存在 |
+| R-05 ✅（2026-08-25 落地，commit `f41f6c2`） | RAG 无引用溯源 | 知识库分块写入向量记忆，回答不标注来源，难以验证 | 检索保留 chunk 元数据（fileId/chunkIndex），回答流式事件带 citation 或完成后附引用列表 | 知识问答返回带来源的引用；E2E 校验引用存在 |
 | R-06 | 评估套件过薄、无门禁 | 仅 8 个 golden cases（`golden-cases.json`），只跑本地 qwen，非 CI 门禁 | 扩充到 30+：工具组合、多轮、注入攻击、长会话压缩质量、记忆纠错；提供云端模型 baseline 对比；接入手动 CI job | 新用例可跑通；`-Deval.min-score` 门禁在 CI 可复用 |
 
 ### P1 — 中期
@@ -79,7 +79,16 @@
   - 前端：MemoryCard 增加 置顶/失效（软删除）/恢复/彻底删除，MemoryView 增加"已失效"分区与
     恢复入口（`utils/memoryActions.js` 纯状态转换）。
   - 测试：`MemoryInvalidationTest`（4）+ `MemoryCorrectionServiceTest`（6）+ 前端 3 用例。
-- 下一跳：R-05 RAG 引用溯源 → R-06 评估扩充/门禁（M2 剩余两项）。
+- **R-05 ✅ 2026-08-25（commit `558c4f2`）**：RAG 引用溯源。
+  - 召回组装：knowledge 类记录（带 file_id/filename/chunk_index 元数据）在注入上下文时追加
+    `[SOURCE: 文件名#段落N]` 标注，并附加"基于引用作答，不确定时明确说明"约束。
+  - 引用事件：`ModelEvent.citation` + WS 协议 `citation`，编排器在回答流结束前（done 前）
+    发送去重后的引用列表（无工具直通路径在 done 前插入）。
+  - 前端：websocket store 按 file_id#chunk_index 去重附着到流式消息，`ChatMessageRow`
+    在回答底部渲染"引用来源"列表（可点击跳转 /knowledge）。
+  - 测试：`AgentOrchestratorCitationTest`（3：知识问答引用+标注 / 非 knowledge 无引用 /
+    无来源元数据无引用）+ 前端 citations 用例（2）。
+- 下一跳：R-06 评估套件扩充 + CI 门禁（M2 最后一项）。
 - 2026-08-24 文档变更（AGENTS.md / TODOS.md / docs/agent-upgrade-design-2026-08-24.md）已于 2026-08-25 随 R-01 一并入库。
 
 ## 当前待办总览（2026-08-15 更新）
