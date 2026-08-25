@@ -30,4 +30,21 @@ public interface MemoryRepository {
 
     /** 作用域删除：仅当记录属于该用户时删除；不存在或属他人返回 false。 */
     boolean delete(String userId, String memoryId);
+
+    // ── R-04 软删除/失效（可恢复） ───────────────────────────────────────
+
+    /** 软删除：标记 invalidated=true（含原因与时间），检索层不再召回；可恢复。 */
+    default boolean invalidate(String userId, String memoryId, String reason) {
+        return false;
+    }
+
+    /** 恢复软删除记录：清除 invalidated 标记，重新进入检索。 */
+    default boolean restore(String userId, String memoryId) {
+        return false;
+    }
+
+    /** 列出该用户已失效（软删除）的记录，供 MemoryView 恢复入口使用。 */
+    default List<MemoryRecord> listInvalidated(String userId, int limit) {
+        return List.of();
+    }
 }

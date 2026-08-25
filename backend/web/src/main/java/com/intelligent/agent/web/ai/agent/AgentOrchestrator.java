@@ -194,6 +194,20 @@ public class AgentOrchestrator {
         LlmProviderRouter.FallbackTracker tracker =
                 new LlmProviderRouter.FallbackTracker(effectiveModel(context));
         AgentContext memory = loadMemory(context, traceId);
+        // R-04：聊天内记忆纠错（删掉/修改/忘了你记的 X）→ 直接修正并回执，跳过 LLM
+        java.util.Optional<String> correction = memoryService == null
+                ? java.util.Optional.empty() : memoryService.applyCorrection(context);
+        if (correction.isPresent()) {
+            long start = System.currentTimeMillis();
+            addSpan(traceId, "memory_correction", start, Map.of(
+                    "op", "correct", "user", context.userId()));
+            recordTurn(context, correction.get(), traceId, true);
+            return Flux.concat(
+                            Flux.just(ModelEvent.token(correction.get())),
+                            Flux.just(ModelEvent.done(Map.of())))
+                    .doOnComplete(() -> endTrace(traceId, true))
+                    .doOnError(e -> endTrace(traceId, false));
+        }
         if (memory.cachedAnswer().isPresent()) {
             String cached = memory.cachedAnswer().get();
             return Flux.concat(
@@ -257,6 +271,18 @@ public class AgentOrchestrator {
         LlmProviderRouter.FallbackTracker tracker =
                 new LlmProviderRouter.FallbackTracker(effectiveModel(context));
         AgentContext memory = loadMemory(context, traceId);
+        // R-04：聊天内记忆纠错（删掉/修改/忘了你记的 X）→ 直接修正并回执，跳过 LLM
+        java.util.Optional<String> correction = memoryService == null
+                ? java.util.Optional.empty() : memoryService.applyCorrection(context);
+        if (correction.isPresent()) {
+            long start = System.currentTimeMillis();
+            addSpan(traceId, "memory_correction", start, Map.of(
+                    "op", "correct", "user", context.userId()));
+            recordTurn(context, correction.get(), traceId, true);
+            return Mono.just(correction.get())
+                    .doOnSuccess(answer -> endTrace(traceId, true))
+                    .doOnError(e -> endTrace(traceId, false));
+        }
         if (memory.cachedAnswer().isPresent()) {
             String cached = memory.cachedAnswer().get();
             return Mono.just(cached).doOnSuccess(answer ->

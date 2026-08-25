@@ -89,6 +89,17 @@ export const getMemoryList   = (type = 'long_term', limit = 50) =>
 export const deleteMemory    = (id) =>
   request(`${BASE}/memory/${id}`, { method: 'DELETE' })
 
+export const invalidateMemory = (id, reason) =>
+  request(`${BASE}/memory/${id}/invalidate`, {
+    method: 'POST', body: JSON.stringify({ reason })
+  })
+
+export const restoreMemory = (id) =>
+  request(`${BASE}/memory/${id}/restore`, { method: 'POST' })
+
+export const getInvalidatedMemories = (limit = 50) =>
+  request(`${BASE}/memory/invalidated?limit=${limit}`)
+
 export const updateMemoryImportance = (id, importance) =>
   request(`${BASE}/memory/${id}/importance`, {
     method: 'PATCH', body: JSON.stringify({ importance })

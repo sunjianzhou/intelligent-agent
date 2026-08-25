@@ -1,9 +1,12 @@
 <template>
-  <div class="memory-card" :class="{ deleting: deletingId === mem.id }">
+  <div class="memory-card" :class="{ deleting: deletingId === mem.id, invalidated: mem.invalidated }">
     <div class="memory-header">
       <div class="memory-meta">
         <span class="badge cat-badge">{{ mem.category }}</span>
         <span v-if="mem.role" class="badge role-badge">{{ mem.role }}</span>
+        <span v-if="mem.invalidated" class="badge inv-badge" :title="mem.invalidated_reason">
+          已失效
+        </span>
         <span v-if="mem.similarity !== undefined" class="badge sim-badge">
           相关性 {{ (mem.similarity * 100).toFixed(0) }}%
         </span>
@@ -16,17 +19,31 @@
               @click.stop="emit('edit-importance', mem)">
           ★ {{ mem.importance }} <i class="fas fa-pen" style="font-size:0.65rem;margin-left:2px" />
         </span>
-        <button
-          v-if="activeType === 'long_term' || isSearchMode"
-          class="del-btn"
-          :disabled="deletingId === mem.id"
-          @click="emit('delete-one', mem.id)"
-        >
+        <template v-if="activeType === 'long_term' || isSearchMode">
+          <button v-if="!mem.invalidated" class="act-btn pin-btn" title="置顶（重要度 1.0）"
+                  @click.stop="emit('pin-one', mem)">
+            <i class="fas fa-thumbtack" />
+          </button>
+          <button v-if="!mem.invalidated" class="act-btn inv-btn" title="失效（软删除，可恢复）"
+                  @click.stop="emit('invalidate-one', mem)">
+            <i class="fas fa-eye-slash" />
+          </button>
+          <button v-if="mem.invalidated" class="act-btn restore-btn" title="恢复该记忆"
+                  @click.stop="emit('restore-one', mem)">
+            <i class="fas fa-undo" />
+          </button>
+        </template>
+        <button v-if="activeType === 'long_term' || isSearchMode" class="del-btn"
+                :disabled="deletingId === mem.id" title="彻底删除（不可恢复）"
+                @click="emit('delete-one', mem.id)">
           <i class="fas fa-trash" />
         </button>
       </div>
     </div>
     <div class="memory-content">{{ mem.content }}</div>
+    <div v-if="mem.invalidated && mem.invalidated_reason" class="inv-reason">
+      失效原因：{{ mem.invalidated_reason }}
+    </div>
     <div class="memory-footer">
       <span class="mem-time">{{ formatTime(mem.created_at) }}</span>
       <span v-if="mem.access_count" class="mem-access">
@@ -45,7 +62,7 @@ defineProps({
   isSearchMode: Boolean,
   deletingId: [String, Number],
 })
-const emit = defineEmits(['edit-importance', 'delete-one'])
+const emit = defineEmits(['edit-importance', 'delete-one', 'pin-one', 'invalidate-one', 'restore-one'])
 </script>
 
 <style scoped>
@@ -58,6 +75,7 @@ const emit = defineEmits(['edit-importance', 'delete-one'])
 }
 .memory-card:hover   { border-color: #c5caf5; }
 .memory-card.deleting { opacity: 0.4; pointer-events: none; }
+.memory-card.invalidated { opacity: 0.72; border-style: dashed; }
 
 .memory-header {
   display: flex; align-items: center;
@@ -72,6 +90,7 @@ const emit = defineEmits(['edit-importance', 'delete-one'])
 .cat-badge  { background: var(--color-surface-raised); color: var(--color-primary); }
 .role-badge { background: #e8f5e9; color: #2e7d32; }
 .sim-badge  { background: #fff8e1; color: #f57f17; }
+.inv-badge  { background: #f3e5f5; color: #7b1fa2; }
 
 .memory-actions {
   display: flex; align-items: center; gap: var(--space-2);
@@ -91,6 +110,16 @@ const emit = defineEmits(['edit-importance', 'delete-one'])
 }
 .del-btn:hover:not(:disabled) { color: var(--color-danger); }
 .del-btn:disabled { cursor: not-allowed; }
+.act-btn {
+  background: none; border: none;
+  color: var(--color-text-muted); cursor: pointer;
+  font-size: 0.82rem; padding: var(--space-1);
+  border-radius: 4px; transition: color 0.2s;
+}
+.act-btn:hover { color: var(--color-primary); }
+.pin-btn:hover    { color: var(--color-warn); }
+.inv-btn:hover    { color: #7b1fa2; }
+.restore-btn:hover { color: #2e7d32; }
 
 .memory-content {
   font-size: 0.88rem; color: var(--color-text);
@@ -102,4 +131,8 @@ const emit = defineEmits(['edit-importance', 'delete-one'])
 }
 .mem-time   { font-size: 0.75rem; color: var(--color-text-muted); }
 .mem-access { font-size: 0.75rem; color: var(--color-text-muted); }
+.inv-reason {
+  font-size: 0.75rem; color: #7b1fa2;
+  margin-bottom: var(--space-2); font-style: italic;
+}
 </style>

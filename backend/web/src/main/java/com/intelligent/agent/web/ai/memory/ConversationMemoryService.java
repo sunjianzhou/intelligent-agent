@@ -38,6 +38,9 @@ public class ConversationMemoryService {
     /** R-01 上下文压缩时最多注入的最近摘要条数（summary 类型按创建时间倒序）。 */
     public static final int COMPACTION_SUMMARY_LIMIT = 2;
 
+    /** R-04 聊天内纠错识别器（无状态，单例复用）。 */
+    private static final MemoryCorrectionService CORRECTION = new MemoryCorrectionService();
+
     private final MemoryRepository memoryRepository;
     private final SemanticResponseCache semanticCache;
     private final MemoryDistillationService distiller;
@@ -245,6 +248,23 @@ public class ConversationMemoryService {
                 MemorySearchQuery.builder(userId, "", COMPACTION_SUMMARY_LIMIT)
                         .type("summary").build());
         return filterExcluded(userId, summaries);
+    }
+
+    /**
+     * R-04 聊天内纠错：消息命中"删掉/修改/忘了你记的 X"类指令时直接修正记忆并返回回执；
+     * 非纠错消息返回 empty。修正动作走软删除（可恢复），检索层下一轮不再召回旧事实。
+     */
+    public java.util.Optional<String> applyCorrection(AgentRequestContext ctx) {
+        if (!ctx.useMemory() || ctx.message() == null || ctx.message().isBlank()) {
+            return java.util.Optional.empty();
+        }
+        MemoryCorrectionService.CorrectionRequest request = CORRECTION.detect(ctx.message());
+        if (request == null) {
+            return java.util.Optional.empty();
+        }
+        String reply = CORRECTION.apply(
+                effectiveUserId(ctx.userId()), request, memoryRepository);
+        return java.util.Optional.of(reply);
     }
 
     /**

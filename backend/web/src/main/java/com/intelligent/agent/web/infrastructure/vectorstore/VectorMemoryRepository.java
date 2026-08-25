@@ -31,6 +31,10 @@ public class VectorMemoryRepository implements MemoryRepository {
 
     private static final Logger log = LoggerFactory.getLogger(VectorMemoryRepository.class);
     public static final int DEFAULT_MAX_RECORDS = 5000;
+    /** R-04 软删除元数据键。 */
+    public static final String META_INVALIDATED = "invalidated";
+    public static final String META_INVALIDATED_REASON = "invalidated_reason";
+    public static final String META_INVALIDATED_AT = "invalidated_at";
 
     private static final double SIMILARITY_WEIGHT = 0.7;
     // G5（2026-08-15）：时间衰减维度，score = 0.7*sim + 0.2*importance + 0.1*recency
@@ -97,6 +101,7 @@ public class VectorMemoryRepository implements MemoryRepository {
         }
         List<MemoryRecord> candidates = records.values().stream()
                 .filter(record -> record.userId().equals(query.userId()))
+                .filter(record -> !isInvalidated(record))
                 .filter(record -> matches(record, query))
                 .toList();
         if (candidates.isEmpty()) {
@@ -133,6 +138,7 @@ public class VectorMemoryRepository implements MemoryRepository {
     public List<MemoryRecord> list(MemorySearchQuery filter) {
         return records.values().stream()
                 .filter(record -> record.userId().equals(filter.userId()))
+                .filter(record -> !isInvalidated(record))
                 .filter(record -> matches(record, filter))
                 .sorted(Comparator.comparing(MemoryRecord::createdAt).reversed())
                 .limit(filter.limit())
@@ -143,8 +149,66 @@ public class VectorMemoryRepository implements MemoryRepository {
     public int count(MemorySearchQuery filter) {
         return (int) records.values().stream()
                 .filter(record -> record.userId().equals(filter.userId()))
+                .filter(record -> !isInvalidated(record))
                 .filter(record -> matches(record, filter))
                 .count();
+    }
+
+    // ── R-04 软删除/恢复 ─────────────────────────────────────────────────
+
+    @Override
+    public boolean invalidate(String userId, String memoryId, String reason) {
+        MemoryRecord existing = records.get(memoryId);
+        if (existing == null || !existing.userId().equals(userId) || isInvalidated(existing)) {
+            return false;
+        }
+        Map<String, Object> metadata = new LinkedHashMap<>(existing.metadata());
+        metadata.put(META_INVALIDATED, true);
+        metadata.put(META_INVALIDATED_REASON,
+                reason == null || reason.isBlank() ? "用户手动失效" : reason);
+        metadata.put(META_INVALIDATED_AT, Instant.now().toString());
+        MemoryRecord updated = new MemoryRecord(
+                existing.id(), existing.userId(), existing.roleId(), existing.projectId(),
+                existing.type(), existing.content(), metadata, existing.importance(),
+                existing.createdAt(), Instant.now(), existing.accessCount());
+        records.put(memoryId, updated);
+        vectors.remove(memoryId);
+        persist(userId);
+        return true;
+    }
+
+    @Override
+    public boolean restore(String userId, String memoryId) {
+        MemoryRecord existing = records.get(memoryId);
+        if (existing == null || !existing.userId().equals(userId) || !isInvalidated(existing)) {
+            return false;
+        }
+        Map<String, Object> metadata = new LinkedHashMap<>(existing.metadata());
+        metadata.remove(META_INVALIDATED);
+        metadata.remove(META_INVALIDATED_REASON);
+        metadata.remove(META_INVALIDATED_AT);
+        MemoryRecord updated = new MemoryRecord(
+                existing.id(), existing.userId(), existing.roleId(), existing.projectId(),
+                existing.type(), existing.content(), metadata, existing.importance(),
+                existing.createdAt(), Instant.now(), existing.accessCount());
+        records.put(memoryId, updated);
+        vectors.remove(memoryId);
+        persist(userId);
+        return true;
+    }
+
+    @Override
+    public List<MemoryRecord> listInvalidated(String userId, int limit) {
+        return records.values().stream()
+                .filter(record -> record.userId().equals(userId))
+                .filter(VectorMemoryRepository::isInvalidated)
+                .sorted(Comparator.comparing(MemoryRecord::updatedAt).reversed())
+                .limit(Math.max(1, limit))
+                .toList();
+    }
+
+    static boolean isInvalidated(MemoryRecord record) {
+        return Boolean.TRUE.equals(record.metadata().get(META_INVALIDATED));
     }
 
     @Override

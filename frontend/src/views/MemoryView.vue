@@ -84,10 +84,15 @@
           <input type="file" accept=".json" style="display:none" @change="importMigration" />
         </label>
       </div>
-      <!-- 危险操作：放在第二行右端，与其他按钮有视觉分隔 -->
-      <button class="clear-all-btn" @click="confirmClearAll" title="清空全部记忆（不可恢复）">
-        <i class="fas fa-trash-alt" /> 清空全部
-      </button>
+      <div class="toolbar-right">
+        <button class="inv-toggle-btn" :class="{ active: showInvalidated }"
+                @click="toggleInvalidated" title="查看已失效记忆（可恢复）">
+          <i class="fas fa-eye-slash" /> 已失效（{{ invalidatedCount }}）
+        </button>
+        <button class="clear-all-btn" @click="confirmClearAll" title="清空全部记忆（不可恢复）">
+          <i class="fas fa-trash-alt" /> 清空全部
+        </button>
+      </div>
     </div>
 
     <!-- 搜索结果标签 -->
@@ -127,6 +132,27 @@
         :deleting-id="deletingId"
         @edit-importance="editImportance"
         @delete-one="deleteOne"
+        @pin-one="pinOne"
+        @invalidate-one="invalidateOne"
+        @restore-one="restoreOne"
+      />
+    </div>
+
+    <!-- R-04 已失效记忆（软删除，可恢复） -->
+    <div v-if="showInvalidated" class="memory-list inv-section">
+      <div class="inv-header">
+        <i class="fas fa-eye-slash" /> 已失效记忆
+        <span class="inv-header-tip">可恢复；下一轮检索不再召回</span>
+      </div>
+      <MemoryCard
+        v-for="mem in invalidatedMemories"
+        :key="mem.id"
+        :mem="mem"
+        active-type="long_term"
+        :deleting-id="deletingId"
+        @edit-importance="editImportance"
+        @delete-one="deleteOne"
+        @restore-one="restoreOne"
       />
     </div>
 
@@ -151,7 +177,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { getMemoryList, getMemoryStats, deleteMemory, clearAllMemory, searchMemory, updateMemoryImportance, batchImportMemory, distillMemory, getMemorySummaries, exportMemory } from '@/services/api'
+import { getMemoryList, getMemoryStats, deleteMemory, clearAllMemory, searchMemory, updateMemoryImportance, batchImportMemory, distillMemory, getMemorySummaries, exportMemory, invalidateMemory, restoreMemory, getInvalidatedMemories } from '@/services/api'
+import { invalidateLocal, restoreLocal, pinLocal } from '@/utils/memoryActions'
 import { exportAllSessions, importSessions } from '@/services/localDB'
 import { formatDateTime as formatTime } from '@/utils/date'
 import MemoryCard from '@/components/memory/MemoryCard.vue'
@@ -168,6 +195,8 @@ const searchQuery   = ref('')
 const lastSearchQuery = ref('')
 const isSearchMode  = ref(false)
 const deletingId    = ref(null)
+const invalidatedMemories = ref([])
+const showInvalidated = ref(false)
 const exportDropOpen = ref(false)
 const exportRef      = ref(null)
 const summaryInterval = 10  // matches backend default
@@ -182,6 +211,8 @@ const types = [
 const displayMemories = computed(() =>
   isSearchMode.value ? searchResults.value : memories.value
 )
+
+const invalidatedCount = computed(() => invalidatedMemories.value.length)
 
 const avgImportance = computed(() => {
   const items = memories.value
@@ -277,10 +308,66 @@ const deleteOne = async (id) => {
     await deleteMemory(id)
     memories.value     = memories.value.filter(m => m.id !== id)
     searchResults.value = searchResults.value.filter(m => m.id !== id)
+    invalidatedMemories.value = invalidatedMemories.value.filter(m => m.id !== id)
     if (stats.value?.long_term) stats.value.long_term.count--
     ElMessage({ message: '记忆已删除', type: 'success', duration: 2000 })
   } finally {
     deletingId.value = null
+  }
+}
+
+// ── R-04 记忆纠错：失效（软删除）/ 恢复 / 置顶 ──────────────────────
+
+const toggleInvalidated = async () => {
+  showInvalidated.value = !showInvalidated.value
+  if (showInvalidated.value && invalidatedMemories.value.length === 0) {
+    const data = await getInvalidatedMemories(100)
+    invalidatedMemories.value = data?.memories || []
+  }
+}
+
+const invalidateOne = async (mem) => {
+  let reason = ''
+  try {
+    const { value } = await ElMessageBox.prompt(
+      '可填写失效原因（可选）；该记忆可随时恢复。', '失效记忆（软删除）', {
+        confirmButtonText: '失效', cancelButtonText: '取消',
+        inputPlaceholder: '例如：这条记忆已过时 / 记错了',
+      })
+    reason = (value || '').trim()
+  } catch { return }
+  const res = await invalidateMemory(mem.id, reason)
+  if (res?.success) {
+    memories.value = memories.value.filter(m => m.id !== mem.id)
+    searchResults.value = searchResults.value.filter(m => m.id !== mem.id)
+    const invalidated = invalidateLocal([mem], mem.id, reason)[0]
+    invalidatedMemories.value = [invalidated, ...invalidatedMemories.value]
+    if (stats.value?.long_term) stats.value.long_term.count = Math.max(0, stats.value.long_term.count - 1)
+    ElMessage({ message: '记忆已失效（可恢复）', type: 'success', duration: 2000 })
+  } else {
+    ElMessage({ message: res?.message || '失效失败', type: 'error', duration: 3000 })
+  }
+}
+
+const restoreOne = async (mem) => {
+  const res = await restoreMemory(mem.id)
+  if (res?.success) {
+    invalidatedMemories.value = invalidatedMemories.value.filter(m => m.id !== mem.id)
+    memories.value = [restoreLocal([mem], mem.id)[0], ...memories.value]
+    if (stats.value?.long_term) stats.value.long_term.count++
+    ElMessage({ message: '记忆已恢复', type: 'success', duration: 2000 })
+  } else {
+    ElMessage({ message: res?.message || '恢复失败', type: 'error', duration: 3000 })
+  }
+}
+
+const pinOne = async (mem) => {
+  const result = await updateMemoryImportance(mem.id, 1)
+  if (result?.success) {
+    memories.value = pinLocal(memories.value, mem.id)
+    ElMessage({ message: '已置顶（重要度 1.0）', type: 'success', duration: 2000 })
+  } else {
+    ElMessage({ message: result?.message || '置顶失败', type: 'error', duration: 3000 })
   }
 }
 
@@ -533,6 +620,20 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 .clear-all-btn:hover { background: #fee2e2; border-color: #f87171; }
+.toolbar-right {
+  display: flex; align-items: center; gap: var(--space-2);
+  flex-shrink: 0;
+}
+.inv-toggle-btn {
+  height: 34px; padding: 0 12px;
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  background: var(--color-surface); color: var(--color-text-secondary);
+  font-size: 0.82rem; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  transition: all 0.2s;
+}
+.inv-toggle-btn:hover { border-color: #7b1fa2; color: #7b1fa2; }
+.inv-toggle-btn.active { background: #f3e5f5; border-color: #7b1fa2; color: #7b1fa2; }
 .stat-card {
   background: var(--color-surface);
   border: 0.5px solid var(--color-border);
@@ -640,6 +741,15 @@ onUnmounted(() => {
 
 /* ── 记忆列表 ────────────────────────────────────────────── */
 .memory-list { display: flex; flex-direction: column; gap: 10px; }
+.inv-section {
+  border-top: 1px dashed var(--color-border);
+  padding-top: var(--space-3);
+}
+.inv-header {
+  font-size: 0.85rem; font-weight: 500; color: #7b1fa2;
+  display: flex; align-items: center; gap: var(--space-2);
+}
+.inv-header-tip { font-size: 0.75rem; color: var(--color-text-muted); font-weight: 400; }
 /* ── 空状态 ───────────────────────────────────────────────── */
 .empty-state {
   display: flex; flex-direction: column;

@@ -4,6 +4,7 @@ import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
 import com.intelligent.agent.web.ai.memory.MemoryRecord;
 import com.intelligent.agent.web.ai.memory.MemoryRepository;
 import com.intelligent.agent.web.ai.memory.MemorySearchQuery;
+import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpHeaders;
@@ -213,6 +214,41 @@ public class MemoryProxyController {
                 "message", ok ? "已删除记忆 " + memoryId : "记忆 " + memoryId + " 不存在"));
     }
 
+    /** R-04：软删除（失效，可恢复）。 */
+    @PostMapping("/{memoryId}/invalidate")
+    public ResponseEntity<Map<String, Object>> invalidateMemory(
+            @PathVariable String memoryId,
+            @RequestBody(required = false) Map<String, Object> body,
+            HttpServletRequest req) {
+        String reason = body == null || body.get("reason") == null
+                ? null : String.valueOf(body.get("reason")).trim();
+        boolean ok = memoryRepository.invalidate(UserContext.userId(req), memoryId, reason);
+        return ResponseEntity.ok(Map.of(
+                "success", ok,
+                "message", ok ? "记忆已失效（可恢复）" : "记忆不存在或已失效"));
+    }
+
+    /** R-04：恢复软删除的记忆。 */
+    @PostMapping("/{memoryId}/restore")
+    public ResponseEntity<Map<String, Object>> restoreMemory(
+            @PathVariable String memoryId, HttpServletRequest req) {
+        boolean ok = memoryRepository.restore(UserContext.userId(req), memoryId);
+        return ResponseEntity.ok(Map.of(
+                "success", ok,
+                "message", ok ? "记忆已恢复" : "记忆不存在或未失效"));
+    }
+
+    /** R-04：已失效（软删除）记忆列表，供 MemoryView 恢复入口。 */
+    @GetMapping("/invalidated")
+    public ResponseEntity<Map<String, Object>> invalidatedMemories(
+            @RequestParam(defaultValue = "50") int limit,
+            HttpServletRequest req) {
+        List<Map<String, Object>> items = memoryRepository
+                .listInvalidated(UserContext.userId(req), Math.max(1, limit))
+                .stream().map(MemoryProxyController::toMap).toList();
+        return ResponseEntity.ok(Map.of("memories", items, "count", items.size()));
+    }
+
     @PatchMapping("/{memoryId}/importance")
     public ResponseEntity<Map<String, Object>> updateImportance(
             @PathVariable String memoryId,
@@ -245,7 +281,12 @@ public class MemoryProxyController {
         item.put("role", record.metadata().getOrDefault("role", ""));
         item.put("type", type != null ? type : (record.type() != null ? record.type() : ""));
         item.put("created_at", record.createdAt() != null ? record.createdAt().toString() : "");
+        item.put("updated_at", record.updatedAt() != null ? record.updatedAt().toString() : "");
         item.put("access_count", record.accessCount());
+        item.put("invalidated", Boolean.TRUE.equals(
+                record.metadata().get(VectorMemoryRepository.META_INVALIDATED)));
+        item.put("invalidated_reason", record.metadata().getOrDefault(
+                VectorMemoryRepository.META_INVALIDATED_REASON, ""));
         return item;
     }
 }
