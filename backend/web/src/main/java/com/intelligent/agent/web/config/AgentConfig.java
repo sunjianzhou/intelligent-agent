@@ -11,6 +11,7 @@ import com.intelligent.agent.web.ai.agent.reflection.AnswerReflector;
 import com.intelligent.agent.web.ai.agent.reflection.LlmAnswerReflector;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
+import com.intelligent.agent.web.ai.memory.ContextBudget;
 import com.intelligent.agent.web.ai.memory.LlmExtractionService;
 import com.intelligent.agent.web.ai.memory.MemoryDistillationService;
 import com.intelligent.agent.web.ai.memory.SemanticResponseCache;
@@ -57,6 +58,7 @@ import org.springframework.context.annotation.Configuration;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
 /**
@@ -208,11 +210,20 @@ public class AgentConfig {
                                                TaskPlanner taskPlanner,
                                                AnswerReflector answerReflector,
                                                ApprovalGate approvalGate,
-                                               SkillMatcher skillMatcher) {
+                                               SkillMatcher skillMatcher,
+                                               ContextBudget contextBudget) {
         return new AgentOrchestrator(llmProviderRouter, toolExecutor, conversationMemoryService,
                 promptService, branchFailureDetector, AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS,
                 traceService, configRuntimeService, taskPlanner, answerReflector, approvalGate,
-                skillMatcher);
+                skillMatcher, contextBudget);
+    }
+
+    /** R-01：上下文 token 预算（num_ctx 唯一来源）。与 OllamaLlmProvider 共用同一配置表与优先级。 */
+    @Bean
+    public ContextBudget contextBudget(
+            @Value("${ai.llm.ollama.num-ctx:4096}") int defaultNumCtx,
+            @Value("#{${ai.llm.ollama.num-ctx-by-model:{}}}") Map<String, Integer> numCtxByModel) {
+        return new ContextBudget(defaultNumCtx, numCtxByModel);
     }
 
     /** 技能运行时匹配/注入（迁移自 Python skills/manager.py + applicator.py）。 */
@@ -276,9 +287,10 @@ public class AgentConfig {
                                        RoleService roleService,
                                        @Value("${ai.llm.text-tool-patterns:dolphin,phi2,orca-mini,orca2}") List<String> textToolPatterns,
                                        @Value("${ai.llm.ollama.model:qwen2.5:7b}") String defaultModel,
-                                       @Value("${ai.llm.max-context-tokens:8000}") int maxContextTokens) {
+                                       @Value("${ai.llm.max-context-tokens:8000}") int maxContextTokens,
+                                       ContextBudget contextBudget) {
         return new PromptService(soulLoader, systemPromptBuilder, toolExecutor, roleService,
-                textToolPatterns, defaultModel, maxContextTokens);
+                textToolPatterns, defaultModel, maxContextTokens, contextBudget);
     }
 
     /** TODO-110 Task 3.4：heart_record 工具（心证铁卷 + 主人铁律管理）。 */

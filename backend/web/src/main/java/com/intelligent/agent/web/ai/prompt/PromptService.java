@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.ai.prompt;
 
 import com.intelligent.agent.web.ai.agent.AgentRequestContext;
+import com.intelligent.agent.web.ai.memory.ContextBudget;
 import com.intelligent.agent.web.ai.tool.ToolDefinition;
 import com.intelligent.agent.web.ai.tool.ToolExecutor;
 import com.intelligent.agent.web.domain.role.RoleService;
@@ -35,6 +36,7 @@ public class PromptService {
     private final List<String> textToolPatterns;
     private final String defaultModel;
     private final int maxContextTokens;
+    private final ContextBudget contextBudget;
 
     /** 静态底座缓存：key = (channel, maxContextTokens, soulVersion)，soul 热重载后版本号变化自动失效。 */
     private final Map<StaticBaseKey, String> staticBaseCache = new ConcurrentHashMap<>();
@@ -49,6 +51,19 @@ public class PromptService {
                          List<String> textToolPatterns,
                          String defaultModel,
                          int maxContextTokens) {
+        this(soulLoader, builder, toolExecutor, roleService, textToolPatterns,
+                defaultModel, maxContextTokens, null);
+    }
+
+    /** R-01：装配 ContextBudget 后，system 预算按模型 num_ctx 派生（num_ctx 唯一来源）。 */
+    public PromptService(SoulLoader soulLoader,
+                         SystemPromptBuilder builder,
+                         ToolExecutor toolExecutor,
+                         RoleService roleService,
+                         List<String> textToolPatterns,
+                         String defaultModel,
+                         int maxContextTokens,
+                         ContextBudget contextBudget) {
         this.soulLoader = soulLoader;
         this.builder = builder == null ? new SystemPromptBuilder() : builder;
         this.toolExecutor = toolExecutor;
@@ -58,6 +73,7 @@ public class PromptService {
                 : textToolPatterns.stream().filter(p -> p != null && !p.isBlank()).toList();
         this.defaultModel = defaultModel == null || defaultModel.isBlank() ? "qwen2.5:7b" : defaultModel;
         this.maxContextTokens = maxContextTokens;
+        this.contextBudget = contextBudget;
     }
 
     /** 组装当前请求的完整 system prompt。 */
@@ -66,10 +82,17 @@ public class PromptService {
         Map<String, Object> role = resolveRole(ctx);
         String toolOverlay = ctx.useTools() && toolExecutor != null
                 ? buildToolOverlay(toolExecutor.definitions()) : "";
+        // R-01：system 预算由 ContextBudget 按模型 num_ctx 派生（未装配时回退静态 maxContextTokens）
+        final int systemBudget;
+        if (contextBudget != null) {
+            systemBudget = contextBudget.plan(effectiveModel(ctx), ctx.options()).systemTokens();
+        } else {
+            systemBudget = maxContextTokens;
+        }
         // 静态底座（soul/heart/rules 等）按 soulVersion 预拼接缓存，变更检测由 SoulLoader.reload() 驱动
-        StaticBaseKey key = new StaticBaseKey(channel, maxContextTokens, soulLoader.version());
+        StaticBaseKey key = new StaticBaseKey(channel, systemBudget, soulLoader.version());
         String staticBase = staticBaseCache.computeIfAbsent(key,
-                k -> builder.buildStatic(soulLoader.data(), channel, maxContextTokens));
+                k -> builder.buildStatic(soulLoader.data(), channel, systemBudget));
         String prompt = builder.assemble(staticBase, role, toolOverlay, soulLoader.data(), channel);
 
         String model = effectiveModel(ctx);

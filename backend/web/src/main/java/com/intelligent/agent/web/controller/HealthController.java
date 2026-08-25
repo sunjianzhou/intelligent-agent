@@ -7,6 +7,7 @@ import com.intelligent.agent.web.service.ModelService;
 import com.intelligent.agent.web.infrastructure.scheduler.TaskSchedulerService;
 import com.intelligent.agent.web.infrastructure.monitoring.SystemResourceService;
 import com.intelligent.agent.web.service.ConfigRuntimeService;
+import com.intelligent.agent.web.ai.memory.ContextBudget;
 import com.intelligent.agent.web.ai.llm.circuit.CircuitBreakerRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +31,7 @@ public class HealthController {
     @Autowired(required = false) private SystemResourceService systemResourceService;
     @Autowired(required = false) private ConfigRuntimeService configRuntimeService;
     @Autowired(required = false) private CircuitBreakerRegistry circuitBreakerRegistry;
+    @Autowired(required = false) private ContextBudget contextBudget;
 
     // ── 健康检查 ──────────────────────────────────────────────
 
@@ -62,10 +64,26 @@ public class HealthController {
 
     @GetMapping("/system/resources")
     public ResponseEntity<Map<String, Object>> systemResources() {
-        if (systemResourceService != null) {
-            return ResponseEntity.ok(systemResourceService.get());
+        Map<String, Object> result = systemResourceService != null
+                ? systemResourceService.get() : new HashMap<>();
+        // R-01：向前端暴露上下文预算结构（num_ctx 唯一来源，替代前端硬编码 CTX_LIMIT）
+        if (contextBudget != null) {
+            String model = modelService.resolveModel(null);
+            ContextBudget.Plan plan = contextBudget.plan(model, null);
+            result.put("context_budget", Map.of(
+                    "model", model == null ? "" : model,
+                    "num_ctx", plan.numCtx(),
+                    "usable_tokens", plan.usableTokens(),
+                    "safety_margin", ContextBudget.SAFETY_MARGIN,
+                    "blocks", Map.of(
+                            "system", plan.systemTokens(),
+                            "tools", plan.toolTokens(),
+                            "memory", plan.memoryTokens(),
+                            "project", plan.projectTokens(),
+                            "history", plan.historyTokens(),
+                            "current", plan.currentTokens())));
         }
-        return ResponseEntity.ok(new HashMap<>());
+        return ResponseEntity.ok(result);
     }
 
     /** G6：LLM 熔断器 + SLO 状态（按模型：state / success_rate / 拒绝数等）。 */

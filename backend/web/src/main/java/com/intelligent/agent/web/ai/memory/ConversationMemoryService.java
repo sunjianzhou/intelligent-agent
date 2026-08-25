@@ -35,6 +35,8 @@ public class ConversationMemoryService {
     public static final int EPISODIC_TOP_K = 2;
     public static final int SEMANTIC_TOP_K = 3;
     public static final double CACHE_SIMILARITY_THRESHOLD = 0.8;
+    /** R-01 上下文压缩时最多注入的最近摘要条数（summary 类型按创建时间倒序）。 */
+    public static final int COMPACTION_SUMMARY_LIMIT = 2;
 
     private final MemoryRepository memoryRepository;
     private final SemanticResponseCache semanticCache;
@@ -213,6 +215,90 @@ public class ConversationMemoryService {
         return records;
     }
 
+    // ── R-01 上下文压缩（历史窗口滚动 + 摘要注入 + 无摘要降级） ─────────
+
+    /**
+     * 最近会话摘要（summary 类型，按创建时间倒序，不依赖查询文本）。
+     * 上下文压缩时注入用；无摘要返回空列表。
+     */
+    public List<MemoryRecord> recentSummaries(AgentRequestContext ctx) {
+        if (!ctx.useMemory()) {
+            return List.of();
+        }
+        String userId = effectiveUserId(ctx.userId());
+        List<MemoryRecord> summaries = memoryRepository.list(
+                MemorySearchQuery.builder(userId, "", COMPACTION_SUMMARY_LIMIT)
+                        .type("summary").build());
+        return filterExcluded(userId, summaries);
+    }
+
+    /**
+     * R-01 历史压缩：
+     * <ul>
+     *   <li>历史估算 ≤ 预算 → 原样返回（不裁剪）；</li>
+     *   <li>超限且有最近摘要 → 滚动窗口保留最近 N 条 + 注入 [RECENT SESSION SUMMARY]；</li>
+     *   <li>超限但无摘要 → <b>铁律：不裁剪</b>（宁可超窗告警，不静默丢上下文）。</li>
+     * </ul>
+     * 返回 {@link CompactionResult}，调用方据 {@code summaryUsed} / {@code dropped}
+     * 决定是否写 trace 告警。
+     */
+    public CompactionResult compactHistory(AgentRequestContext ctx,
+                                           List<ChatMessage> history,
+                                           ContextBudget.Plan plan) {
+        if (!ctx.useMemory() || history == null || history.isEmpty() || plan == null) {
+            return CompactionResult.unchanged(history);
+        }
+        int historyTokens = ContextBudget.estimateMessages(history);
+        if (historyTokens <= plan.historyTokens()) {
+            return CompactionResult.unchanged(history);
+        }
+        List<MemoryRecord> summaries = recentSummaries(ctx);
+        if (summaries.isEmpty()) {
+            // 降级铁律：无可用的最近摘要时不得裁剪历史
+            return new CompactionResult(history, 0, false, true, historyTokens);
+        }
+
+        ChatMessage summaryMessage = ChatMessage.system(
+                recallSection("[RECENT SESSION SUMMARY]", summaries));
+        int summaryTokens = ContextBudget.estimateMessage(summaryMessage);
+        int remain = Math.max(1, plan.historyTokens() - summaryTokens);
+
+        List<ChatMessage> kept = keepRecentWithinBudget(history, remain);
+        int dropped = history.size() - kept.size();
+        List<ChatMessage> compacted = new ArrayList<>(kept.size() + 1);
+        compacted.add(summaryMessage);
+        compacted.addAll(kept);
+        return new CompactionResult(compacted, dropped, true, false, historyTokens);
+    }
+
+    /** 从最旧到最新逐条评估：预算内保留最近消息；开头若为 assistant/tool 则一并丢弃，保持 user 开头。 */
+    private static List<ChatMessage> keepRecentWithinBudget(List<ChatMessage> history, int budget) {
+        List<ChatMessage> kept = new ArrayList<>();
+        int used = 0;
+        for (int i = history.size() - 1; i >= 0; i--) {
+            ChatMessage message = history.get(i);
+            int tokens = ContextBudget.estimateMessage(message);
+            if (!kept.isEmpty() && used + tokens > budget) {
+                continue;
+            }
+            kept.add(0, message);
+            used += tokens;
+        }
+        while (!kept.isEmpty() && !"user".equals(kept.get(0).role())) {
+            kept.remove(0);
+        }
+        return kept;
+    }
+
+    /** 记忆召回 / 摘要注入的文本段格式（与 AgentOrchestrator 的召回段一致）。 */
+    private static String recallSection(String header, List<MemoryRecord> records) {
+        StringBuilder sb = new StringBuilder(header).append('\n');
+        for (MemoryRecord record : records) {
+            sb.append("- ").append(record.content()).append('\n');
+        }
+        return sb.toString().stripTrailing();
+    }
+
     /** 某用户短期记忆消息列表（/api/memory/list 用）。 */
     public List<ChatMessage> shortTermMessages(String userId) {
         return historyMessages(effectiveUserId(userId));
@@ -370,6 +456,21 @@ public class ConversationMemoryService {
 
         static OptionalCacheResult ofNullable(String answer) {
             return new OptionalCacheResult(java.util.Optional.ofNullable(answer));
+        }
+    }
+
+    /** R-01 压缩结果：压缩后的历史 + 丢弃条数 + 是否注入摘要 + 是否超窗未裁剪。 */
+    public record CompactionResult(
+            List<ChatMessage> history,
+            int dropped,
+            boolean summaryUsed,
+            boolean overBudgetNoSummary,
+            int historyTokens) {
+
+        static CompactionResult unchanged(List<ChatMessage> history) {
+            return new CompactionResult(history == null ? List.of() : history,
+                    0, false, false,
+                    ContextBudget.estimateMessages(history));
         }
     }
 }

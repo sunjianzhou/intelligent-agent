@@ -254,6 +254,7 @@ import {
 } from '@/services/api'
 import { formatTime, formatForFilename } from '@/utils/date'
 import { genId } from '@/utils/string'
+import { estimateMessages } from '@/utils/tokenEstimate'
 import { listRoles } from '@/services/roleStorage'
 import {
   getActiveRoleApi, activateRoleApi, deactivateRoleApi, syncRoleToServer,
@@ -359,25 +360,24 @@ const stopThinkingTimer = () => {
   thinkingSeconds.value = 0
 }
 
-// ── 上下文 Token 用量估算（WANT-001）─────────────────────────
-// 从 /api/system/resources 拉取实际 num_ctx；回退到 8192（settings.py 默认值）
-const CTX_LIMIT = ref(8192)
+// ── 上下文 Token 用量估算（R-01）────────────────────────────
+// 从 /api/system/resources 读取后端 ContextBudget 结构（num_ctx 唯一来源，
+// 替代此前硬编码 CTX_LIMIT=8192 与失效的 ollama_num_ctx 字段）；
+// 估算规则与后端 ContextBudget 完全一致（CJK≈1 / 其余≈0.25 token/字符 + 消息开销）。
+const CTX_LIMIT = ref(8192) // 拉取失败时的回退值；成功后用后端 usable_tokens 覆盖
 const fetchCtxLimit = async () => {
   try {
     const { getSystemResources } = await import('@/services/api')
     const res = await getSystemResources()
-    if (res?.ollama_num_ctx) CTX_LIMIT.value = res.ollama_num_ctx
+    const budget = res?.context_budget
+    if (budget?.usable_tokens) CTX_LIMIT.value = budget.usable_tokens
   } catch { /* 忽略，用默认值 */ }
 }
 onMounted(fetchCtxLimit)
 const estimatedTokens = computed(() => {
-  const allText = messages.value
-    .filter(m => m.role === 'user' || m.role === 'assistant')
-    .map(m => m.content || '')
-    .join(' ')
-  const cjk = (allText.match(/[一-龥぀-ヿ]/g) || []).length
-  const words = (allText.match(/[a-zA-Z0-9]+/g) || []).length
-  return Math.round(cjk * 1.5 + words)
+  return estimateMessages(
+    messages.value.filter(m => m.role === 'user' || m.role === 'assistant'),
+  )
 })
 
 const tokenPct     = computed(() => Math.min(100, Math.round(estimatedTokens.value / CTX_LIMIT.value * 100)))

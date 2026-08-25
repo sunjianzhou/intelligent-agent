@@ -13,6 +13,7 @@ import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.ai.llm.LlmResponse;
 import com.intelligent.agent.web.ai.llm.ModelEvent;
 import com.intelligent.agent.web.ai.memory.AgentContext;
+import com.intelligent.agent.web.ai.memory.ContextBudget;
 import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
 import com.intelligent.agent.web.ai.memory.MemoryRecord;
 import com.intelligent.agent.web.ai.prompt.PromptService;
@@ -69,6 +70,7 @@ public class AgentOrchestrator {
     private final AnswerReflector reflector;
     private final ApprovalGate approvalGate;
     private final SkillMatcher skillMatcher;
+    private final ContextBudget contextBudget;
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor) {
         this(router, toolExecutor, DEFAULT_MAX_TOOL_ROUNDS);
@@ -154,6 +156,20 @@ public class AgentOrchestrator {
                              TraceService traceService, ConfigRuntimeService configRuntimeService,
                              TaskPlanner planner, AnswerReflector reflector,
                              ApprovalGate approvalGate, SkillMatcher skillMatcher) {
+        this(router, toolExecutor, memoryService, promptService, branchFailureDetector,
+                maxToolRounds, traceService, configRuntimeService, planner, reflector,
+                approvalGate, skillMatcher, null);
+    }
+
+    /** R-01：装配 ContextBudget 后按模型 num_ctx 做上下文预算分配与历史压缩。 */
+    public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
+                             ConversationMemoryService memoryService,
+                             PromptService promptService,
+                             BranchFailureDetector branchFailureDetector, int maxToolRounds,
+                             TraceService traceService, ConfigRuntimeService configRuntimeService,
+                             TaskPlanner planner, AnswerReflector reflector,
+                             ApprovalGate approvalGate, SkillMatcher skillMatcher,
+                             ContextBudget contextBudget) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.toolExecutor = Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
         this.toolCallParser = new TextToolCallParser();
@@ -168,6 +184,7 @@ public class AgentOrchestrator {
         this.reflector = reflector;
         this.approvalGate = approvalGate;
         this.skillMatcher = skillMatcher;
+        this.contextBudget = contextBudget;
     }
 
     public Flux<ModelEvent> stream(AgentRequestContext context) {
@@ -195,8 +212,8 @@ public class AgentOrchestrator {
                     SkillMatch skillMatch = tuple.getT1();
                     Optional<ExecutionPlan> plan = tuple.getT2();
                     List<ChatMessage> messages = plan.isPresent()
-                            ? withPlan(initialMessages(context, memory, skillMatch.prompt()), plan.get())
-                            : initialMessages(context, memory, skillMatch.prompt());
+                            ? withPlan(initialMessages(context, memory, skillMatch.prompt(), traceId), plan.get())
+                            : initialMessages(context, memory, skillMatch.prompt(), traceId);
                     // HITL：审批请求等中途事件经 midEvents 与主事件流合并（审批前先推送）
                     Sinks.Many<ModelEvent> midEvents =
                             Sinks.many().unicast().onBackpressureBuffer();
@@ -244,8 +261,8 @@ public class AgentOrchestrator {
                     SkillMatch skillMatch = tuple.getT1();
                     Optional<ExecutionPlan> plan = tuple.getT2();
                     List<ChatMessage> messages = plan.isPresent()
-                            ? withPlan(initialMessages(context, memory, skillMatch.prompt()), plan.get())
-                            : initialMessages(context, memory, skillMatch.prompt());
+                            ? withPlan(initialMessages(context, memory, skillMatch.prompt(), traceId), plan.get())
+                            : initialMessages(context, memory, skillMatch.prompt(), traceId);
                     return runToolRounds(context, messages, 0, List.of(), traceId,
                                     skillMatch.toolDefs())
                             .flatMap(state -> completeFinal(context, state, traceId));
@@ -368,11 +385,17 @@ public class AgentOrchestrator {
     }
 
     private List<ChatMessage> initialMessages(AgentRequestContext ctx, AgentContext memory) {
-        return initialMessages(ctx, memory, "");
+        return initialMessages(ctx, memory, "", null);
     }
 
+    /** R-01：按模型 num_ctx 预算分块构建初始消息；历史超限时滚动窗口 + 摘要注入（无摘要不裁剪）。 */
     private List<ChatMessage> initialMessages(AgentRequestContext ctx, AgentContext memory,
-                                              String skillPrompt) {
+                                              String skillPrompt, String traceId) {
+        ContextBudget.Plan plan = contextBudget == null
+                ? null : contextBudget.plan(effectiveModel(ctx), ctx.options());
+        int memoryBudget = plan == null ? Integer.MAX_VALUE : plan.memoryTokens();
+        int projectBudget = plan == null ? Integer.MAX_VALUE : plan.projectTokens();
+
         List<ChatMessage> messages = new ArrayList<>();
         if (promptService != null) {
             messages.add(ChatMessage.system(promptService.buildSystemPrompt(ctx)));
@@ -385,19 +408,21 @@ public class AgentOrchestrator {
             // 旧上下文（只有合并召回）走 [LONG-TERM MEMORY] 兼容路径
             if (!memory.episodicRecall().isEmpty() || !memory.semanticRecall().isEmpty()) {
                 if (!memory.episodicRecall().isEmpty()) {
-                    messages.add(ChatMessage.system(recallSection(
-                            "[EPISODIC MEMORY]", memory.episodicRecall())));
+                    messages.add(ChatMessage.system(recallSection("[EPISODIC MEMORY]",
+                            ContextBudget.fitRecords(memory.episodicRecall(), memoryBudget))));
                 }
                 if (!memory.semanticRecall().isEmpty()) {
-                    messages.add(ChatMessage.system(recallSection(
-                            "[SEMANTIC MEMORY]", memory.semanticRecall())));
+                    messages.add(ChatMessage.system(recallSection("[SEMANTIC MEMORY]",
+                            ContextBudget.fitRecords(memory.semanticRecall(), memoryBudget))));
                 }
             } else if (!memory.longTermRecall().isEmpty()) {
                 messages.add(ChatMessage.system(recallSection(
-                        "[LONG-TERM MEMORY]", memory.longTermRecall())));
+                        "[LONG-TERM MEMORY]",
+                        ContextBudget.fitRecords(memory.longTermRecall(), memoryBudget))));
             }
             if (!memory.projectContext().isBlank()) {
-                messages.add(ChatMessage.system("[PROJECT CONTEXT]\n" + memory.projectContext()));
+                messages.add(ChatMessage.system("[PROJECT CONTEXT]\n"
+                        + ContextBudget.fitToBudget(memory.projectContext(), projectBudget)));
             }
             // 2026-08-15 补齐：注入项目待处理任务列表（对齐 Python pending_tasks）
             if (ctx.projectId() != null && !ctx.projectId().isBlank()
@@ -421,16 +446,42 @@ public class AgentOrchestrator {
                                 .append(" [").append(status).append("] ")
                                 .append(t.getOrDefault("title", "")).append('\n');
                     }
-                    messages.add(ChatMessage.system(taskBlock.toString().stripTrailing()));
+                    messages.add(ChatMessage.system(
+                            ContextBudget.fitToBudget(taskBlock.toString().stripTrailing(),
+                                    projectBudget)));
                 }
             }
-            messages.addAll(memory.history());
+            // R-01 历史压缩：超限时滚动窗口 + 最近摘要注入；无摘要则铁律不裁剪（trace 告警）
+            List<ChatMessage> history = memory.history();
+            if (plan != null && memoryService != null && !history.isEmpty()) {
+                long start = System.currentTimeMillis();
+                ConversationMemoryService.CompactionResult compaction =
+                        memoryService.compactHistory(ctx, history, plan);
+                if (compaction.dropped() > 0 || compaction.overBudgetNoSummary()) {
+                    addSpan(traceId, "context_compaction", start, Map.of(
+                            "dropped", compaction.dropped(),
+                            "summary_used", compaction.summaryUsed(),
+                            "over_budget_no_summary", compaction.overBudgetNoSummary(),
+                            "history_tokens", compaction.historyTokens(),
+                            "history_budget", plan.historyTokens()));
+                }
+                history = compaction.history();
+            }
+            messages.addAll(history);
         }
         if (skillPrompt != null && !skillPrompt.isBlank()) {
             messages.add(ChatMessage.system(skillPrompt));
         }
         messages.add(ChatMessage.user(ctx.message()));
         return messages;
+    }
+
+    /** 请求显式模型优先，否则用 PromptService 的默认模型解析（与 num_ctx 预算同源）。 */
+    private String effectiveModel(AgentRequestContext ctx) {
+        if (ctx.model() != null && !ctx.model().isBlank()) {
+            return ctx.model().trim();
+        }
+        return promptService == null ? null : promptService.effectiveModel(ctx);
     }
 
     private static String recallSection(String header, List<MemoryRecord> records) {
