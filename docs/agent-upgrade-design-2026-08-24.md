@@ -428,15 +428,15 @@ Synthesized from /plan-eng-review findings. Each task derives from a specific fi
   - Surfaced by: Code quality Q2 — CTX_LIMIT=8192 硬编码
   - Files: `frontend/src/views/ChatView.vue`
   - Verify: `frontend vitest` + 手动长会话检查
-- [ ] **T4 (P1, human: ~1d / CC: ~30min)** — ai/llm — fallback 链（router 层，熔断 OPEN 直接切换）
+- [x] **T4 (P1) ✅ 2026-08-25（commit `a7a1c25`）** — ai/llm — fallback 链（router 层，熔断 OPEN 直接切换）
   - Surfaced by: Architecture A3 — 层次与闸门 key
   - Files: `ai/llm/LlmProviderRouter.java`、`ai/llm/LlmProvider.java`（事件）、`service/AgentService.java`
   - Verify: `LlmProviderRouterFallbackTest` + E2E 停 Ollama
-- [ ] **T5 (P2, human: ~4h / CC: ~15min)** — ai/llm+service — fallback 次数/成本限制，不写偏好与缓存
+- [x] **T5 (P2) ✅ 2026-08-25（commit `a7a1c25`）** — ai/llm+service — fallback 次数/成本限制，不写偏好与缓存
   - Surfaced by: Architecture A4 — 污染防护
   - Files: `config/AgentConfig.java`、`ai/llm/LlmProviderRouter.java`、`service/ModelService.java`
   - Verify: 单测（降级后偏好不变）
-- [ ] **T6 (P1, human: ~1d / CC: ~30min)** — ai/tool — WebFetchTool（白名单 + 1MB 上限 + 不可信前缀）
+- [x] **T6 (P1) ✅ 2026-08-25（commit `ef0817e`）** — ai/tool — WebFetchTool（白名单 + 1MB 上限 + 不可信前缀）
   - Surfaced by: Architecture A5 / Performance P3 — SSRF 与资源上限
   - Files: `ai/tool/builtin/web/WebFetchTool.java`（新）、`config/AgentConfig.java`、`pom.xml`（jsoup）
   - Verify: `WebFetchToolTest` + `WebFetchToolSecurityTest`

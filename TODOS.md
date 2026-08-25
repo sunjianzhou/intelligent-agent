@@ -16,8 +16,8 @@
 | 编号 | 差距 | 现状（证据） | 改进方案 | 验收标准 |
 |------|------|--------------|----------|----------|
 | R-01 ✅（2026-08-25 落地，commit `803b6e6`） | 上下文无 token 预算与自动压缩 | 短期记忆最近 100 条全量注入（`ConversationMemoryService.SHORT_TERM_MAX_SIZE=100`）；`initialMessages` 直接 `addAll(memory.history())`，无 token 裁剪；session summary 只写入记忆、不参与替换历史；长会话 + 记忆 + 工具定义可能超 num_ctx | 后端按模型 num_ctx 做预算分配（system/历史/记忆/工具分块，`ContextBudget` 为唯一来源）；超限时滚动窗口保留最近 N 条并注入最近会话摘要（无摘要则不裁剪）；工具定义按需裁剪；前端 tokenPct 与后端一致 | 构造 200 条消息会话请求不超窗口且关键上下文保留；新增 ≥3 测试（预算分配/窗口滚动/摘要注入/无摘要降级） |
-| R-02 | 模型无 fallback 链 | 请求显式模型，熔断只拒绝不切换（`CircuitBreakerLlmProvider` OPEN 直接失败）；本地 qwen 不可用时整系统不可用 | 新增模型别名/fallback 链配置（如 default → qwen2.5:7b → 云端），失败/熔断自动降级并输出 `model_fallback` 事件；UI 显示实际生效模型 | 停掉 Ollama 后聊天自动走云端并可感知；新增熔断降级测试 |
-| R-03 | 缺网页正文抓取能力 | 仅 `WebSearchTool`（搜索摘要），无法读取页面正文；回答问题/调研能力受限 | 新增 `WebFetchTool`：白名单域名 + HTTP GET + HTML 正文提取（jsoup）+ 截断 + 不可信数据前缀；SSRF 防护含每跳重定向校验；前端工具列表可见 | 对白名单页面抓取正文成功、非白名单拒绝；注入/重定向校验测试通过 |
+| R-02 ✅（2026-08-25 落地，commit `a7a1c25`） | 模型无 fallback 链 | 请求显式模型，熔断只拒绝不切换（`CircuitBreakerLlmProvider` OPEN 直接失败）；本地 qwen 不可用时整系统不可用 | 新增模型别名/fallback 链配置（如 default → qwen2.5:7b → 云端），失败/熔断自动降级并输出 `model_fallback` 事件；UI 显示实际生效模型 | 停掉 Ollama 后聊天自动走云端并可感知；新增熔断降级测试 |
+| R-03 ✅（2026-08-25 落地，commit `ef0817e`） | 缺网页正文抓取能力 | 仅 `WebSearchTool`（搜索摘要），无法读取页面正文；回答问题/调研能力受限 | 新增 `WebFetchTool`：白名单域名 + HTTP GET + HTML 正文提取（jsoup）+ 截断 + 不可信数据前缀；SSRF 防护含每跳重定向校验；前端工具列表可见 | 对白名单页面抓取正文成功、非白名单拒绝；注入/重定向校验测试通过 |
 | R-04 | 记忆纠错闭环缺失 | 记忆由蒸馏自动写入，用户无法便捷纠正错误记忆（MemoryView 仅有搜索/导出） | 聊天内识别纠正指令（"删掉/修改你记的 X"）→ 复用记忆 CRUD；MemoryView 增加编辑/置顶/失效操作 | 用户纠正后下一轮检索不再召回旧事实；前端 2 用例 + 后端 2 用例 |
 | R-05 | RAG 无引用溯源 | 知识库分块写入向量记忆，回答不标注来源，难以验证 | 检索保留 chunk 元数据（fileId/chunkIndex），回答流式事件带 citation 或完成后附引用列表 | 知识问答返回带来源的引用；E2E 校验引用存在 |
 | R-06 | 评估套件过薄、无门禁 | 仅 8 个 golden cases（`golden-cases.json`），只跑本地 qwen，非 CI 门禁 | 扩充到 30+：工具组合、多轮、注入攻击、长会话压缩质量、记忆纠错；提供云端模型 baseline 对比；接入手动 CI job | 新用例可跑通；`-Deval.min-score` 门禁在 CI 可复用 |
@@ -54,8 +54,22 @@
   `PromptService` system 预算派生自 ContextBudget；`/api/system/resources` 返回 `context_budget`；
   前端 tokenPct 改用后端预算结构（去除硬编码 CTX_LIMIT=8192）。新增 4 后端测试类 + 1 前端用例
   （后端全量 519 绿、前端 24 绿 + 构建通过）。
+- **R-02 ✅ 2026-08-25（commit `a7a1c25`）**：fallback 链在 `LlmProviderRouter` 层实现
+  （`completeWithFallback` / `streamWithFallback`，包裹完整 gate+breaker provider）。
+  `ai.llm.fallback-chains` 配置（default 兜底链，请求模型前置）；熔断 OPEN 直接切换
+  （不消耗额度），仅超时/5xx/429 消耗 `FallbackRateLimiter` 日额度（默认 50）；
+  每次尝试改写 turn.model + 按整链 60s 预算收紧 chat_timeout；流式降级内联发
+  `model_fallback` 事件（前端模型徽章显示实际生效模型，websocket.js 新增处理）；
+  降级结果不写语义缓存（`recordTurn(ctx, answer, skipCacheWrite)`）；trace 记
+  `model_fallback` span。新增 `LlmProviderRouterFallbackTest` 9 用例。
+- **R-03 ✅ 2026-08-25（commit `ef0817e`）**：新增 `WebFetchTool`（`ai.web-fetch.allowed-domains`
+  白名单，空 = 全部拒绝）：httpclient5 GET（10s 超时 + UA）→ jsoup 正文提取（去
+  script/style/nav 等）→ 8000 字符截断 → 1MB 响应上限；SSRF 防护含每跳重定向重新解析校验
+  （私网/环回/链路本地/CGNAT/TEST-NET/保留段，含 IPv6 ULA），跳转上限 5 次；工具自动注册
+  进工具列表。新增 `WebFetchToolTest`（6）+ `WebFetchToolSecurityTest`（5）。
 - 配套：安装 jq（`winget install jq`）以启用 /autoplan 任务 JSONL 聚合。
-- 下一跳：R-02（T4~T5 fallback 链）→ R-03（T6 WebFetch），可与 R-02 并行 lane。
+- M1 三件套（R-01~R-03）已全部落地，后端全量 539 用例绿、前端 24 用例绿 + 构建通过。
+- 下一跳：M2（R-04 记忆纠错 → R-05 RAG 引用溯源 → R-06 评估扩充/门禁）。
 - 2026-08-24 文档变更（AGENTS.md / TODOS.md / docs/agent-upgrade-design-2026-08-24.md）已于 2026-08-25 随 R-01 一并入库。
 
 ## 当前待办总览（2026-08-15 更新）
