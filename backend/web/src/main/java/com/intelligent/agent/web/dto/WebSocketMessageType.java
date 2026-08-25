@@ -55,6 +55,8 @@ public final class WebSocketMessageType {
     public static final String APPROVAL_RESOLVED = "approval_resolved";
     /** R-02：模型降级（fallback 链生效，服务端 → 客户端） */
     public static final String MODEL_FALLBACK    = "model_fallback";
+    /** R-05：知识问答引用（服务端 → 客户端，回答底部渲染引用列表） */
+    public static final String CITATION          = "citation";
 
     /** 当前协议版本，随协议变更递增 */
     public static final int PROTOCOL_VERSION = 1;

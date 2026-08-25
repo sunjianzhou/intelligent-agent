@@ -6,6 +6,7 @@ import { genId } from '@/utils/string'
 import { resolvePendingMessageIds } from '@/utils/messageIdSync'
 import { planEventToMessage } from '@/utils/plan'
 import { approvalEventToMessage } from '@/utils/approval'
+import { appendCitation } from '@/utils/citations'
 import {
   switchModel as apiSwitchModel,
   getModels as apiGetModels,
@@ -243,6 +244,21 @@ export const useWebSocketStore = defineStore('websocket', () => {
       case 'model_fallback': {
         // R-02：模型降级（本地不可用 → 自动切换云端等），更新模型徽章
         effectiveModel.value = data.to || ''
+        break
+      }
+
+      case 'citation': {
+        // R-05：知识问答引用，附着到当前流式回答（按 file_id#chunk_index 去重）
+        if (streamingIndex.value !== -1 && messages.value[streamingIndex.value]) {
+          const cur = messages.value[streamingIndex.value]
+          const next = appendCitation(cur.citations, data.citation)
+          if (next.length !== (cur.citations || []).length) {
+            messages.value[streamingIndex.value] = {
+              ...cur,
+              citations: next,
+            }
+          }
+        }
         break
       }
 

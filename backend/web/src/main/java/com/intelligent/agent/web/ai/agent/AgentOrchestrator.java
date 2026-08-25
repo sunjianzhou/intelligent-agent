@@ -194,6 +194,8 @@ public class AgentOrchestrator {
         LlmProviderRouter.FallbackTracker tracker =
                 new LlmProviderRouter.FallbackTracker(effectiveModel(context));
         AgentContext memory = loadMemory(context, traceId);
+        // R-05：知识问答引用（knowledge 类型召回带来源元数据 → 回答末尾附引用列表）
+        List<Map<String, Object>> citations = buildCitations(memory);
         // R-04：聊天内记忆纠错（删掉/修改/忘了你记的 X）→ 直接修正并回执，跳过 LLM
         java.util.Optional<String> correction = memoryService == null
                 ? java.util.Optional.empty() : memoryService.applyCorrection(context);
@@ -238,7 +240,8 @@ public class AgentOrchestrator {
                                     0, List.of(), traceId, midEvents::tryEmitNext,
                                     skillMatch.toolDefs(), tracker)
                             .doFinally(signal -> midEvents.tryEmitComplete())
-                            .flatMapMany(state -> streamFinal(context, state, traceId, tracker));
+                            .flatMapMany(state -> streamFinal(
+                                    context, state, traceId, tracker, citations));
                     Flux<ModelEvent> merged = Flux.merge(midEvents.asFlux(), rounds);
                     if (plan.isPresent()) {
                         return Flux.concat(Flux.just(ModelEvent.plan(plan.get())), merged);
@@ -532,10 +535,63 @@ public class AgentOrchestrator {
 
     private static String recallSection(String header, List<MemoryRecord> records) {
         StringBuilder sb = new StringBuilder(header).append('\n');
+        boolean hasSource = false;
         for (MemoryRecord record : records) {
-            sb.append("- ").append(record.content()).append('\n');
+            String source = sourceLabel(record);
+            if (source != null) {
+                hasSource = true;
+                sb.append("- ").append(record.content())
+                        .append("\n  [SOURCE: ").append(source).append("]\n");
+            } else {
+                sb.append("- ").append(record.content()).append('\n');
+            }
+        }
+        // R-05：知识问答约束——基于引用作答，不确定时明确说明
+        if (hasSource) {
+            sb.append("\n请基于上方引用作答，不确定时明确说明；引用需与 [SOURCE] 标注一致。");
         }
         return sb.toString().stripTrailing();
+    }
+
+    /** 知识块来源标注：仅 knowledge 类型且带 file_id/filename/chunk_index 元数据。 */
+    private static String sourceLabel(MemoryRecord record) {
+        if (record == null || !"knowledge".equals(record.type())) {
+            return null;
+        }
+        Object fileId = record.metadata().get("file_id");
+        Object filename = record.metadata().get("filename");
+        Object chunkIndex = record.metadata().get("chunk_index");
+        if (fileId == null || filename == null || chunkIndex == null) {
+            return null;
+        }
+        return filename + "#段落" + chunkIndex;
+    }
+
+    /** R-05：从本次召回（semantic + 兼容 long-term）收集去重后的引用列表。 */
+    private static List<Map<String, Object>> buildCitations(AgentContext memory) {
+        List<Map<String, Object>> citations = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        List<MemoryRecord> records = new ArrayList<>(memory.semanticRecall());
+        records.addAll(memory.longTermRecall());
+        for (MemoryRecord record : records) {
+            String label = sourceLabel(record);
+            if (label == null) {
+                continue;
+            }
+            Object fileId = record.metadata().get("file_id");
+            Object chunkIndex = record.metadata().get("chunk_index");
+            String key = fileId + "#" + chunkIndex;
+            if (!seen.add(key)) {
+                continue;
+            }
+            Map<String, Object> citation = new java.util.LinkedHashMap<>();
+            citation.put("file_id", String.valueOf(fileId));
+            citation.put("filename", String.valueOf(record.metadata().get("filename")));
+            citation.put("chunk_index", chunkIndex);
+            citation.put("label", label);
+            citations.add(citation);
+        }
+        return citations;
     }
 
     /** G6 planning 前置：复杂任务先生成计划（boundedElastic，失败降级为无计划）。 */
@@ -850,11 +906,12 @@ public class AgentOrchestrator {
 
     private Flux<ModelEvent> streamFinal(AgentRequestContext ctx, ReActState state,
                                          String traceId,
-                                         LlmProviderRouter.FallbackTracker tracker) {
+                                         LlmProviderRouter.FallbackTracker tracker,
+                                         List<Map<String, Object>> citations) {
         // content 非空 = 已有最终答复（无工具路径或分支失败终止态），不再调用模型
         if (state.content() != null && !state.content().isBlank()) {
             Flux<ModelEvent> finalFlux = reflectFinalAnswer(ctx, state, state.content(), traceId)
-                    .flatMapMany(text -> finalizeAnswer(ctx, text));
+                    .flatMapMany(text -> finalizeAnswer(ctx, text, citations));
             if (!state.executedCalls().isEmpty()) {
                 return Flux.concat(
                         Flux.just(ModelEvent.toolCallsDone(state.executedCalls())),
@@ -868,13 +925,26 @@ public class AgentOrchestrator {
                 .onErrorResume(e -> Flux.just(ModelEvent.error(safeMessage(e))));
         answer = traceLlmStream(traceId, answer, ctx);
         if (state.executedCalls().isEmpty()) {
-            return answer.map(event -> "token".equals(event.type())
-                    ? ModelEvent.token(TaskSentinelUtils.strip(String.valueOf(event.data())))
-                    : event);
+            // R-05：无工具路径直接透传 token；结束前先发引用事件
+            return answer.concatMap(event -> {
+                        if ("done".equals(event.type()) && !citations.isEmpty()) {
+                            List<ModelEvent> tail = new ArrayList<>(citations.size() + 1);
+                            for (Map<String, Object> citation : citations) {
+                                tail.add(ModelEvent.citation(citation));
+                            }
+                            tail.add(event);
+                            return Flux.fromIterable(tail);
+                        }
+                        return Flux.just(event);
+                    })
+                    .map(event -> "token".equals(event.type())
+                            ? ModelEvent.token(TaskSentinelUtils.strip(
+                                    String.valueOf(event.data())))
+                            : event);
         }
         return Flux.concat(
                 Flux.just(ModelEvent.toolCallsDone(state.executedCalls())),
-                bufferFinalAnswer(ctx, state, answer, traceId));
+                bufferFinalAnswer(ctx, state, answer, traceId, citations));
     }
 
     private Mono<String> completeFinal(AgentRequestContext ctx, ReActState state,
@@ -898,7 +968,8 @@ public class AgentOrchestrator {
 
     /** 缓冲流式回答 → 剥除任务标记 → 发出事件与 done（与 Python 全结束后扫描一致）。 */
     private Flux<ModelEvent> bufferFinalAnswer(AgentRequestContext ctx, ReActState state,
-                                               Flux<ModelEvent> source, String traceId) {
+                                               Flux<ModelEvent> source, String traceId,
+                                               List<Map<String, Object>> citations) {
         return source.collectList().flatMapMany(events -> {
             boolean hasError = events.stream().anyMatch(e -> "error".equals(e.type()));
             if (hasError) {
@@ -911,17 +982,24 @@ public class AgentOrchestrator {
                 }
             }
             return reflectFinalAnswer(ctx, state, sb.toString(), traceId)
-                    .flatMapMany(text -> finalizeAnswer(ctx, text));
+                    .flatMapMany(text -> finalizeAnswer(ctx, text, citations));
         });
     }
 
-    private Flux<ModelEvent> finalizeAnswer(AgentRequestContext ctx, String fullText) {
+    private Flux<ModelEvent> finalizeAnswer(AgentRequestContext ctx, String fullText,
+                                            List<Map<String, Object>> citations) {
         List<ModelEvent> events = new ArrayList<>();
         String cleaned = TaskSentinelUtils.strip(fullText);
         if (!cleaned.isBlank()) {
             events.add(ModelEvent.token(cleaned));
         }
         events.addAll(TaskSentinelUtils.events(fullText, ctx.projectId()));
+        // R-05：回答完成后附引用列表（前端渲染可点击来源）
+        if (citations != null) {
+            for (Map<String, Object> citation : citations) {
+                events.add(ModelEvent.citation(citation));
+            }
+        }
         events.add(ModelEvent.done(Map.of()));
         return Flux.fromIterable(events);
     }

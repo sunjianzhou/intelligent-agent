@@ -25,6 +25,7 @@ public record ModelEvent(String type, Object data) {
     public static final String TYPE_TASK_UPDATE = "task_update";
     public static final String TYPE_TASK_BLOCKED = "task_blocked";
     public static final String TYPE_MODEL_FALLBACK = "model_fallback";
+    public static final String TYPE_CITATION = "citation";
 
     public ModelEvent {
         Objects.requireNonNull(type, "type must not be null");
@@ -78,5 +79,10 @@ public record ModelEvent(String type, Object data) {
                 "from", from == null ? "" : from,
                 "to", to == null ? "" : to,
                 "reason", reason == null ? "" : reason));
+    }
+
+    /** R-05：知识问答引用事件（data 含 file_id / filename / chunk_index / label）。 */
+    public static ModelEvent citation(Map<String, Object> citation) {
+        return new ModelEvent(TYPE_CITATION, citation == null ? Map.of() : citation);
     }
 }

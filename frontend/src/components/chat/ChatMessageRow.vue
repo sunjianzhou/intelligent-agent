@@ -108,6 +108,22 @@
             class="md-content"
             v-html="renderMarkdown(msg.content, msg.isStreaming) + (msg.isStreaming ? '<span class=\'cursor\'>▍</span>' : '')"
           />
+          <!-- R-05 知识问答引用列表（可点击跳转知识库） -->
+          <div v-if="msg.role === 'assistant' && msg.citations && msg.citations.length"
+               class="citations">
+            <div class="citations-title">
+              <i class="fas fa-book-open" /> 引用来源
+            </div>
+            <router-link
+              v-for="(c, i) in msg.citations"
+              :key="i"
+              :to="{ path: '/knowledge', query: { file: c.file_id } }"
+              class="citation-item"
+              :title="c.label"
+            >
+              <i class="fas fa-file-alt" /> {{ c.label }}
+            </router-link>
+          </div>
           <!-- user 气泡图片预览（多模态消息） -->
           <img
             v-if="msg.role === 'user' && msg.imagePreview"
@@ -551,6 +567,39 @@ const submitFeedback = async (msg, index, rating) => {
 .md-content :deep(h1),
 .md-content :deep(h2),
 .md-content :deep(h3)           { margin: 10px 0 6px; font-weight: 500; }
+
+/* R-05 引用来源列表 */
+.citations {
+  margin-top: var(--space-2);
+  border-top: 1px dashed var(--color-border);
+  padding-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.citations-title {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.citations-title i { color: var(--color-primary); }
+.citation-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  color: var(--color-primary);
+  text-decoration: none;
+  background: #eef0ff;
+  border: 1px solid #d0d9f5;
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  width: fit-content;
+  transition: background 0.15s;
+}
+.citation-item:hover { background: #e0e5ff; }
 
 /* ── 时间 / 响应时间 ──────────────────────────────────────── */
 .meta          { display: flex; align-items: center; gap: var(--space-2); }

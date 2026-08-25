@@ -269,6 +269,11 @@ public class AgentService {
                 log.info("模型降级（fallback 链生效）: {}", eventData);
                 return wsMsg;
 
+            case WebSocketMessageType.CITATION:
+                wsMsg.put("type", WebSocketMessageType.CITATION);
+                wsMsg.put("citation", eventData);
+                return wsMsg;
+
             case "token":
                 String token = String.valueOf(eventData);
                 fullMsg.append(token);
@@ -326,7 +331,8 @@ public class AgentService {
                     WebSocketMessageType.TOOL_CALL_START, "tool_call",
                     "task_update", "task_blocked", WebSocketMessageType.PLAN,
                     WebSocketMessageType.APPROVAL_REQUIRED,
-                    WebSocketMessageType.MODEL_FALLBACK -> true;
+                    WebSocketMessageType.MODEL_FALLBACK,
+                    WebSocketMessageType.CITATION -> true;
             default -> false;
         };
     }
