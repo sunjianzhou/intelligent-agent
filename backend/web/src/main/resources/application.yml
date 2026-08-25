@@ -86,6 +86,11 @@ ai:
       enabled: ${OTEL_EXPORTER_ENABLED:false}
       endpoint: ${OTEL_EXPORTER_ENDPOINT:http://localhost:4318}
       timeout-ms: ${OTEL_EXPORTER_TIMEOUT_MS:5000}
+  # R-03：网页正文抓取工具（WebFetchTool）白名单域名，如 ["example.com"]；空 = 全部拒绝
+  web-fetch:
+    allowed-domains: ${WEB_FETCH_ALLOWED_DOMAINS:[]}
+    timeout-seconds: ${WEB_FETCH_TIMEOUT_SECONDS:10}
+    max-body-chars: ${WEB_FETCH_MAX_BODY_CHARS:8000}
 
 server:
   port: 8080
