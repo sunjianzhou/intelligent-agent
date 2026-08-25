@@ -2,6 +2,15 @@
 
 This file provides guidance to AI coding agents when working with code in this repository.
 
+## Working agreement
+
+Before implementing any feature, behavior change, or code modification, present a concise
+plan first (scope, approach, key tradeoffs) and wait for the user's confirmation. Do not
+write or edit code until the user approves the plan. Read-only work (inspection, diagnosis,
+status reports, answering questions) is exempt, but any code change — even incidental —
+still requires the plan-first gate. If a request has multiple reasonable directions,
+propose the recommended option and ask the user before starting.
+
 ## Project overview
 
 Local-first intelligent agent platform (Java-only since 2026-08-08; the Python FastAPI agent

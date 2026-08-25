@@ -4,6 +4,60 @@
 
 ---
 
+## 2026-08-24 Agent 架构审查（对照顶级 agent 设计基线）
+
+> 审查范围：ReAct 编排、上下文管理、记忆/RAG、工具、评估、可观测性、安全、IM 渠道。
+> 总体结论：架构完整度在同规模自建 agent 中较高（原生工具调用、规划、反思、HITL 审批、追踪、
+> 熔断、压测基线均已落地，且已做并发收口）；主要差距集中在「长会话上下文管理」「评估与回归门禁」
+> 「网页/工作区工具能力」「多代理编排」「成本与指标」「记忆纠错闭环」六类。
+
+### P0 — 高价值，建议近期落地
+
+| 编号 | 差距 | 现状（证据） | 改进方案 | 验收标准 |
+|------|------|--------------|----------|----------|
+| R-01 ✅（2026-08-25 落地，commit `803b6e6`） | 上下文无 token 预算与自动压缩 | 短期记忆最近 100 条全量注入（`ConversationMemoryService.SHORT_TERM_MAX_SIZE=100`）；`initialMessages` 直接 `addAll(memory.history())`，无 token 裁剪；session summary 只写入记忆、不参与替换历史；长会话 + 记忆 + 工具定义可能超 num_ctx | 后端按模型 num_ctx 做预算分配（system/历史/记忆/工具分块，`ContextBudget` 为唯一来源）；超限时滚动窗口保留最近 N 条并注入最近会话摘要（无摘要则不裁剪）；工具定义按需裁剪；前端 tokenPct 与后端一致 | 构造 200 条消息会话请求不超窗口且关键上下文保留；新增 ≥3 测试（预算分配/窗口滚动/摘要注入/无摘要降级） |
+| R-02 | 模型无 fallback 链 | 请求显式模型，熔断只拒绝不切换（`CircuitBreakerLlmProvider` OPEN 直接失败）；本地 qwen 不可用时整系统不可用 | 新增模型别名/fallback 链配置（如 default → qwen2.5:7b → 云端），失败/熔断自动降级并输出 `model_fallback` 事件；UI 显示实际生效模型 | 停掉 Ollama 后聊天自动走云端并可感知；新增熔断降级测试 |
+| R-03 | 缺网页正文抓取能力 | 仅 `WebSearchTool`（搜索摘要），无法读取页面正文；回答问题/调研能力受限 | 新增 `WebFetchTool`：白名单域名 + HTTP GET + HTML 正文提取（jsoup）+ 截断 + 不可信数据前缀；SSRF 防护含每跳重定向校验；前端工具列表可见 | 对白名单页面抓取正文成功、非白名单拒绝；注入/重定向校验测试通过 |
+| R-04 | 记忆纠错闭环缺失 | 记忆由蒸馏自动写入，用户无法便捷纠正错误记忆（MemoryView 仅有搜索/导出） | 聊天内识别纠正指令（"删掉/修改你记的 X"）→ 复用记忆 CRUD；MemoryView 增加编辑/置顶/失效操作 | 用户纠正后下一轮检索不再召回旧事实；前端 2 用例 + 后端 2 用例 |
+| R-05 | RAG 无引用溯源 | 知识库分块写入向量记忆，回答不标注来源，难以验证 | 检索保留 chunk 元数据（fileId/chunkIndex），回答流式事件带 citation 或完成后附引用列表 | 知识问答返回带来源的引用；E2E 校验引用存在 |
+| R-06 | 评估套件过薄、无门禁 | 仅 8 个 golden cases（`golden-cases.json`），只跑本地 qwen，非 CI 门禁 | 扩充到 30+：工具组合、多轮、注入攻击、长会话压缩质量、记忆纠错；提供云端模型 baseline 对比；接入手动 CI job | 新用例可跑通；`-Deval.min-score` 门禁在 CI 可复用 |
+
+### P1 — 中期
+
+| 编号 | 差距 | 现状 | 改进方案 | 验收标准 |
+|------|------|------|----------|----------|
+| R-07 | 无子代理/多代理编排 | 全部单 agent 串行 ReAct，复杂任务无法并行研究/实现 | 在 `TaskPlanner` 产物之上增加子任务并行执行器（Java 侧，类似 spawn_agent），结果合并回主对话；trace 记录子任务 span | 复杂任务可拆分为 ≥2 子任务并行执行且结果正确合并 |
+| R-08 | 代码/工作区工具缺失（方向待确认） | `FileTool` 只读白名单、`ShellTool` 命令白名单，agent 无法编辑文件 | 若定位编码 agent：新增受控 `FileEditTool`（白名单目录 + diff 预览 + 审批）；若保持个人助理定位则关闭本条 | 受控目录内编辑成功、目录外拒绝、diff 审批流程可用 |
+| R-09 | IM 渠道 HITL 审批缺失 | `approvalRequired` 工具在 web/WS 有审批卡片，IM 渠道直发无审批 UI | 复用飞书卡片按钮（已具备卡片能力）把审批事件推送到 IM；或 IM 渠道对 approvalRequired 工具默认拒绝 | 飞书渠道发起审批并可卡片批准/拒绝 |
+| R-10 | 无成本/用量指标 | trace 有耗时但无 token/cost 统计，无法按用户/模型看用量与预算 | trace span 记录 token 数（输入/输出），聚合每用户/模型成本；AnalyticsView 增加成本卡片与限额 | 管理端可查每用户/模型成本与月限额 |
+| R-11 | 加密密钥与 JWT 耦合 | `SecretCrypto` 密钥由 `JWT_SECRET` SHA-256 派生，轮换 JWT_SECRET 即丢失全部加密存量（已知债） | 独立密钥文件 + keyId 版本化加密（密文带版本头），支持平滑轮换 | 轮换密钥后旧密文可读、新写入用新密钥；迁移测试通过 |
+| R-12 | 会话管理偏弱 | 前端会话历史 IndexedDB 仅最近 12 条，localStorage 最近 50 条，无服务端会话列表/重命名/导出 | 服务端会话索引（已有 ConversationService 持久化）+ 列表/重命名/导出/跨设备同步 API | 会话可跨设备恢复、重命名、导出为 JSON |
+
+### P2 — 远期/可选
+
+| 编号 | 差距 | 现状 | 改进方案 | 验收标准 |
+|------|------|------|----------|----------|
+| R-13 | 无指标告警 | Prometheus `/metrics` 曾评估暂缓，用 trace/health 替代；无断路器打开/队列满告警 | 重开轻量 metrics（计数/直方图内存聚合）+ 告警事件推送（复用通知队列） | 断路器打开或推理队列满时产生告警通知 |
+| R-14 | 图片理解缺失 | 图片生成（ComfyUI）已通，但无视觉模型理解图片内容（qwen2.5:7b 非视觉） | 接入视觉模型（qwen2.5-vl 等）或云端视觉，图片输入走视觉链路 | 上传图片后可描述内容并回答相关问题 |
+| R-15 | 工具开发无 SDK/脚手架 | 新增工具需手写 Java 注册，无模板与文档 | 提供工具开发模板/脚手架 + 文档 + 测试夹具 | 按文档 30 分钟内新增一个简单工具并过测试 |
+| R-16 | 流式中断无法恢复 | 取消流式直接断开，已执行工具结果丢弃 | 断点缓存：工具轮结果按 requestId 暂存，重发时跳过已执行步骤 | 中断后重试不重复执行副作用工具 |
+
+### M1 实施清单（/plan-eng-review 2026-08-24 锁定，2026-08-25 用户确认开工）
+
+- 完整实现方案：`docs/agent-upgrade-design-2026-08-24.md`（工程评审记录 + Implementation Tasks T1~T7）。
+- 顺序：R-01（T1~T3 上下文预算）→ R-02（T4~T5 fallback）→ R-03（T6 WebFetch），R-01 先行；
+  R-02/R-03 可并行 lane（详见文档 Worktree parallelization）。
+- **R-01 ✅ 2026-08-25（commit `803b6e6`）**：`ContextBudget`（num_ctx 唯一来源：请求显式 > 模型表 > 默认，
+  15% 安全边际，CJK≈1/其余≈0.25 token 字符估算）；`AgentOrchestrator` 按预算分块构建
+  （system/工具/记忆/项目/历史/当前）；历史超限时 `ConversationMemoryService.compactHistory`
+  滚动窗口 + 注入 [RECENT SESSION SUMMARY]，无摘要铁律不裁剪（trace `context_compaction` 告警）；
+  `PromptService` system 预算派生自 ContextBudget；`/api/system/resources` 返回 `context_budget`；
+  前端 tokenPct 改用后端预算结构（去除硬编码 CTX_LIMIT=8192）。新增 4 后端测试类 + 1 前端用例
+  （后端全量 519 绿、前端 24 绿 + 构建通过）。
+- 配套：安装 jq（`winget install jq`）以启用 /autoplan 任务 JSONL 聚合。
+- 下一跳：R-02（T4~T5 fallback 链）→ R-03（T6 WebFetch），可与 R-02 并行 lane。
+- 2026-08-24 文档变更（AGENTS.md / TODOS.md / docs/agent-upgrade-design-2026-08-24.md）已于 2026-08-25 随 R-01 一并入库。
+
 ## 当前待办总览（2026-08-15 更新）
 
 > **2026-08-23 收尾（Python 时代遗留清理 + 企微送达闭环，待提交）**：
