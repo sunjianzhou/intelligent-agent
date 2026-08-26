@@ -1,10 +1,11 @@
 # 智能体项目 — AI 上下文速查文档
 
 > **本文档专为大模型阅读设计**。新对话开始时先读此文件，5 分钟内建立完整项目认知，无需再反复询问基础背景。
-> 最后更新：2026-08-22（W13 Java 统一迁移完成 + 性能优化 + 迁移缺口收口：Python Agent 已退役，
+> 最后更新：2026-08-26（W13 Java 统一迁移完成 + 性能优化 + 迁移缺口收口 + R-07 子代理编排：Python Agent 已退役，
 > 全部 AI 逻辑并入 Java 单后端；涉及 Python 的章节均已标注为历史，仅作对照参考，不再代表当前实现。
 > 2026-08-22 新增：异步 REST/流式并发上限/推理闸门超时与按模型分槽/向量记忆按用户分文件/
-> 技能运行时匹配注入/压测基线工具，详见「九、当前运行状态」）
+> 技能运行时匹配注入/压测基线工具；2026-08-26 新增：R-07 子代理/多代理编排（计划并行分组 →
+> 只读研究子代理 → 结果按序合并），详见「八、路线图」与「九、当前运行状态」）
 
 ---
 
@@ -254,6 +255,8 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 
 自包含的 Java 单后端：WebSocket 网关 + JWT 认证 + 全部 AI 逻辑（ReAct 编排、记忆/RAG、
 提示词/角色/灵魂、工具、调度、IM 通道、领域 API），无任何 Python 服务或回滚路径。
+R-07 起支持子代理/多代理编排：`SubAgentExecutor` 按计划并行分组派发只读研究子代理，
+结果按序合并回主对话（`ai/agent/subagent/`）。
 
 ### 4.2 控制器
 
@@ -291,7 +294,7 @@ _call_model_with_tools()  ← 第一次 LLM 调用
 
 **前端 → Java**：`chat_message`、`ping`、`get_system_info`
 
-**Java → 前端**：`connection_established`、`thinking`、`chat_token`、`tool_call_start`、`tool_calls_done`、`chat_done`、`task_update`、`task_blocked`、`notification`、`pong`、`system_info`、`error`
+**Java → 前端**：`connection_established`、`thinking`、`chat_token`、`tool_call_start`、`tool_calls_done`、`plan`、`approval_required`、`citation`、`model_fallback`、`chat_done`、`task_update`、`task_blocked`、`notification`、`pong`、`system_info`、`error`
 
 ### 4.4 通知推送
 
@@ -437,7 +440,7 @@ Python CLI 已于 2026-08-08 随 Agent 一起退役。
 
 ---
 
-## 八、路线图（已全部实现）
+## 八、路线图（M1/M2/R-07 已落地，M3 进行中）
 
 以下均已完成：
 
@@ -466,14 +469,24 @@ Python CLI 已于 2026-08-08 随 Agent 一起退役。
 | 多模态图片持久化 + 前端历史恢复 + diffusers 并发锁 + 知识库智能分块 + 请求 traceID 等（TODO-60~75） | 2026-06-16 |
 | 飞书 OAuth 用户授权全栈（TODO-85）：OAuth Token Manager + 3 端点 + Java 透传 + 5 个飞书内置工具（日历读写/任务读写/IM） | 2026-06-27 |
 | iPhone 16 PWA 移动端布局全量优化：底部 4-Tab Bar + MorePanel + BottomSheet 公共组件 + safe-area/dvh/keyboard 适配 + ChatView 角色/模型徽章 + 汉堡菜单移除 | 2026-06-29 |
+| M1 三件套：R-01 上下文 token 预算/自动压缩 · R-02 模型 fallback 链 · R-03 WebFetch 网页正文抓取 | 2026-08-25 |
+| M2 三件套：R-04 记忆纠错闭环 · R-05 RAG 引用溯源 · R-06 评估套件 36 例 + CI 门禁 | 2026-08-25 |
+| R-07 子代理/多代理编排：计划并行分组 → 只读研究子代理（`SubAgentExecutor`）→ 结果按序合并，真机验证通过 | 2026-08-26 |
+
+M3 剩余项：R-09 IM 渠道 HITL 审批 → R-10 成本/用量指标 → R-11 密钥与 JWT 解耦 → R-12 会话管理
+（待办与实施记录见 `TODOS.md`）。
 
 ---
 
-## 九、当前运行状态（2026-08-22）
+## 九、当前运行状态（2026-08-26）
 
 - **已提交到 GitHub**：所有修改均已推送 master 分支
-- **测试覆盖**：Java 后端全量 505 用例绿（0 失败）；E2E 为 JUnit 黑盒（tests/e2e-java，70 用例）；
-  前端 Vitest 20 用例；压测/基线工具 `tests/perf-java`（@Tag("perf")，CI 手动 job，默认排除）
+- **测试覆盖**：Java 后端全量 566 用例绿（0 失败）；E2E 为 JUnit 黑盒（tests/e2e-java，70 用例）；
+  前端 Vitest 24+ 用例；压测/基线工具 `tests/perf-java`（@Tag("perf")，CI 手动 job，默认排除）
+- **R-07 子代理编排**：复杂计划（≥2 步）并行派发只读子代理（`ai.subagent.*` 可配），结果按序合并；
+  真机验证（qwen2.5:7b + Ollama）通过：4 步计划 group 1/1/1/0、三子代理同 start 并行执行、
+  结果含真实计算与北京时间、trace `sub_agent` span 全 ok；修复本地模型嵌套 JSON 计划展开
+  与子代理超时放宽（默认 120s）
 - **全局默认模型**：`qwen2.5:7b`（所有渠道统一；embedding 用 `nomic-embed-text`；云端配置按需在 `/admin/models` 激活）
 - **Python 环境**：Python Agent/CLI 已于 2026-08-08 退役，无 Python 运行时依赖
 - **Ollama keep_alive**：`-1`（永久常驻显存，避免冷启动延迟）

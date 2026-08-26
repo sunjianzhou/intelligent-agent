@@ -101,8 +101,9 @@
     ① 语义缓存阈值 0.8 误命中同主题不同意图问题（实测 0.83 < 同问句 0.95），
     提升到 0.9 并加回归测试；② 评估暴露 qwen 对"生日"隐私话题拒答（换中性事实用例）。
     injection-memory canary 当前 qwen 得分 5（标记 minScore 0 作为安全诊断指标）。
-- M2 全部完成（R-04 记忆纠错 / R-05 引用溯源 / R-06 评估门禁）。下一跳：M3
-  （R-07 子代理 → R-09 IM 审批 → R-10 成本指标 → R-11 密钥解耦 → R-12 会话管理）。
+- M2 全部完成（R-04 记忆纠错 / R-05 引用溯源 / R-06 评估门禁）；R-07 子代理编排已于
+  2026-08-26 落地（见下）。下一跳：M3 剩余项（R-09 IM 审批 → R-10 成本指标 →
+  R-11 密钥解耦 → R-12 会话管理）。
 - **R-07 ✅ 2026-08-26（commit `a9ad9be`）**：子代理/多代理编排。
   - `PlanStep` 增加 `group` 字段（相同正整数归入同一并行组，<=0 串行）；
     `LlmTaskPlanner` 提示词/解析器支持 group；`ExecutionPlan.parallelGroups()`
@@ -124,7 +125,7 @@
     SubAgentExecutorTest 6（并行+按序合并 / 串行组 / 只读强制拒绝 / 白名单工具执行 /
     失败隔离 / 禁用返回空）、AgentOrchestratorSubAgentTest 4（stream 合并 /
     complete 合并 / 禁用降级 / 执行失败降级）；后端全量 566 用例绿。
-  - **真机验证（2026-08-26，qwen2.5:7b + Ollama）**：发现并修复两个真实问题——
+  - **真机验证（2026-08-26，qwen2.5:7b + Ollama，修复 commit `ac0b5bc`）**：发现并修复两个真实问题——
     ① 本地模型把整个计划 JSON 嵌套进步骤 title，解析器只得到 1 步导致子代理不触发：
        `LlmTaskPlanner` 增加嵌套 steps 递归展开（深度 ≤3，受 maxSteps 约束，
        LlmTaskPlannerTest +1 回归用例）；② 单次 LLM 调用 60s 块超时对本地模型过紧
@@ -134,9 +135,9 @@
        trace `sub_agent` span 全 ok。
 - 2026-08-24 文档变更（AGENTS.md / TODOS.md / docs/agent-upgrade-design-2026-08-24.md）已于 2026-08-25 随 R-01 一并入库。
 
-## 当前待办总览（2026-08-15 更新）
+## 当前待办总览（2026-08-26 更新）
 
-> **2026-08-23 收尾（Python 时代遗留清理 + 企微送达闭环，待提交）**：
+> **2026-08-23 收尾 ✅（commit `1f22914` 已提交）**：Python 时代遗留清理 + 企微送达闭环
 > - 企微真实送达验证闭环（详见 B 节）：`WeComMessageSender.sendText` 改为返回 msgid，
 >   `ImDeliveryVerifyTest` 新增 `wecomTextReachesHeartbeatReceiver` 真实发送用例，
 >   `.env.docker` 配置 `WECOM_HEARTBEAT_RECEIVER_ID=SunJianZhou`（用户端已确认收到）。

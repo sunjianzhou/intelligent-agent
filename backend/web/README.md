@@ -1,7 +1,8 @@
 # Java Backend 模块
 
-> 最后更新：2026-08-22（Java-only 单后端：Python 回滚路径已移除；2026-08-22 完成高并发优化
-> ——异步 REST/流式并发上限/推理闸门超时与按模型分槽/向量记忆按用户分文件/技能运行时注入）
+> 最后更新：2026-08-26（Java-only 单后端：Python 回滚路径已移除；2026-08-22 完成高并发优化
+> ——异步 REST/流式并发上限/推理闸门超时与按模型分槽/向量记忆按用户分文件/技能运行时注入；
+> 2026-08-26 新增 R-07 子代理/多代理编排并真机验证（qwen2.5:7b））
 
 ## 技术栈与运行环境
 
@@ -107,6 +108,10 @@ backend/web/src/main/java/.../
 | `chat_token` | 流式 token | `data`（token 文本）|
 | `tool_call_start` | 工具开始执行 | `tool_name`、`args_summary` |
 | `tool_calls_done` | 本轮工具全部完成 | `data`（工具调用列表）|
+| `plan` | 复杂任务执行计划（G6/R-07） | `data.steps`（含 `group` 并行分组）|
+| `approval_required` | 工具调用需用户审批（HITL） | `data`（approval_id/tool/args）|
+| `citation` | 知识问答引用来源（R-05） | `data`（file_id/filename/chunk_index/label）|
+| `model_fallback` | 模型降级（R-02） | `data`（from/to/reason）|
 | `chat_done` | 本轮完整回复 | `content`、`response_time_ms`、`user_message_id`、`assistant_message_id`（用于前端撤回功能定位消息）|
 | `task_update` | 任务完成 | `task_data.task_id`、`project_id` |
 | `task_blocked` | 任务阻塞 | `task_data.task_id`、`project_id` |
@@ -141,6 +146,22 @@ AgentService.localStreamChat()
 - `session.isOpen()==false` 时主动 `dispose()` 下游推理流，断线不再白占 boundedElastic 与闸门槽位
 - 技能运行时注入：`SkillMatcher` 命中后向上下文插入 `[SKILL]` 系统消息并过滤本轮工具集
 - 任务通知推送：本地 `TaskSchedulerService` 通知队列广播 WS `notification` 事件
+
+### 子代理编排（R-07）
+
+复杂计划（≥2 步）由 `SubAgentExecutor` 按 `group` 并行派发给只读研究子代理：
+
+- `PlanStep.group`：相同正整数归入同一并行组（组间按序），≤0 串行；`LlmTaskPlanner`
+  提示词/解析器支持 group，并对本地模型的嵌套 JSON 计划做递归展开（真机实测形态）
+- 每个子代理独立 `AgentRequestContext` + 只读工具白名单（`ai.subagent.tools`），白名单外
+  工具（含副作用工具）执行时强制 `denied`；共享记忆仓库只读召回（episodic/semantic，
+  不注入主对话历史）；最多 `maxRounds` 轮工具后无工具收尾
+- 单步失败/超时隔离为该步骤 error 结果，不中断整体；整组执行失败自动降级为原
+  [PLAN] 注入 + 主线程工具轮路径
+- trace 新增 `sub_agent` span（step/title/status/duration_ms/chars）
+- 默认 `ai.subagent.timeout=120s`、组级等待 = 超时 × maxRounds（本地 qwen2.5:7b 单次
+  LLM 调用实测 40~65s；真机验证：4 步计划 group 1/1/1/0、三子代理同 start 并行、
+  结果含真实计算与北京时间、trace `sub_agent` span 全 ok）
 
 ### 用户 ID 提取（Java-only）
 
@@ -188,6 +209,13 @@ Channel Adapter 层（设计对齐旧 Python im/ 实现）：
 | `ai.llm.inference-queue-timeout` | `120s` | 推理闸门排队超时 |
 | `ai.skills.runtime-enabled` | `true` | 技能运行时匹配/注入开关 |
 | `ai.skills.llm-timeout` | `10s` | 技能 LLM 意图裁决超时 |
+| `ai.subagent.enabled` | `true` | 子代理编排开关（R-07） |
+| `ai.subagent.pool-size` | `4` | 子代理线程池大小 |
+| `ai.subagent.queue-size` | `32` | 子代理排队容量（满时拒绝）|
+| `ai.subagent.timeout` | `120s` | 子代理单次 LLM 调用超时 |
+| `ai.subagent.max-rounds` | `3` | 单个子代理最大工具轮次 |
+| `ai.subagent.max-result-chars` | `2000` | 单子代理结果截断字符数 |
+| `ai.subagent.tools` | 只读研究工具集 | 子代理工具白名单（空 = 无工具）|
 | `spring.mvc.async.request-timeout` | `660000ms` | 异步 REST 最长等待（须覆盖 chat_timeout 600s）|
 | `spring.task.execution.pool.max-size` | `32` | MVC 异步（SSE）执行器线程上限 |
 

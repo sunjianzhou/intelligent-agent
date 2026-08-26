@@ -2,7 +2,8 @@
 
 > 本地优先的 AI 智能体平台：Ollama 本地推理 · Spring Boot 单后端（WebSocket + REST + 全部 AI 逻辑）· Vue 3 聊天界面 · Java CLI 客户端
 > 支持多工具调用、长期记忆、任务调度、多角色切换、项目上下文持久化。
-> 最后更新：2026-08-08（W13 Java 统一迁移完成：Python Agent 已退役，全部逻辑并入 Java 单后端）
+> 最后更新：2026-08-26（R-07 子代理/多代理编排落地并真机验证：复杂计划并行派发给只读研究子代理、
+> 结果按序合并回主对话；Python Agent 已于 2026-08-08 退役，全部逻辑并入 Java 单后端）
 
 ```
 浏览器 / CLI 客户端
@@ -95,6 +96,7 @@ cp .env.docker.example .env.docker    # 容器运行时变量（含 IM 集成、
 | 能力 | 说明 |
 |------|------|
 | ReAct 推理循环 | `AgentOrchestrator` 构建上下文 → LLM 调用 → 工具执行（最多 5 轮）→ 流式输出 |
+| 子代理编排（R-07） | 复杂计划按并行分组派发给只读研究子代理（`SubAgentExecutor`，独立上下文 + 只读工具白名单），结果按序合并回主对话后由主 agent 汇总作答；失败自动降级为原 [PLAN] 路径，trace 记 `sub_agent` span |
 | 双模式工具调用 | 原生 Function Calling（qwen 等）+ Text-tool 文本解析（dolphin/phi2 等） |
 | LLM 路由 | `LlmProviderRouter`：本地 Ollama 默认 + 云端 OpenAI 兼容 provider（按需在 `/admin/models` 激活） |
 | 短期记忆 | 进程内双端队列，TTL 24h，最近 100 条 |
@@ -112,7 +114,10 @@ cp .env.docker.example .env.docker    # 容器运行时变量（含 IM 集成、
 | 分支失败检测 | `BranchFailureDetector` 6 信号（同工具同错误/连续重复/错误+空响应/铁律违反扫描等），命中即终止本轮 |
 | CLI | Java CLI（`client/`）：login / chat / repl / model / persona / retract |
 
-**内置工具**：计算器 · 时间查询 · 文件读取（白名单） · Web 搜索 · Shell（命令白名单） · MySQL 只读查询 · 飞书日历/任务 · 心证管理（heart_record）
+**内置工具**：计算器 · 高级计算器/单位换算 · 时间 · 系统信息 · 文件读取（白名单） ·
+Web 搜索 · Web 正文抓取（白名单 + SSRF 防护） · Shell（命令白名单） · MySQL 只读查询 ·
+记忆写入/检索 · 提醒/定时任务 · 图片生成（ComfyUI） · IM 发消息 · 飞书日历/任务 ·
+心证管理（heart_record）
 
 ---
 
@@ -326,6 +331,11 @@ cd frontend && npm install && npm run dev       # http://localhost:5173
 | `LLM_INFERENCE_QUEUE_TIMEOUT` | `120s` | 推理闸门排队超时，超过返回"推理队列繁忙" |
 | `AI_SKILLS_RUNTIME_ENABLED` | `true` | 技能运行时匹配/注入开关（关键词 + LLM 裁决） |
 | `AI_SKILLS_LLM_TIMEOUT` | `10s` | 技能 LLM 意图裁决超时 |
+| `AI_SUBAGENT_ENABLED` | `true` | 子代理编排开关（计划 ≥2 步时并行派发只读子代理）|
+| `AI_SUBAGENT_POOL_SIZE` | `4` | 子代理线程池大小 |
+| `AI_SUBAGENT_TIMEOUT` | `120s` | 子代理单次 LLM 调用超时（本地 7B 建议 ≥120s）|
+| `AI_SUBAGENT_MAX_ROUNDS` | `3` | 单个子代理最大工具轮次 |
+| `AI_SUBAGENT_TOOLS` | 只读研究工具集 | 子代理工具白名单（空 = 无工具，纯推理）|
 | `CLOUD_PROVIDER` | 空 | 云端 LLM fallback（`dashscope` / `deepseek` / `zhipu` / `moonshot` 等） |
 | `CLOUD_API_KEY` | 空 | 云端 LLM API Key |
 | `CORS_ALLOWED_ORIGINS` | `*` | 生产环境应改为具体域名 |
@@ -367,6 +377,9 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 对不支持 Function Calling 的模型（dolphin / phi2 等），自动切换到文本解析模式，支持 JSON / `<tool_call>` 标签 / Markdown 代码块 / 纯文本四种格式。
 
+复杂任务先由 planning 前置生成执行计划（`plan` 事件）；R-07 起，计划中可并行步骤（相同
+`group`）由只读子代理并行执行，结果按序合并进 `[SUBAGENT RESULTS]` 后主 agent 汇总作答。
+
 ### 两级记忆系统
 
 ```
@@ -399,7 +412,7 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 **1. 规格驱动开发**：在项目视图写入 Markdown 规格文档，每 5 轮以 `[SPEC]` 系统消息注入 LLM，强制回顾原始需求，避免偏离。
 
-**2. 上下文持久化**：每 8 轮从对话中提取关键决策/约束写入 ChromaDB，每次聊天语义检索注入 `[PROJECT CONTEXT]`，长对话不遗忘核心信息。
+**2. 上下文持久化**：每 8 轮 LLM 提取关键决策/约束写入项目记忆（文件持久化向量仓库），每次聊天语义检索注入 `[PROJECT CONTEXT]`，长对话不遗忘核心信息。
 
 **3. 自主任务分解**：LLM 将目标拆解为树形任务，回复中写 `[TASK_DONE:<id>]` 时前端自动勾选对应任务。
 
@@ -586,6 +599,10 @@ intelligent_agent/
 | `chat_token` | 流式 token |
 | `tool_call_start` | 工具开始执行 |
 | `tool_calls_done` | 本轮工具全部完成 |
+| `plan` | 复杂任务执行计划（steps + group 并行分组）|
+| `approval_required` | 需用户审批的工具调用（web/WS 渠道）|
+| `citation` | 知识问答引用来源（file_id/filename/chunk_index）|
+| `model_fallback` | 模型降级（fallback 链生效，含 from/to/reason）|
 | `chat_done` | 本轮完整回复 |
 | `task_update` | 检测到 `[TASK_DONE:<id>]`，含 task_id |
 | `task_blocked` | 检测到 `[TASK_BLOCKED:<id>]`，含 task_id |
@@ -824,22 +841,13 @@ docker logs ia-cloudflared --tail 20
 
 | 卷名 | 内容 | 是否必须迁移 |
 |------|------|------------|
-| `agent_data` | 对话历史、任务、角色偏好、云端服务商配置、运行时参数 | **必须** |
-| `agent_chroma_data` | 短期记忆向量库（ChromaDB） | **必须**（否则记忆清零） |
-| `agent_chroma_data_longterm` | 长期记忆向量库（ChromaDB） | **必须**（否则记忆清零） |
-| `agent_cache` | HuggingFace embedding 模型缓存（`all-MiniLM-L6-v2`） | **必须**（`HF_HUB_OFFLINE=1` 下无此卷 Agent 无法启动） |
+| `intelligent-agent-data` | 会话、角色、记忆（向量 JSON）、图片、技能、运行时配置、任务等全部业务数据（backend `/app/data`） | **必须**（否则数据清零） |
 | `ollama_models` | Ollama 本地推理模型（体积大，数 GB） | 可选：不迁移则在新机器重新 `ollama pull` |
 
 ```bash
-# 必须迁移的四个卷
-docker run --rm -v agent_data:/data -v $(pwd):/backup alpine \
-  tar czf /backup/agent_data.tar.gz /data
-docker run --rm -v agent_chroma_data:/data -v $(pwd):/backup alpine \
-  tar czf /backup/agent_chroma_data.tar.gz /data
-docker run --rm -v agent_chroma_data_longterm:/data -v $(pwd):/backup alpine \
-  tar czf /backup/agent_chroma_data_longterm.tar.gz /data
-docker run --rm -v agent_cache:/data -v $(pwd):/backup alpine \
-  tar czf /backup/agent_cache.tar.gz /data
+# 必须迁移的业务数据卷
+docker run --rm -v intelligent-agent-data:/data -v $(pwd):/backup alpine \
+  tar czf /backup/intelligent-agent-data.tar.gz /data
 
 # 可选：ollama 模型（体积大，也可到新机器重新 pull）
 docker run --rm -v ollama_models:/data -v $(pwd):/backup alpine \
@@ -856,14 +864,8 @@ git clone <repo-url>
 # .env           ← compose 变量（含 CLOUDFLARE_TUNNEL_TOKEN）
 
 # 恢复数据卷
-docker run --rm -v agent_data:/data -v $(pwd):/backup alpine \
-  tar xzf /backup/agent_data.tar.gz -C /
-docker run --rm -v agent_chroma_data:/data -v $(pwd):/backup alpine \
-  tar xzf /backup/agent_chroma_data.tar.gz -C /
-docker run --rm -v agent_chroma_data_longterm:/data -v $(pwd):/backup alpine \
-  tar xzf /backup/agent_chroma_data_longterm.tar.gz -C /
-docker run --rm -v agent_cache:/data -v $(pwd):/backup alpine \
-  tar xzf /backup/agent_cache.tar.gz -C /
+docker run --rm -v intelligent-agent-data:/data -v $(pwd):/backup alpine \
+  tar xzf /backup/intelligent-agent-data.tar.gz -C /
 ```
 
 **第三步：启动**
@@ -903,7 +905,7 @@ A: CPU 跑 7B 模型约 60-120s 属正常。到 `/admin/mcp` 把 `inference_conc
 A: dolphin 不支持原生 Function Calling，系统自动切换 Text-tool 解析模式，正常使用即可。
 
 **Q: 数据存在哪里**  
-A: Docker 模式：`agent_data` 命名卷（`agent/data/`）和 `agent/chroma-data/`；本地模式：`agent/data/` 和 `agent/chroma_data/`。
+A: Docker 模式：`intelligent-agent-data` 命名卷（backend 容器 `/app/data`，含会话/角色/记忆/图片/技能/配置/任务）；本地模式：`backend/web/data/`。Ollama 模型在 `ollama_models` 卷。
 
 **Q: 如何接入云端 LLM（网络不好时 fallback）**  
 A: 推荐在 `/admin/models` 模型管理页添加云端服务商配置（支持 OpenAI / DeepSeek / 阿里百炼等 7 家，填 BaseURL + API Key + 模型名），点击"激活"立即切换，配置持久化到 `agent/data/cloud_providers.json`，重启后自动恢复。也可在 `.env.docker` 设置 `CLOUD_PROVIDER` 和 `CLOUD_API_KEY` 作为启动默认值。
