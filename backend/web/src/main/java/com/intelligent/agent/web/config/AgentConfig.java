@@ -241,7 +241,7 @@ public class AgentConfig {
                                              @Value("${ai.subagent.enabled:true}") boolean enabled,
                                              @Value("${ai.subagent.pool-size:4}") int poolSize,
                                              @Value("${ai.subagent.queue-size:32}") int queueSize,
-                                             @Value("${ai.subagent.timeout:60s}") Duration timeout,
+                                             @Value("${ai.subagent.timeout:120s}") Duration timeout,
                                              @Value("${ai.subagent.max-rounds:3}") int maxRounds,
                                              @Value("${ai.subagent.max-result-chars:2000}") int maxResultChars,
                                              @Value("${ai.subagent.tools:}") List<String> allowedTools) {

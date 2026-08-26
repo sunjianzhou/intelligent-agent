@@ -95,15 +95,7 @@ public class LlmTaskPlanner implements TaskPlanner {
                 if (stepsNode.isArray()) {
                     List<PlanStep> steps = new ArrayList<>();
                     for (JsonNode node : stepsNode) {
-                        if (steps.size() >= maxSteps) {
-                            break;
-                        }
-                        String title = node.path("title").asText("");
-                        if (title.isBlank()) {
-                            continue;
-                        }
-                        int group = node.path("group").asInt(0);
-                        steps.add(new PlanStep(title, node.path("detail").asText(""), group));
+                        appendStep(node, steps, 0);
                     }
                     if (!steps.isEmpty()) {
                         return Optional.of(new ExecutionPlan(steps));
@@ -126,6 +118,46 @@ public class LlmTaskPlanner implements TaskPlanner {
             lines.add(PlanStep.of(clean));
         }
         return lines.isEmpty() ? Optional.empty() : Optional.of(new ExecutionPlan(lines));
+    }
+
+    /**
+     * 兼容本地模型的嵌套输出：步骤 title 本身是 {@code {"steps":[...]}} JSON 时
+     * 递归展开为多个步骤（深度上限 3，受 maxSteps 总量约束）。
+     */
+    private void appendStep(JsonNode node, List<PlanStep> steps, int depth) {
+        if (node == null || steps.size() >= maxSteps) {
+            return;
+        }
+        String title = node.path("title").asText("").trim();
+        JsonNode nested = depth < 3 ? tryParseSteps(title) : null;
+        if (nested != null) {
+            for (JsonNode inner : nested) {
+                appendStep(inner, steps, depth + 1);
+                if (steps.size() >= maxSteps) {
+                    return;
+                }
+            }
+            return;
+        }
+        if (title.isBlank()) {
+            return;
+        }
+        int group = node.path("group").asInt(0);
+        steps.add(new PlanStep(title, node.path("detail").asText(""), group));
+    }
+
+    /** title 若可解析为含 steps 数组的 JSON 对象则返回该数组，否则返回 null。 */
+    private static JsonNode tryParseSteps(String title) {
+        if (title == null || !title.startsWith("{") || !title.endsWith("}")) {
+            return null;
+        }
+        try {
+            JsonNode node = MAPPER.readTree(title);
+            JsonNode steps = node.path("steps");
+            return steps.isArray() ? steps : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static String safeMessage(Throwable e) {

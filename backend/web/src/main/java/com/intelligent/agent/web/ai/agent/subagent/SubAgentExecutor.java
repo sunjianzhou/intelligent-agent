@@ -129,9 +129,13 @@ public class SubAgentExecutor {
             }
             try {
                 CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                        .get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+                        // 组级等待按 单次调用超时 × 最大工具轮次 放宽：
+                        // 每个子代理内部最多串行 maxRounds 次 LLM 调用，组级不应在
+                        // 单次预算内误杀仍在正常推进的成员。
+                        .get(timeout.toMillis() * maxRounds, TimeUnit.MILLISECONDS);
             } catch (TimeoutException te) {
-                log.warn("sub-agent parallel group timed out after {}ms", timeout.toMillis());
+                log.warn("sub-agent parallel group timed out after {}ms",
+                        timeout.toMillis() * maxRounds);
                 for (CompletableFuture<SubAgentResult> future : futures) {
                     future.cancel(true);
                 }

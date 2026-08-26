@@ -124,6 +124,14 @@
     SubAgentExecutorTest 6（并行+按序合并 / 串行组 / 只读强制拒绝 / 白名单工具执行 /
     失败隔离 / 禁用返回空）、AgentOrchestratorSubAgentTest 4（stream 合并 /
     complete 合并 / 禁用降级 / 执行失败降级）；后端全量 566 用例绿。
+  - **真机验证（2026-08-26，qwen2.5:7b + Ollama）**：发现并修复两个真实问题——
+    ① 本地模型把整个计划 JSON 嵌套进步骤 title，解析器只得到 1 步导致子代理不触发：
+       `LlmTaskPlanner` 增加嵌套 steps 递归展开（深度 ≤3，受 maxSteps 约束，
+       LlmTaskPlannerTest +1 回归用例）；② 单次 LLM 调用 60s 块超时对本地模型过紧
+       （实测单次 40~65s）导致子代理全超时：默认 `ai.subagent.timeout` 提到 120s，
+       组级等待放宽为 超时×maxRounds。重验通过：4 步计划（group 1/1/1/0）、
+       group 1 三个子代理 span 同 start 并行执行、结果含真实计算结果与北京时间、
+       trace `sub_agent` span 全 ok。
 - 2026-08-24 文档变更（AGENTS.md / TODOS.md / docs/agent-upgrade-design-2026-08-24.md）已于 2026-08-25 随 R-01 一并入库。
 
 ## 当前待办总览（2026-08-15 更新）

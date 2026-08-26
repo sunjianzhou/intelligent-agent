@@ -162,6 +162,33 @@ class LlmTaskPlannerTest {
     }
 
     @Test
+    void flattensNestedJsonPlanFromLocalModel() {
+        // 本地模型把整个计划 JSON 塞进步骤 title（真机 smoke 实测形态）
+        String nested = "{\"steps\":[{\"title\":\"计算 17 * 23\",\"group\":1},"
+                + "{\"title\":\"计算 345 / 15\",\"group\":1},"
+                + "{\"title\":\"获取当前时间\",\"group\":1},"
+                + "{\"title\":\"汇总结果\"}]}";
+        ScriptedProvider provider = new ScriptedProvider(List.of(Mono.just(
+                "{\"steps\":[{\"title\":" + asJsonString(nested) + "}]}")));
+        Optional<ExecutionPlan> plan = planner(provider).plan(complexCtx());
+
+        assertThat(plan).isPresent();
+        List<PlanStep> steps = plan.get().steps();
+        assertThat(steps).hasSize(4);
+        assertThat(steps.get(0).title()).isEqualTo("计算 17 * 23");
+        assertThat(steps.get(0).group()).isEqualTo(1);
+        assertThat(steps.get(1).group()).isEqualTo(1);
+        assertThat(steps.get(2).group()).isEqualTo(1);
+        assertThat(steps.get(3).title()).isEqualTo("汇总结果");
+        assertThat(steps.get(3).group()).isZero();
+    }
+
+    /** 把文本序列化为 JSON 字符串字面量（模拟模型输出 "title":"{\"steps\":...}"）。 */
+    private static String asJsonString(String value) {
+        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    @Test
     void groupDefaultsToSerialWhenAbsent() {
         ScriptedProvider provider = new ScriptedProvider(List.of(Mono.just(
                 "{\"steps\":[{\"title\":\"A\"},{\"title\":\"B\"}]}")));
