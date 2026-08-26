@@ -3,6 +3,8 @@ package com.intelligent.agent.web.ai.agent;
 import com.intelligent.agent.web.ai.agent.planning.ExecutionPlan;
 import com.intelligent.agent.web.ai.agent.planning.PlanStep;
 import com.intelligent.agent.web.ai.agent.planning.TaskPlanner;
+import com.intelligent.agent.web.ai.agent.subagent.SubAgentExecutor;
+import com.intelligent.agent.web.ai.agent.subagent.SubAgentResult;
 import com.intelligent.agent.web.ai.agent.approval.ApprovalGate;
 import com.intelligent.agent.web.ai.agent.reflection.AnswerReflector;
 import com.intelligent.agent.web.ai.llm.ChatMessage;
@@ -71,6 +73,10 @@ public class AgentOrchestrator {
     private final ApprovalGate approvalGate;
     private final SkillMatcher skillMatcher;
     private final ContextBudget contextBudget;
+    private final SubAgentExecutor subAgentExecutor;
+
+    /** R-07：合并结果块上限（超出截断，避免子代理结果撑爆主对话上下文）。 */
+    private static final int SUBAGENT_RESULT_BLOCK_MAX_CHARS = 8000;
 
     public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor) {
         this(router, toolExecutor, DEFAULT_MAX_TOOL_ROUNDS);
@@ -170,6 +176,20 @@ public class AgentOrchestrator {
                              TaskPlanner planner, AnswerReflector reflector,
                              ApprovalGate approvalGate, SkillMatcher skillMatcher,
                              ContextBudget contextBudget) {
+        this(router, toolExecutor, memoryService, promptService, branchFailureDetector,
+                maxToolRounds, traceService, configRuntimeService, planner, reflector,
+                approvalGate, skillMatcher, contextBudget, null);
+    }
+
+    /** R-07：装配 SubAgentExecutor 后，复杂计划可并行派发给只读子代理再按序合并。 */
+    public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
+                             ConversationMemoryService memoryService,
+                             PromptService promptService,
+                             BranchFailureDetector branchFailureDetector, int maxToolRounds,
+                             TraceService traceService, ConfigRuntimeService configRuntimeService,
+                             TaskPlanner planner, AnswerReflector reflector,
+                             ApprovalGate approvalGate, SkillMatcher skillMatcher,
+                             ContextBudget contextBudget, SubAgentExecutor subAgentExecutor) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.toolExecutor = Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
         this.toolCallParser = new TextToolCallParser();
@@ -185,6 +205,7 @@ public class AgentOrchestrator {
         this.approvalGate = approvalGate;
         this.skillMatcher = skillMatcher;
         this.contextBudget = contextBudget;
+        this.subAgentExecutor = subAgentExecutor;
     }
 
     public Flux<ModelEvent> stream(AgentRequestContext context) {
@@ -230,15 +251,14 @@ public class AgentOrchestrator {
                 .flatMapMany(tuple -> {
                     SkillMatch skillMatch = tuple.getT1();
                     Optional<ExecutionPlan> plan = tuple.getT2();
-                    List<ChatMessage> messages = plan.isPresent()
-                            ? withPlan(initialMessages(context, memory, skillMatch.prompt(), traceId), plan.get())
-                            : initialMessages(context, memory, skillMatch.prompt(), traceId);
+                    List<ChatMessage> baseMessages =
+                            initialMessages(context, memory, skillMatch.prompt(), traceId);
                     // HITL：审批请求等中途事件经 midEvents 与主事件流合并（审批前先推送）
                     Sinks.Many<ModelEvent> midEvents =
                             Sinks.many().unicast().onBackpressureBuffer();
-                    Flux<ModelEvent> rounds = runToolRounds(context, messages,
-                                    0, List.of(), traceId, midEvents::tryEmitNext,
-                                    skillMatch.toolDefs(), tracker)
+                    Flux<ModelEvent> rounds = executePlan(context, baseMessages, plan,
+                                    skillMatch.toolDefs(), traceId, tracker,
+                                    midEvents::tryEmitNext)
                             .doFinally(signal -> midEvents.tryEmitComplete())
                             .flatMapMany(state -> streamFinal(
                                     context, state, traceId, tracker, citations));
@@ -302,11 +322,10 @@ public class AgentOrchestrator {
                 .flatMap(tuple -> {
                     SkillMatch skillMatch = tuple.getT1();
                     Optional<ExecutionPlan> plan = tuple.getT2();
-                    List<ChatMessage> messages = plan.isPresent()
-                            ? withPlan(initialMessages(context, memory, skillMatch.prompt(), traceId), plan.get())
-                            : initialMessages(context, memory, skillMatch.prompt(), traceId);
-                    return runToolRounds(context, messages, 0, List.of(), traceId,
-                                    skillMatch.toolDefs(), tracker)
+                    List<ChatMessage> baseMessages =
+                            initialMessages(context, memory, skillMatch.prompt(), traceId);
+                    return executePlan(context, baseMessages, plan, skillMatch.toolDefs(),
+                                    traceId, tracker, null)
                             .flatMap(state -> completeFinal(context, state, traceId, tracker));
                 })
                 .doOnSuccess(answer -> {
@@ -613,6 +632,86 @@ public class AgentOrchestrator {
                                 Map.of("steps", plan.get().steps().size()));
                     }
                 });
+    }
+
+    /**
+     * 计划执行路径：R-07 子代理（并行分组 + 按序合并）优先；
+     * 未装配/禁用/执行失败时降级为原 [PLAN] 注入 + 主线程工具轮。
+     */
+    private Mono<ReActState> executePlan(AgentRequestContext ctx, List<ChatMessage> baseMessages,
+                                         Optional<ExecutionPlan> plan, List<ToolDefinition> toolDefs,
+                                         String traceId, LlmProviderRouter.FallbackTracker tracker,
+                                         Consumer<ModelEvent> eventSink) {
+        if (subAgentPlan(plan)) {
+            return Mono.fromCallable(() -> {
+                        List<SubAgentResult> results =
+                                subAgentExecutor.execute(ctx, plan.get(), traceId);
+                        return new ReActState(
+                                withSubAgentResults(baseMessages, plan.get(), results),
+                                "", false, List.of(), false);
+                    })
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .onErrorResume(e -> {
+                        log.warn("sub-agent execution failed, falling back to plan execution: {}",
+                                safeMessage(e));
+                        return runToolRounds(ctx, withPlan(baseMessages, plan.get()),
+                                0, List.of(), traceId, eventSink, toolDefs, tracker);
+                    });
+        }
+        List<ChatMessage> messages = plan.isPresent()
+                ? withPlan(baseMessages, plan.get()) : baseMessages;
+        return runToolRounds(ctx, messages, 0, List.of(), traceId, eventSink, toolDefs, tracker);
+    }
+
+    /** R-07 子代理生效条件：装配了执行器、已启用、且计划 ≥2 步。 */
+    private boolean subAgentPlan(Optional<ExecutionPlan> plan) {
+        return plan.isPresent() && subAgentExecutor != null && subAgentExecutor.enabled()
+                && plan.get().steps().size() >= 2;
+    }
+
+    /** R-07：把子代理结果按原步骤顺序合并回主对话（置于用户消息之前）。 */
+    private static List<ChatMessage> withSubAgentResults(List<ChatMessage> messages,
+                                                         ExecutionPlan plan,
+                                                         List<SubAgentResult> results) {
+        List<ChatMessage> out = new ArrayList<>(messages);
+        StringBuilder sb = new StringBuilder(
+                "[PLAN]\n以下计划已由只读子代理执行，请基于 [SUBAGENT RESULTS] 综合给出最终回答：");
+        for (PlanStep step : plan.steps()) {
+            sb.append('\n').append("- ").append(step.title());
+            if (!step.detail().isBlank()) {
+                sb.append(" — ").append(step.detail());
+            }
+        }
+        sb.append("\n\n[SUBAGENT RESULTS]\n");
+        if (results == null || results.isEmpty()) {
+            sb.append("（子代理未返回结果）");
+        } else {
+            for (SubAgentResult result : results) {
+                sb.append('\n').append("步骤 ").append(result.stepIndex() + 1)
+                        .append("：").append(result.title());
+                if (!result.detail().isBlank()) {
+                    sb.append(" — ").append(result.detail());
+                }
+                sb.append('\n');
+                if ("ok".equals(result.status()) && !result.text().isBlank()) {
+                    sb.append(result.text());
+                } else {
+                    sb.append("（子代理执行失败");
+                    if (!result.error().isBlank()) {
+                        sb.append("：").append(result.error());
+                    }
+                    sb.append("）");
+                }
+                sb.append('\n');
+            }
+        }
+        String block = sb.toString().stripTrailing();
+        if (block.length() > SUBAGENT_RESULT_BLOCK_MAX_CHARS) {
+            block = block.substring(0, SUBAGENT_RESULT_BLOCK_MAX_CHARS)
+                    + "\n...(子代理结果已截断)";
+        }
+        out.add(out.size() - 1, ChatMessage.system(block));
+        return out;
     }
 
     /** 把 [PLAN] 系统消息插到用户消息之前，让执行轮按计划推进。 */

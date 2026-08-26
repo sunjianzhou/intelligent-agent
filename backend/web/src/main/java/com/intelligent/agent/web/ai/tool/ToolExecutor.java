@@ -177,6 +177,12 @@ public class ToolExecutor {
         return tools.values().stream().map(AgentTool::definition).toList();
     }
 
+    /** 工具名解析（精确名/容错别名）；未命中返回 null。供调用方做白名单强制校验。 */
+    public String resolveName(String name) {
+        AgentTool tool = resolve(name);
+        return tool == null ? null : tool.definition().name();
+    }
+
     /** 精确名优先，未命中时尝试容错别名（见 {@link #TOOL_ALIASES}）。 */
     private AgentTool resolve(String name) {
         AgentTool tool = tools.get(name);

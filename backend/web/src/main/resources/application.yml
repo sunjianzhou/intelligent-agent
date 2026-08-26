@@ -79,6 +79,16 @@ ai:
   hitl:
     enabled: ${AI_HITL_ENABLED:true}
     timeout: ${AI_HITL_TIMEOUT:120s}
+  # R-07 子代理编排：复杂计划中可并行步骤由只读研究子代理并行执行，结果按序合并回主对话。
+  # tools 为空 = 子代理无工具（纯推理）；默认只读研究工具集。
+  subagent:
+    enabled: ${AI_SUBAGENT_ENABLED:true}
+    pool-size: ${AI_SUBAGENT_POOL_SIZE:4}
+    queue-size: ${AI_SUBAGENT_QUEUE_SIZE:32}
+    timeout: ${AI_SUBAGENT_TIMEOUT:60s}
+    max-rounds: ${AI_SUBAGENT_MAX_ROUNDS:3}
+    max-result-chars: ${AI_SUBAGENT_MAX_RESULT_CHARS:2000}
+    tools: ${AI_SUBAGENT_TOOLS:web_search,web_fetch,calculator,advanced_calculator,time_tool,system_info,search_memories}
   # G4 导出：OTel OTLP/HTTP（JSON）追踪导出，默认关；
   # 开启后每条 trace 完成时异步推送到 Collector /v1/traces（Jaeger/Tempo/Grafana 等）
   trace:

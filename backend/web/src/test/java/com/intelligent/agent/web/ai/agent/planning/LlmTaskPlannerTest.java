@@ -147,6 +147,47 @@ class LlmTaskPlannerTest {
     }
 
     @Test
+    void parsesParallelGroupField() {
+        ScriptedProvider provider = new ScriptedProvider(List.of(Mono.just(
+                "{\"steps\":[{\"title\":\"查天气\",\"group\":1},"
+                        + "{\"title\":\"算着装\",\"group\":1},{\"title\":\"汇总\",\"group\":2}]}")));
+        Optional<ExecutionPlan> plan = planner(provider).plan(complexCtx());
+
+        assertThat(plan).isPresent();
+        List<PlanStep> steps = plan.get().steps();
+        assertThat(steps).hasSize(3);
+        assertThat(steps.get(0).group()).isEqualTo(1);
+        assertThat(steps.get(1).group()).isEqualTo(1);
+        assertThat(steps.get(2).group()).isEqualTo(2);
+    }
+
+    @Test
+    void groupDefaultsToSerialWhenAbsent() {
+        ScriptedProvider provider = new ScriptedProvider(List.of(Mono.just(
+                "{\"steps\":[{\"title\":\"A\"},{\"title\":\"B\"}]}")));
+        Optional<ExecutionPlan> plan = planner(provider).plan(complexCtx());
+
+        assertThat(plan).isPresent();
+        assertThat(plan.get().steps())
+                .allMatch(step -> step.group() == 0);
+    }
+
+    @Test
+    void parallelGroupsKeepOrderAndGroupIndependentSteps() {
+        ExecutionPlan plan = new ExecutionPlan(List.of(
+                new PlanStep("A", "", 1),
+                new PlanStep("B", "", 0),
+                new PlanStep("C", "", 1),
+                new PlanStep("D", "", 2)));
+
+        List<List<PlanStep>> groups = plan.parallelGroups();
+        assertThat(groups).hasSize(3);
+        assertThat(groups.get(0)).extracting(PlanStep::title).containsExactly("A", "C");
+        assertThat(groups.get(1)).extracting(PlanStep::title).containsExactly("B");
+        assertThat(groups.get(2)).extracting(PlanStep::title).containsExactly("D");
+    }
+
+    @Test
     void planningCallUsesLowTemperatureAndUserMessage() {
         ScriptedProvider provider = new ScriptedProvider(List.of(Mono.just(JSON_PLAN)));
         planner(provider).plan(complexCtx());

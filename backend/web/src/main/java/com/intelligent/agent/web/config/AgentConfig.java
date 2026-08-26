@@ -6,6 +6,7 @@ import com.intelligent.agent.web.ai.agent.BranchFailureDetector;
 import com.intelligent.agent.web.ai.agent.planning.LlmTaskPlanner;
 import com.intelligent.agent.web.ai.agent.planning.PlanningComplexityDetector;
 import com.intelligent.agent.web.ai.agent.planning.TaskPlanner;
+import com.intelligent.agent.web.ai.agent.subagent.SubAgentExecutor;
 import com.intelligent.agent.web.ai.agent.approval.ApprovalGate;
 import com.intelligent.agent.web.ai.agent.reflection.AnswerReflector;
 import com.intelligent.agent.web.ai.agent.reflection.LlmAnswerReflector;
@@ -222,11 +223,31 @@ public class AgentConfig {
                                                AnswerReflector answerReflector,
                                                ApprovalGate approvalGate,
                                                SkillMatcher skillMatcher,
-                                               ContextBudget contextBudget) {
+                                               ContextBudget contextBudget,
+                                               SubAgentExecutor subAgentExecutor) {
         return new AgentOrchestrator(llmProviderRouter, toolExecutor, conversationMemoryService,
                 promptService, branchFailureDetector, AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS,
                 traceService, configRuntimeService, taskPlanner, answerReflector, approvalGate,
-                skillMatcher, contextBudget);
+                skillMatcher, contextBudget, subAgentExecutor);
+    }
+
+    /** R-07：子代理/多代理编排执行器（只读研究子代理，并行分组 + 按序合并）。 */
+    @Bean
+    public SubAgentExecutor subAgentExecutor(LlmProviderRouter llmProviderRouter,
+                                             ToolExecutor toolExecutor,
+                                             ConversationMemoryService conversationMemoryService,
+                                             PromptService promptService,
+                                             TraceService traceService,
+                                             @Value("${ai.subagent.enabled:true}") boolean enabled,
+                                             @Value("${ai.subagent.pool-size:4}") int poolSize,
+                                             @Value("${ai.subagent.queue-size:32}") int queueSize,
+                                             @Value("${ai.subagent.timeout:60s}") Duration timeout,
+                                             @Value("${ai.subagent.max-rounds:3}") int maxRounds,
+                                             @Value("${ai.subagent.max-result-chars:2000}") int maxResultChars,
+                                             @Value("${ai.subagent.tools:}") List<String> allowedTools) {
+        return new SubAgentExecutor(llmProviderRouter, toolExecutor, conversationMemoryService,
+                promptService, traceService, enabled, poolSize, queueSize, timeout, maxRounds,
+                maxResultChars, allowedTools == null ? List.of() : allowedTools);
     }
 
     /** R-01：上下文 token 预算（num_ctx 唯一来源）。与 OllamaLlmProvider 共用同一配置表与优先级。 */

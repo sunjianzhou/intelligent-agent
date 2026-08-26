@@ -31,8 +31,10 @@ public class LlmTaskPlanner implements TaskPlanner {
     static final String SYSTEM_PROMPT =
             "你是一个任务规划器。用户提出了一个需要多步执行的任务。"
                     + "请把任务拆解为 2~6 个有序的执行步骤，每步聚焦单一动作。\n"
+                    + "若多个步骤相互独立、可以并行研究，请给它们相同的 group 编号（正整数，从 1 开始）；"
+                    + "有依赖或顺序要求的步骤使用不同的 group 编号或不填 group（默认串行）。\n"
                     + "只输出 JSON，不要输出任何其他文字：\n"
-                    + "{\"steps\":[{\"title\":\"步骤标题\",\"detail\":\"执行要点（可选，一句话）\"}]}";
+                    + "{\"steps\":[{\"title\":\"步骤标题\",\"detail\":\"执行要点（可选，一句话）\",\"group\":1}]}";
 
     private final LlmProviderRouter router;
     private final PlanningComplexityDetector detector;
@@ -100,7 +102,8 @@ public class LlmTaskPlanner implements TaskPlanner {
                         if (title.isBlank()) {
                             continue;
                         }
-                        steps.add(new PlanStep(title, node.path("detail").asText("")));
+                        int group = node.path("group").asInt(0);
+                        steps.add(new PlanStep(title, node.path("detail").asText(""), group));
                     }
                     if (!steps.isEmpty()) {
                         return Optional.of(new ExecutionPlan(steps));
