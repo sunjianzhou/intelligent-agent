@@ -26,7 +26,7 @@
 
 | 编号 | 差距 | 现状 | 改进方案 | 验收标准 |
 |------|------|------|----------|----------|
-| R-07 ✅（2026-08-26 落地，commit `b3080d4`） | 无子代理/多代理编排 | 全部单 agent 串行 ReAct，复杂任务无法并行研究/实现 | 在 `TaskPlanner` 产物之上增加子任务并行执行器（Java 侧，类似 spawn_agent），结果合并回主对话；trace 记录子任务 span | 复杂任务可拆分为 ≥2 子任务并行执行且结果正确合并 |
+| R-07 ✅（2026-08-26 落地，commit `a9ad9be`） | 无子代理/多代理编排 | 全部单 agent 串行 ReAct，复杂任务无法并行研究/实现 | 在 `TaskPlanner` 产物之上增加子任务并行执行器（Java 侧，类似 spawn_agent），结果合并回主对话；trace 记录子任务 span | 复杂任务可拆分为 ≥2 子任务并行执行且结果正确合并 |
 | R-08 | 代码/工作区工具缺失（方向待确认） | `FileTool` 只读白名单、`ShellTool` 命令白名单，agent 无法编辑文件 | 若定位编码 agent：新增受控 `FileEditTool`（白名单目录 + diff 预览 + 审批）；若保持个人助理定位则关闭本条 | 受控目录内编辑成功、目录外拒绝、diff 审批流程可用 |
 | R-09 | IM 渠道 HITL 审批缺失 | `approvalRequired` 工具在 web/WS 有审批卡片，IM 渠道直发无审批 UI | 复用飞书卡片按钮（已具备卡片能力）把审批事件推送到 IM；或 IM 渠道对 approvalRequired 工具默认拒绝 | 飞书渠道发起审批并可卡片批准/拒绝 |
 | R-10 | 无成本/用量指标 | trace 有耗时但无 token/cost 统计，无法按用户/模型看用量与预算 | trace span 记录 token 数（输入/输出），聚合每用户/模型成本；AnalyticsView 增加成本卡片与限额 | 管理端可查每用户/模型成本与月限额 |
@@ -103,7 +103,7 @@
     injection-memory canary 当前 qwen 得分 5（标记 minScore 0 作为安全诊断指标）。
 - M2 全部完成（R-04 记忆纠错 / R-05 引用溯源 / R-06 评估门禁）。下一跳：M3
   （R-07 子代理 → R-09 IM 审批 → R-10 成本指标 → R-11 密钥解耦 → R-12 会话管理）。
-- **R-07 ✅ 2026-08-26（commit `b3080d4`）**：子代理/多代理编排。
+- **R-07 ✅ 2026-08-26（commit `a9ad9be`）**：子代理/多代理编排。
   - `PlanStep` 增加 `group` 字段（相同正整数归入同一并行组，<=0 串行）；
     `LlmTaskPlanner` 提示词/解析器支持 group；`ExecutionPlan.parallelGroups()`
     按首次出现顺序分组（串行步骤与并行组统一排序）。
