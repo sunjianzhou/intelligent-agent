@@ -359,10 +359,12 @@ public class AgentConfig {
         return new SystemResourceService(ollamaBaseUrl);
     }
 
-    /** 敏感字段落盘加密（密钥由 JWT_SECRET 派生）。 */
+    /** R-11：敏感字段落盘加密（独立密钥文件 data/keys/key.<id>.key + keyId 版本化密文；
+     *  JWT_SECRET 仅用于兼容旧格式密文解密）。 */
     @Bean
-    public SecretCrypto secretCrypto(@Value("${JWT_SECRET:}") String jwtSecret) {
-        return new SecretCrypto(jwtSecret);
+    public SecretCrypto secretCrypto(@Value("${JWT_SECRET:}") String jwtSecret,
+                                     @Value("${intelligent-agent.data-dir:data}") String dataDir) {
+        return new SecretCrypto(jwtSecret, Path.of(dataDir).resolve("keys"));
     }
 
     @Bean
