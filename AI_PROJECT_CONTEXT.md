@@ -332,7 +332,7 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 | `/admin/tasks` | TasksView | 任务调度 CRUD |
 | `/admin/logs` | LogView | 操作日志时间线（用户/AI/工具/任务/错误颜色区分） |
 | `/admin/system` | SystemView | CPU/RAM/GPU/磁盘实时监控，资源用量 bars |
-| `/admin/stats` | StatsView | 满意度/响应时间/工具排名统计 |
+| `/admin/stats` | StatsView | 满意度/响应时间/工具排名统计 + R-10 成本/用量卡片（按模型 token/成本、月限额、每日成本趋势） |
 
 **路由导航单一来源**：`src/config/routes.config.js`，导出 `NAV_ITEMS`（常用区）/ `CONFIG_ITEMS`（配置区）/ `SYSTEM_ITEMS`（系统区），Sidebar 和 Header 均从此读取，新增页面只改一个文件。
 
@@ -362,7 +362,7 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 - **工具进度**：`activeToolSteps` 实时显示运行中工具名+参数摘要
 - **通知**：`handleMessage` 处理 `notification` WS 事件，任务通知以 AI 气泡形式推入聊天，带跳转链接
 - **深色模式**：`data-theme="dark"` 持久化，App.vue 全局 CSS 覆盖
-- **聊天持久化**：最近 50 条 localStorage，会话历史 IndexedDB 最近 12 条
+- **聊天持久化**：最近 50 条 localStorage，会话历史 IndexedDB 最近 12 条；R-12 起服务端会话列表/重命名/导出 JSON（跨设备恢复）
 - **PWA**：可安装到桌面，Service Worker 三级缓存策略
 - **二次确认**：统一用 `useConfirmDialogStore`，禁止 `window.confirm/alert`（被浏览器静默拦截）
 

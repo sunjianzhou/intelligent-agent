@@ -106,8 +106,8 @@ cp .env.docker.example .env.docker    # 容器运行时变量（含 IM 集成、
 | 语义缓存 | `SemanticResponseCache` 精确 + 语义相似命中，24h TTL |
 | 任务调度 | `TaskSchedulerService`，支持 immediate / delay / interval / datetime / cron 五种类型，含 `llm_generate` 动作 |
 | 角色/提示词/灵魂层 | `PromptService` + `SystemPromptBuilder` + `SoulLoader`（`soul/` 目录热加载）+ `heart_record` 工具 |
-| 知识/技能/分析/教学 | `KnowledgeService` / `SkillService` / `AnalyticsService` / `TeachingService` 领域服务 |
-| IM 渠道 | Feishu（WS 长连接 + OAuth）/ WeCom / Telegram 通道 + `ChannelRouter` 去重 + 限流重试 |
+| 知识/技能/分析/教学 | `KnowledgeService` / `SkillService` / `AnalyticsService`（含 R-10 成本/用量聚合 + 月限额）/ `TeachingService` 领域服务 |
+| IM 渠道 | Feishu（WS 长连接 + OAuth + HITL 审批卡片）/ WeCom / Telegram 通道 + `ChannelRouter` 去重 + 限流重试 |
 | 图片生成 | `ImageService` + ComfyUI（txt2img / img2img；SD1.5/SDXL/FLUX/Qwen-Image/SD3.5 自动模板；LoRA 注入；自定义工作流；/ws 实时进度；5GB Gallery 自动清理）；SD WebUI / diffusers / SiliconFlow 未迁移（需求驱动再做） |
 | 多模态输入 | 聊天图片 base64 全链路透传至 Ollama images 字段 |
 | 消息撤回 | `ConversationService.retract` 级联删除短期记忆 + 长期检索排除 + 飞书官方撤回 |
@@ -177,7 +177,7 @@ Web 搜索 · Web 正文抓取（白名单 + SSRF 防护） · Shell（命令白
 - 流式逐 token 渲染，`requestAnimationFrame` 节流滚动，完成后整体 Markdown 重渲染
 - 取消流式：断开 WS 重连，Java SSE 随之中止
 - 任务调度通知以 AI 气泡形式推入聊天，带跳转链接
-- 聊天持久化（最近 50 条 localStorage）+ 会话历史（IndexedDB，最近 12 条）
+- 聊天持久化（最近 50 条 localStorage）+ 会话历史（IndexedDB，最近 12 条）+ 服务端会话列表/重命名/导出 JSON（R-12）
 - 深色模式持久化 · PWA 可安装到桌面
 
 ---

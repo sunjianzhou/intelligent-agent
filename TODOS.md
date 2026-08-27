@@ -34,6 +34,46 @@
 - 未做（超出本次范围，可选后续）：ControlNet/inpainting 预设、/ws 预览图流式回传、
   免费模型一键下载引导（HuggingFace/ModelScope 直链）、Chat 内 ImageGenTool 参数补全（sampler/LoRA/img2img）。
 
+## 2026-08-27 M3 剩余项落地（R-09 IM 审批 → R-10 成本指标 → R-11 密钥解耦 → R-12 会话管理）
+
+- **R-09 ✅（commit `0c5d3d8`）IM 渠道 HITL 审批**：
+  - `ApprovalNotifier` 抽象 + `FeishuApprovalNotifier`：飞书卡片（批准/拒绝按钮，
+    value.key = `approval:approve|reject:<approvalId>`）送达审批；无按钮渠道默认拒绝并提示在 Web 端批准。
+  - `AgentRequestContext`/`ChatRequest` 新增 `replyAddress`(reply_to) 回执地址透传；
+    `AgentOrchestrator` web/WS 走 `approval_required` 事件、feishu_im 卡片等待决议、其余 IM 默认拒绝；
+    `ApprovalGate.deny` 不阻塞完结；`FeishuCardBuilder.approvalCard`；`FeishuEventController`
+    卡片回调按 open_id 解析决议 + 确认消息回发。
+  - 测试：AgentOrchestratorHitlTest +2 / FeishuEventControllerTest +3 / FeishuCardBuilderTest +1 /
+    FeishuApprovalNotifierTest 6；后端全量 584 用例绿。
+- **R-10 ✅（commit `b75b1fb`）成本/用量指标**：
+  - `LlmResponse` 增加 `LlmUsage`（Ollama prompt_eval_count/eval_count、OpenAI 兼容 usage.*）；
+    流式 done 事件携带用量（OpenAI 走 stream_options.include_usage）；router 非流式统一
+    completeWithTools（planning/reflection/最终作答也带回用量）。
+  - `llm_call` span 记录 input/output tokens；TraceService 完成时回调用量台账；
+    `AnalyticsService` usage.json 台账 + 按用户/模型/日聚合 + `CostConfig` 单价（每百万 token CNY，
+    本地模型默认免费）+ `monthly-limit-cny` 月限额；`/api/analytics/usage/{user}`、`/usage-quota/{user}`。
+  - `AgentService` 入口限额拦截（chatFull 返回 quota_exceeded、流式发 error 事件）；
+    前端 StatsView 增加成本/用量概览 + 按模型明细 + 每日成本趋势。
+  - 配置：`ai.cost.*`（enabled / monthly-limit-cny / per-1m-tokens）。
+  - 测试：AnalyticsServiceTest 5 / AgentServiceQuotaTest 1 / TraceServiceTest +1 / provider 补 usage 断言；
+    后端全量 591 用例绿，前端 29 用例 + 构建通过。
+- **R-11 ✅（commit `3f47357`）加密密钥解耦**：
+  - `SecretCrypto` 重构：密钥文件模式（`data/keys/key.<id>.key`，32 字节随机 hex，POSIX 0600），
+    密文 `enc:<keyId>:<base64(iv+ct)>`；`rotate()` 平滑轮换——旧密钥文件保留，旧密文按版本头解密，
+    新写入用新密钥；JWT 派生密钥降级为旧格式密文（`enc:<b64>`）兼容路径；历史明文/解密失败原样返回。
+  - AgentConfig 改装配 `data-dir/keys`，JWT_SECRET 不再承担加密主密钥。
+  - 测试：SecretCryptoRotationTest 4（跨实例恢复/轮换双版本可读/旧格式迁移/字符串模式兼容）；
+    后端全量 595 用例绿。
+- **R-12 ✅（commit `0ddbf02`）会话管理增强**：
+  - `ConversationService.renameConversation`（title 持久化，列表/详情可见）+ `exportConversation`
+    （完整会话 JSON，跨设备恢复）；`PUT /api/conversations/{id}/rename`、`GET .../export`。
+  - 前端 ChatHistoryPanel 增加 重命名（行内编辑）/导出 JSON 按钮，ChatView 接线。
+  - 测试：ConversationsProxyControllerTest +3；后端全量 598 用例绿，前端 29 用例 + 构建通过。
+- **T7 ✅（无需新增）**：eval 长会话压缩质量用例已在 R-06 落地——`golden-cases.json`
+  `compression-001`（12 轮会话后关键事实保持，期望 Java 21 + 第一轮关键事实保留）。
+- M3 全部完成。剩余开放项：R-08 编码/工作区工具（方向待确认）、P2（R-13 指标告警 / R-14 图片理解 /
+  R-15 工具 SDK / R-16 流式中断恢复）、Telegram bot 真实送达验收（需凭证）。
+
 ## 2026-08-24 Agent 架构审查（对照顶级 agent 设计基线）
 
 > 审查范围：ReAct 编排、上下文管理、记忆/RAG、工具、评估、可观测性、安全、IM 渠道。
@@ -58,10 +98,10 @@
 |------|------|------|----------|----------|
 | R-07 ✅（2026-08-26 落地，commit `a9ad9be`） | 无子代理/多代理编排 | 全部单 agent 串行 ReAct，复杂任务无法并行研究/实现 | 在 `TaskPlanner` 产物之上增加子任务并行执行器（Java 侧，类似 spawn_agent），结果合并回主对话；trace 记录子任务 span | 复杂任务可拆分为 ≥2 子任务并行执行且结果正确合并 |
 | R-08 | 代码/工作区工具缺失（方向待确认） | `FileTool` 只读白名单、`ShellTool` 命令白名单，agent 无法编辑文件 | 若定位编码 agent：新增受控 `FileEditTool`（白名单目录 + diff 预览 + 审批）；若保持个人助理定位则关闭本条 | 受控目录内编辑成功、目录外拒绝、diff 审批流程可用 |
-| R-09 | IM 渠道 HITL 审批缺失 | `approvalRequired` 工具在 web/WS 有审批卡片，IM 渠道直发无审批 UI | 复用飞书卡片按钮（已具备卡片能力）把审批事件推送到 IM；或 IM 渠道对 approvalRequired 工具默认拒绝 | 飞书渠道发起审批并可卡片批准/拒绝 |
-| R-10 | 无成本/用量指标 | trace 有耗时但无 token/cost 统计，无法按用户/模型看用量与预算 | trace span 记录 token 数（输入/输出），聚合每用户/模型成本；AnalyticsView 增加成本卡片与限额 | 管理端可查每用户/模型成本与月限额 |
-| R-11 | 加密密钥与 JWT 耦合 | `SecretCrypto` 密钥由 `JWT_SECRET` SHA-256 派生，轮换 JWT_SECRET 即丢失全部加密存量（已知债） | 独立密钥文件 + keyId 版本化加密（密文带版本头），支持平滑轮换 | 轮换密钥后旧密文可读、新写入用新密钥；迁移测试通过 |
-| R-12 | 会话管理偏弱 | 前端会话历史 IndexedDB 仅最近 12 条，localStorage 最近 50 条，无服务端会话列表/重命名/导出 | 服务端会话索引（已有 ConversationService 持久化）+ 列表/重命名/导出/跨设备同步 API | 会话可跨设备恢复、重命名、导出为 JSON |
+| R-09 ✅（2026-08-27 落地，commit `0c5d3d8`） | IM 渠道 HITL 审批缺失 | `approvalRequired` 工具在 web/WS 有审批卡片，IM 渠道直发无审批 UI | 复用飞书卡片按钮（已具备卡片能力）把审批事件推送到 IM；或 IM 渠道对 approvalRequired 工具默认拒绝 | 飞书渠道发起审批并可卡片批准/拒绝 |
+| R-10 ✅（2026-08-27 落地，commit `b75b1fb`） | 无成本/用量指标 | trace 有耗时但无 token/cost 统计，无法按用户/模型看用量与预算 | trace span 记录 token 数（输入/输出），聚合每用户/模型成本；AnalyticsView 增加成本卡片与限额 | 管理端可查每用户/模型成本与月限额 |
+| R-11 ✅（2026-08-27 落地，commit `3f47357`） | 加密密钥与 JWT 耦合 | `SecretCrypto` 密钥由 `JWT_SECRET` SHA-256 派生，轮换 JWT_SECRET 即丢失全部加密存量（已知债） | 独立密钥文件 + keyId 版本化加密（密文带版本头），支持平滑轮换 | 轮换密钥后旧密文可读、新写入用新密钥；迁移测试通过 |
+| R-12 ✅（2026-08-27 落地，commit `0ddbf02`） | 会话管理偏弱 | 前端会话历史 IndexedDB 仅最近 12 条，localStorage 最近 50 条，无服务端会话列表/重命名/导出 | 服务端会话索引（已有 ConversationService 持久化）+ 列表/重命名/导出/跨设备同步 API | 会话可跨设备恢复、重命名、导出为 JSON |
 
 ### P2 — 远期/可选
 
@@ -132,8 +172,8 @@
     提升到 0.9 并加回归测试；② 评估暴露 qwen 对"生日"隐私话题拒答（换中性事实用例）。
     injection-memory canary 当前 qwen 得分 5（标记 minScore 0 作为安全诊断指标）。
 - M2 全部完成（R-04 记忆纠错 / R-05 引用溯源 / R-06 评估门禁）；R-07 子代理编排已于
-  2026-08-26 落地（见下）。下一跳：M3 剩余项（R-09 IM 审批 → R-10 成本指标 →
-  R-11 密钥解耦 → R-12 会话管理）。
+  2026-08-26 落地（见下）；M3 剩余项（R-09 IM 审批 → R-10 成本指标 → R-11 密钥解耦 →
+  R-12 会话管理）已于 2026-08-27 全部落地（见文首 2026-08-27 M3 段落）。
 - **R-07 ✅ 2026-08-26（commit `a9ad9be`）**：子代理/多代理编排。
   - `PlanStep` 增加 `group` 字段（相同正整数归入同一并行组，<=0 串行）；
     `LlmTaskPlanner` 提示词/解析器支持 group；`ExecutionPlan.parallelGroups()`
