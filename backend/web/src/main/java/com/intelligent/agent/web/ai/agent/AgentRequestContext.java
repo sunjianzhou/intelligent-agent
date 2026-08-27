@@ -22,6 +22,7 @@ import java.util.Map;
  * @param pendingTasks  项目待处理任务列表（前端随请求传入，注入 [TASKS] 上下文；
  *                      2026-08-15 补齐，对齐 Python pending_tasks）
  * @param requestId     请求 traceID（G4 可观测性；可为 null）
+ * @param replyAddress  渠道回执地址（R-09：IM 审批卡片发往的 chat_id/open_id，可为 null）
  */
 public record AgentRequestContext(
         String userId,
@@ -38,7 +39,8 @@ public record AgentRequestContext(
         String sceneChatType,
         boolean sceneMentioned,
         List<Map<String, Object>> pendingTasks,
-        String requestId) {
+        String requestId,
+        String replyAddress) {
 
     public AgentRequestContext {
         userId = userId == null ? "" : userId;
@@ -53,7 +55,7 @@ public record AgentRequestContext(
                                String projectId, String sessionId, boolean useTools,
                                boolean useMemory, String channel, Map<String, Object> options) {
         this(userId, message, model, persona, projectId, sessionId, useTools, useMemory,
-                channel, options, null, null, false, List.of(), null);
+                channel, options, null, null, false, List.of(), null, null);
     }
 
     /** 13 参便捷构造（无 pendingTasks/requestId），保持旧调用点兼容。 */
@@ -62,7 +64,7 @@ public record AgentRequestContext(
                                boolean useMemory, String channel, Map<String, Object> options,
                                String imageBase64, String sceneChatType, boolean sceneMentioned) {
         this(userId, message, model, persona, projectId, sessionId, useTools, useMemory,
-                channel, options, imageBase64, sceneChatType, sceneMentioned, List.of(), null);
+                channel, options, imageBase64, sceneChatType, sceneMentioned, List.of(), null, null);
     }
 
     public static AgentRequestContext of(String userId, String message) {

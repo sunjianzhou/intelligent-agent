@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.feishu;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.intelligent.agent.web.ai.agent.approval.ApprovalGate;
 import com.intelligent.agent.web.dto.request.ChatRequest;
 import com.intelligent.agent.web.service.AgentService;
 import okhttp3.mockwebserver.MockResponse;
@@ -79,7 +80,8 @@ class FeishuIntegrationTest {
                     t.setDaemon(true);
                     return t;
                 }),
-                feishuRecallBridge);
+                feishuRecallBridge,
+                new ApprovalGate(true, java.time.Duration.ofSeconds(10)));
 
         String event = buildEvent("ou_user01", "oc_chat01", "你好 Agent");
         ctrl.routeEvent(event);

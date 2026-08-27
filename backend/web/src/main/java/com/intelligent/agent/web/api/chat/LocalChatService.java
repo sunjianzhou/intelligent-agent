@@ -64,7 +64,8 @@ public class LocalChatService {
                 request.getSceneChatType(),
                 Boolean.TRUE.equals(request.getSceneMentioned()),
                 request.getPendingTasks(),
-                request.getRequestId());
+                request.getRequestId(),
+                request.getReplyTo());
     }
 
     /** 注入系统资源配置里已保存的 LLM 参数（ollama_temperature / ollama_max_tokens /

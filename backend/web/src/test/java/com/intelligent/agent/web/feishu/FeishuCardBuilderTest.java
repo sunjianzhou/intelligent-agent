@@ -54,4 +54,30 @@ class FeishuCardBuilderTest {
                 .anyMatch(e -> "action".equals(((Map<String, Object>) e).get("tag")));
         assertThat(hasActions).isTrue();
     }
+
+    @Test
+    void approvalCard_hasApproveAndRejectButtonsWithKeyConvention() throws Exception {
+        Map<String, Object> card = FeishuCardBuilder.approvalCard("aprv_123",
+                Map.of("tool", "channel_message", "args", Map.of("message", "hi")));
+
+        assertThat(card).containsKey("header");
+        List<Object> elements = (List<Object>) card.get("elements");
+        List<Map<String, Object>> actions = new ArrayList<>();
+        for (Object e : elements) {
+            if (e instanceof Map<?, ?> m && "action".equals(m.get("tag"))) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> list = (List<Map<String, Object>>) m.get("actions");
+                actions.addAll(list);
+            }
+        }
+        assertThat(actions).hasSize(2);
+        List<String> keys = new ArrayList<>();
+        for (Map<String, Object> button : actions) {
+            Map<?, ?> action = (Map<?, ?>) button.get("action");
+            Map<?, ?> value = (Map<?, ?>) action.get("value");
+            keys.add(String.valueOf(value.get("key")));
+        }
+        assertThat(keys).containsExactly(
+                "approval:approve:aprv_123", "approval:reject:aprv_123");
+    }
 }

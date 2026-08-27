@@ -65,6 +65,11 @@ public class ApprovalGate {
         return registry.resolve(approvalId, userId, approved);
     }
 
+    /** R-09：无审批 UI 渠道/送达失败时按拒绝直接完结（不阻塞等待）。 */
+    public void deny(ApprovalRequest request) {
+        registry.expire(request.approvalId());
+    }
+
     public record ApprovalRequest(String approvalId, Map<String, Object> eventData) {
     }
 }

@@ -6,6 +6,7 @@ import com.intelligent.agent.web.ai.agent.planning.TaskPlanner;
 import com.intelligent.agent.web.ai.agent.subagent.SubAgentExecutor;
 import com.intelligent.agent.web.ai.agent.subagent.SubAgentResult;
 import com.intelligent.agent.web.ai.agent.approval.ApprovalGate;
+import com.intelligent.agent.web.ai.agent.approval.ApprovalNotifier;
 import com.intelligent.agent.web.ai.agent.reflection.AnswerReflector;
 import com.intelligent.agent.web.ai.llm.ChatMessage;
 import com.intelligent.agent.web.ai.llm.ChatTurn;
@@ -74,6 +75,7 @@ public class AgentOrchestrator {
     private final SkillMatcher skillMatcher;
     private final ContextBudget contextBudget;
     private final SubAgentExecutor subAgentExecutor;
+    private final ApprovalNotifier approvalNotifier;
 
     /** R-07：合并结果块上限（超出截断，避免子代理结果撑爆主对话上下文）。 */
     private static final int SUBAGENT_RESULT_BLOCK_MAX_CHARS = 8000;
@@ -190,6 +192,21 @@ public class AgentOrchestrator {
                              TaskPlanner planner, AnswerReflector reflector,
                              ApprovalGate approvalGate, SkillMatcher skillMatcher,
                              ContextBudget contextBudget, SubAgentExecutor subAgentExecutor) {
+        this(router, toolExecutor, memoryService, promptService, branchFailureDetector,
+                maxToolRounds, traceService, configRuntimeService, planner, reflector,
+                approvalGate, skillMatcher, contextBudget, subAgentExecutor, null);
+    }
+
+    /** R-09：装配 ApprovalNotifier 后，IM 渠道（飞书）可用卡片内联审批，无按钮渠道默认拒绝。 */
+    public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
+                             ConversationMemoryService memoryService,
+                             PromptService promptService,
+                             BranchFailureDetector branchFailureDetector, int maxToolRounds,
+                             TraceService traceService, ConfigRuntimeService configRuntimeService,
+                             TaskPlanner planner, AnswerReflector reflector,
+                             ApprovalGate approvalGate, SkillMatcher skillMatcher,
+                             ContextBudget contextBudget, SubAgentExecutor subAgentExecutor,
+                             ApprovalNotifier approvalNotifier) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.toolExecutor = Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
         this.toolCallParser = new TextToolCallParser();
@@ -206,6 +223,7 @@ public class AgentOrchestrator {
         this.skillMatcher = skillMatcher;
         this.contextBudget = contextBudget;
         this.subAgentExecutor = subAgentExecutor;
+        this.approvalNotifier = approvalNotifier;
     }
 
     public Flux<ModelEvent> stream(AgentRequestContext context) {
@@ -792,18 +810,18 @@ public class AgentOrchestrator {
         return List.of();
     }
 
-    /** G6 HITL：仅 web/WS 渠道且工具标记 approvalRequired 时才需要审批（IM 无审批 UI 直发）。 */
+    /** G6 HITL：工具标记 approvalRequired 即需审批；渠道差异在 handleRound 中处理。 */
     private boolean needsApproval(AgentRequestContext ctx, ToolCall call) {
         if (approvalGate == null || !approvalGate.enabled()) {
             return false;
         }
-        String channel = ctx.channel();
-        if (channel != null && !channel.isBlank() && !"web".equalsIgnoreCase(channel)
-                && !"ws".equalsIgnoreCase(channel)) {
-            return false;
-        }
         return toolExecutor.definitions().stream()
                 .anyMatch(d -> d.name().equals(call.name()) && d.approvalRequired());
+    }
+
+    private static boolean isWebChannel(String channel) {
+        return channel == null || channel.isBlank()
+                || "web".equalsIgnoreCase(channel) || "ws".equalsIgnoreCase(channel);
     }
 
     private Mono<ReActState> runToolRounds(AgentRequestContext ctx, List<ChatMessage> messages,
@@ -918,8 +936,9 @@ public class AgentOrchestrator {
         return Mono.fromCallable(() -> {
             ToolExecutionContext execCtx = ToolExecutionContext.of(ctx.userId(), "user");
             long toolStart = System.currentTimeMillis();
-            // G6 HITL：需审批的工具调用先请求用户决议（web/WS 渠道），拒绝/超时取消执行。
-            // 审批请求事件在阻塞等待前经 eventSink 推送（stream 路径），其余渠道直发。
+            // G6 HITL：需审批的工具调用先请求用户决议。
+            // web/WS → approval_required 事件（stream 路径）；飞书 IM → 卡片按钮送达后阻塞等待；
+            // 其余 IM 渠道（无审批 UI）→ 默认拒绝 + 提示到 Web 端批准。
             boolean[] approved = new boolean[calls.size()];
             Arrays.fill(approved, true);
             for (int i = 0; i < calls.size(); i++) {
@@ -927,10 +946,29 @@ public class AgentOrchestrator {
                 if (needsApproval(ctx, call)) {
                     ApprovalGate.ApprovalRequest request =
                             approvalGate.request(ctx.userId(), call.name(), call.arguments());
-                    if (eventSink != null) {
-                        eventSink.accept(ModelEvent.approvalRequired(request.eventData()));
+                    String channel = ctx.channel() == null ? "" : ctx.channel();
+                    if (isWebChannel(channel)) {
+                        if (eventSink != null) {
+                            eventSink.accept(ModelEvent.approvalRequired(request.eventData()));
+                        }
+                        approved[i] = approvalGate.await(request);
+                    } else if (approvalNotifier != null && approvalNotifier.supports(channel)) {
+                        boolean delivered = approvalNotifier.requestApproval(
+                                channel, ctx.replyAddress(), request);
+                        if (!delivered) {
+                            approvalNotifier.notifyDenied(channel, ctx.replyAddress(), call.name());
+                            approvalGate.deny(request);
+                            approved[i] = false;
+                        } else {
+                            approved[i] = approvalGate.await(request);
+                        }
+                    } else {
+                        if (approvalNotifier != null) {
+                            approvalNotifier.notifyDenied(channel, ctx.replyAddress(), call.name());
+                        }
+                        approvalGate.deny(request);
+                        approved[i] = false;
                     }
-                    approved[i] = approvalGate.await(request);
                 }
             }
             List<ToolCall> executable = new ArrayList<>();

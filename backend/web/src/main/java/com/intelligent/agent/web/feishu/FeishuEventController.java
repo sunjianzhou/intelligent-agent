@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.feishu;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.intelligent.agent.web.ai.agent.approval.ApprovalGate;
 import com.intelligent.agent.web.dto.request.ChatRequest;
 import com.intelligent.agent.web.service.AgentService;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +26,7 @@ public class FeishuEventController {
     private final ObjectMapper objectMapper;
     private final ExecutorService executor;
     private final FeishuRecallBridge recallBridge;
+    private final ApprovalGate approvalGate;
 
     /** group 场景下、模型判定无需发言时输出的静默约定 sentinel（见 PromptService [GROUP SCENE] 规则）。*/
     private static final String NO_REPLY_SENTINEL = "NO_REPLY";
@@ -35,13 +37,15 @@ public class FeishuEventController {
                                   FeishuMessageSender sender,
                                   ObjectMapper objectMapper,
                                   @Qualifier("feishuStreamExecutor") ExecutorService executor,
-                                  FeishuRecallBridge recallBridge) {
+                                  FeishuRecallBridge recallBridge,
+                                  ApprovalGate approvalGate) {
         this.config       = config;
         this.agentService = agentService;
         this.sender       = sender;
         this.objectMapper = objectMapper;
         this.executor     = executor;
         this.recallBridge = recallBridge;
+        this.approvalGate = approvalGate;
     }
 
     public void routeEvent(String json) {
@@ -127,6 +131,8 @@ public class FeishuEventController {
                     req.setChannel("feishu_im");
                     req.setSceneChatType(finalChatType);
                     req.setSceneMentioned(finalMentioned);
+                    // R-09：审批卡片回执地址（chat_id，回调决议后确认消息发回同一会话）
+                    req.setReplyTo(finalChatId);
                     Map<String, Object> result = agentService.chatFull(req);
                     String reply = String.valueOf(result.getOrDefault("response", ""));
                     if (NO_REPLY_SENTINEL.equals(reply.trim())) {
@@ -223,10 +229,46 @@ public class FeishuEventController {
             Map<?, ?> value     = action != null ? (Map<?, ?>) action.get("value") : null;
             String    actionKey = value  != null ? (String) value.get("key") : null;
             log.info("飞书卡片回调，action_key={}", actionKey);
+            if (actionKey != null && actionKey.startsWith("approval:")) {
+                handleApprovalCallback(payload, actionKey);
+            }
         } catch (Exception e) {
             log.error("解析卡片回调失败", e);
         }
 
         return ResponseEntity.ok("{\"msg\":\"ok\"}");
+    }
+
+    /** R-09：审批卡片按钮回调 → ApprovalGate.resolve（userId = feishu:<open_id>）。 */
+    private void handleApprovalCallback(Map<?, ?> payload, String actionKey) {
+        try {
+            String[] parts = actionKey.split(":");
+            if (parts.length != 3 || !"approval".equals(parts[0])) {
+                return;
+            }
+            boolean approved = "approve".equals(parts[1]);
+            String approvalId = parts[2];
+            String openId = String.valueOf(payload.get("open_id"));
+            if (openId == null || openId.isBlank() || "null".equals(openId)) {
+                Object operator = payload.get("operator");
+                openId = operator instanceof Map<?, ?> op
+                        ? String.valueOf(op.get("open_id")) : "";
+            }
+            if (openId == null || openId.isBlank() || "null".equals(openId)) {
+                log.warn("飞书审批回调缺少 open_id，approvalId={}", approvalId);
+                return;
+            }
+            String userId = "feishu:" + openId;
+            boolean resolved = approvalGate.resolve(approvalId, userId, approved);
+            if (!resolved) {
+                log.warn("飞书审批决议失败（不存在或用户不匹配），approvalId={}, userId={}",
+                        approvalId, userId);
+                return;
+            }
+            sender.sendTextByOpenId(openId, approved ? "✅ 已批准该操作" : "❌ 已拒绝该操作");
+            log.info("飞书审批决议成功，approvalId={}, approved={}", approvalId, approved);
+        } catch (Exception e) {
+            log.error("飞书审批回调处理失败", e);
+        }
     }
 }

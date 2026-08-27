@@ -43,6 +43,10 @@ public class ChatRequest {
     @JsonProperty("request_id")
     private String requestId;
 
+    /** 渠道回执地址（R-09：IM 审批卡片发往的 chat_id/open_id；web 渠道为空）。 */
+    @JsonProperty("reply_to")
+    private String replyTo;
+
     /** 请求指定的模型名；为空时由 LocalChatService 按用户偏好解析（ModelService.resolveModel）。 */
     @JsonProperty("model")
     private String model;

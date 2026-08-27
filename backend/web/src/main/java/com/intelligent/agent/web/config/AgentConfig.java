@@ -224,11 +224,12 @@ public class AgentConfig {
                                                ApprovalGate approvalGate,
                                                SkillMatcher skillMatcher,
                                                ContextBudget contextBudget,
-                                               SubAgentExecutor subAgentExecutor) {
+                                               SubAgentExecutor subAgentExecutor,
+                                               com.intelligent.agent.web.ai.agent.approval.ApprovalNotifier approvalNotifier) {
         return new AgentOrchestrator(llmProviderRouter, toolExecutor, conversationMemoryService,
                 promptService, branchFailureDetector, AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS,
                 traceService, configRuntimeService, taskPlanner, answerReflector, approvalGate,
-                skillMatcher, contextBudget, subAgentExecutor);
+                skillMatcher, contextBudget, subAgentExecutor, approvalNotifier);
     }
 
     /** R-07：子代理/多代理编排执行器（只读研究子代理，并行分组 + 按序合并）。 */

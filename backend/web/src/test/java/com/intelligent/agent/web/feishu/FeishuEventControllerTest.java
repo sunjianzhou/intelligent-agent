@@ -1,11 +1,13 @@
 package com.intelligent.agent.web.feishu;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.intelligent.agent.web.ai.agent.approval.ApprovalGate;
 import com.intelligent.agent.web.dto.request.ChatRequest;
 import com.intelligent.agent.web.service.AgentService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.*;
+import org.springframework.http.ResponseEntity;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -20,6 +22,7 @@ class FeishuEventControllerTest {
     @Mock AgentService agentService;
     @Mock FeishuMessageSender sender;
     @Mock FeishuRecallBridge recallBridge;
+    @Mock ApprovalGate approvalGate;
 
     private FeishuEventController controller;
 
@@ -38,7 +41,7 @@ class FeishuEventControllerTest {
         when(sender.sendInteractive(any(), any())).thenReturn("om_feishu1");
 
         controller = new FeishuEventController(config, agentService, sender,
-                new ObjectMapper(), executor, recallBridge);
+                new ObjectMapper(), executor, recallBridge, approvalGate);
     }
 
     @Test
@@ -50,6 +53,56 @@ class FeishuEventControllerTest {
         ArgumentCaptor<ChatRequest> cap = ArgumentCaptor.forClass(ChatRequest.class);
         verify(agentService, timeout(1000)).chatFull(cap.capture());
         assertThat(cap.getValue().getUserId()).isEqualTo("feishu:ou_test123");
+        // R-09：审批卡片回执地址透传
+        assertThat(cap.getValue().getReplyTo()).isEqualTo("oc_chat456");
+    }
+
+    @Test
+    void handleCardCallback_approvalApprove_resolvesAndConfirms() throws Exception {
+        controller.getConfig().setEncryptKey(null); // 单测不计算真实签名，跳过校验
+        when(approvalGate.resolve("aprv_test", "feishu:ou_user", true)).thenReturn(true);
+
+        ResponseEntity<String> response = controller.handleCardCallback(
+                "{\"open_id\":\"ou_user\",\"action\":{\"value\":{\"key\":\"approval:approve:aprv_test\"}}}",
+                mockRequest("sig"));
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        verify(approvalGate).resolve("aprv_test", "feishu:ou_user", true);
+        verify(sender).sendTextByOpenId(eq("ou_user"), contains("已批准"));
+    }
+
+    @Test
+    void handleCardCallback_approvalReject_resolvesAndConfirms() throws Exception {
+        controller.getConfig().setEncryptKey(null);
+        when(approvalGate.resolve("aprv_test", "feishu:ou_user", false)).thenReturn(true);
+
+        controller.handleCardCallback(
+                "{\"open_id\":\"ou_user\",\"action\":{\"value\":{\"key\":\"approval:reject:aprv_test\"}}}",
+                mockRequest("sig"));
+
+        verify(approvalGate).resolve("aprv_test", "feishu:ou_user", false);
+        verify(sender).sendTextByOpenId(eq("ou_user"), contains("已拒绝"));
+    }
+
+    @Test
+    void handleCardCallback_wrongUserOrUnknownId_noResolutionNoConfirm() throws Exception {
+        controller.getConfig().setEncryptKey(null);
+        when(approvalGate.resolve(any(), any(), anyBoolean())).thenReturn(false);
+
+        controller.handleCardCallback(
+                "{\"open_id\":\"ou_other\",\"action\":{\"value\":{\"key\":\"approval:approve:aprv_test\"}}}",
+                mockRequest("sig"));
+
+        verify(approvalGate).resolve("aprv_test", "feishu:ou_other", true);
+        verify(sender, never()).sendTextByOpenId(any(), any());
+    }
+
+    private jakarta.servlet.http.HttpServletRequest mockRequest(String sig) {
+        jakarta.servlet.http.HttpServletRequest req = mock(jakarta.servlet.http.HttpServletRequest.class);
+        when(req.getHeader("X-Lark-Request-Timestamp")).thenReturn("ts");
+        when(req.getHeader("X-Lark-Request-Nonce")).thenReturn("nonce");
+        when(req.getHeader("X-Lark-Signature")).thenReturn(sig);
+        return req;
     }
 
     @Test

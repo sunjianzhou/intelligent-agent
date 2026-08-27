@@ -54,6 +54,30 @@ public final class FeishuCardBuilder {
     public static String buttonCard(String title, String content,
                                     List<Map<String, String>> buttons) {
         try {
+            return MAPPER.writeValueAsString(buttonCardMap(title, content, buttons));
+        } catch (Exception e) {
+            throw new RuntimeException("构建 buttonCard 失败", e);
+        }
+    }
+
+    /**
+     * R-09：HITL 审批卡片（批准/拒绝按钮，value.key = approval:approve|reject:&lt;approvalId&gt;，
+     * 与 FeishuEventController 卡片回调解析约定一致）。返回 Map 供 ChannelAdapter 直接发送。
+     */
+    public static Map<String, Object> approvalCard(String approvalId,
+                                                   Map<String, Object> eventData) {
+        String tool = String.valueOf(eventData.getOrDefault("tool", "未知工具"));
+        Object args = eventData.get("args");
+        String content = "⚠️ **待审批操作**\n\n工具：`" + tool + "`\n\n参数：```json\n"
+                + (args == null ? "{}" : args) + "\n```\n\n批准后立即执行，请确认。";
+        return buttonCardMap("操作审批", content, List.of(
+                Map.of("text", "✅ 批准", "value", "approval:approve:" + approvalId),
+                Map.of("text", "❌ 拒绝", "value", "approval:reject:" + approvalId)));
+    }
+
+    private static Map<String, Object> buttonCardMap(String title, String content,
+                                                     List<Map<String, String>> buttons) {
+        try {
             Map<String, Object> card = new LinkedHashMap<>();
             card.put("config", singletonMap("wide_screen_mode", true));
             card.put("header", header(title, "orange"));
@@ -79,9 +103,9 @@ public final class FeishuCardBuilder {
             elements.add(actionRow);
 
             card.put("elements", elements);
-            return MAPPER.writeValueAsString(card);
+            return card;
         } catch (Exception e) {
-            throw new RuntimeException("构建 buttonCard 失败", e);
+            throw new RuntimeException("构建按钮卡片失败", e);
         }
     }
 

@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.ai.agent;
 
 import com.intelligent.agent.web.ai.agent.approval.ApprovalGate;
+import com.intelligent.agent.web.ai.agent.approval.ApprovalNotifier;
 import com.intelligent.agent.web.ai.llm.ChatTurn;
 import com.intelligent.agent.web.ai.llm.LlmProvider;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
@@ -177,20 +178,80 @@ class AgentOrchestratorHitlTest {
     }
 
     @Test
-    void imChannelSkipsApprovalAndExecutesDirectly() {
+    void imChannelWithoutNotifier_deniesGatedTool() {
+        ScriptedProvider provider = new ScriptedProvider(List.of(
+                Mono.just(new LlmResponse("", List.of(GATED_CALL))),
+                Mono.just(new LlmResponse("需要审批，已取消", List.of()))));
+        GatedChannelTool tool = new GatedChannelTool();
+        ApprovalGate gate = new ApprovalGate(true, Duration.ofSeconds(10));
+
+        StepVerifier.create(orchestrator(provider, tool, gate).stream(ctx("feishu_im")))
+                .expectNextMatches(e -> e.type().equals("tool_calls_done"))
+                .expectNextMatches(e -> e.type().equals("token")
+                        && e.data().equals("需要审批，已取消"))
+                .expectNextMatches(e -> e.type().equals("done"))
+                .verifyComplete();
+
+        // 无审批 UI 的 IM 渠道默认拒绝，工具不执行
+        assertThat(tool.calls.get()).isZero();
+    }
+
+    @Test
+    void feishuChannelWithNotifier_sendsCardAndExecutesAfterApproval() {
         ScriptedProvider provider = new ScriptedProvider(List.of(
                 Mono.just(new LlmResponse("", List.of(GATED_CALL))),
                 Mono.just(new LlmResponse("已发送", List.of()))));
         GatedChannelTool tool = new GatedChannelTool();
         ApprovalGate gate = new ApprovalGate(true, Duration.ofSeconds(10));
+        // 送达即模拟用户点击「批准」（在阻塞等待前完成决议）
+        FakeNotifier notifier = new FakeNotifier(true,
+                req -> gate.resolve(req.approvalId(), "u1", true));
 
-        StepVerifier.create(orchestrator(provider, tool, gate).stream(ctx("feishu_im")))
+        AgentOrchestrator orchestrator = new AgentOrchestrator(
+                new LlmProviderRouter(provider, null, List.of()),
+                new ToolExecutor(List.of(tool)),
+                null, null, null,
+                AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS, null, null,
+                null, null, gate, null, null, null, notifier);
+
+        StepVerifier.create(orchestrator.stream(
+                        new AgentRequestContext("u1", REQUEST, null, null, null, null,
+                                true, true, "feishu_im", Map.of(), null, null, false,
+                                List.of(), null, "oc_chat1")))
                 .expectNextMatches(e -> e.type().equals("tool_calls_done"))
                 .expectNextMatches(e -> e.type().equals("token") && e.data().equals("已发送"))
                 .expectNextMatches(e -> e.type().equals("done"))
                 .verifyComplete();
 
         assertThat(tool.calls.get()).isEqualTo(1);
+        assertThat(notifier.lastReplyAddress).isEqualTo("oc_chat1");
+        assertThat(notifier.lastApprovalId).isNotNull();
+    }
+
+    @Test
+    void feishuChannelDeliveryFailure_deniesToolAndNotifies() {
+        ScriptedProvider provider = new ScriptedProvider(List.of(
+                Mono.just(new LlmResponse("", List.of(GATED_CALL))),
+                Mono.just(new LlmResponse("审批卡片发送失败，已取消", List.of()))));
+        GatedChannelTool tool = new GatedChannelTool();
+        ApprovalGate gate = new ApprovalGate(true, Duration.ofSeconds(10));
+        FakeNotifier notifier = new FakeNotifier(false);
+
+        AgentOrchestrator orchestrator = new AgentOrchestrator(
+                new LlmProviderRouter(provider, null, List.of()),
+                new ToolExecutor(List.of(tool)),
+                null, null, null,
+                AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS, null, null,
+                null, null, gate, null, null, null, notifier);
+
+        StepVerifier.create(orchestrator.stream(ctx("feishu_im")))
+                .expectNextMatches(e -> e.type().equals("tool_calls_done"))
+                .expectNextMatches(e -> e.type().equals("token"))
+                .expectNextMatches(e -> e.type().equals("done"))
+                .verifyComplete();
+
+        assertThat(tool.calls.get()).isZero();
+        assertThat(notifier.deniedTool).isEqualTo("channel_message");
     }
 
     @Test
@@ -237,5 +298,45 @@ class AgentOrchestratorHitlTest {
 
         assertThat(answer).isEqualTo("超时取消");
         assertThat(tool.calls.get()).isZero();
+    }
+
+    /** R-09 测试用假 notifier：记录送达/拒绝行为。 */
+    static class FakeNotifier implements ApprovalNotifier {
+        final boolean delivered;
+        final java.util.function.Consumer<ApprovalGate.ApprovalRequest> onRequest;
+        volatile String lastApprovalId;
+        volatile String lastReplyAddress;
+        volatile String deniedTool;
+
+        FakeNotifier(boolean delivered) {
+            this(delivered, null);
+        }
+
+        FakeNotifier(boolean delivered,
+                     java.util.function.Consumer<ApprovalGate.ApprovalRequest> onRequest) {
+            this.delivered = delivered;
+            this.onRequest = onRequest;
+        }
+
+        @Override
+        public boolean supports(String channel) {
+            return "feishu_im".equals(channel);
+        }
+
+        @Override
+        public boolean requestApproval(String channel, String replyAddress,
+                                       ApprovalGate.ApprovalRequest request) {
+            this.lastApprovalId = request.approvalId();
+            this.lastReplyAddress = replyAddress;
+            if (onRequest != null) {
+                onRequest.accept(request);
+            }
+            return delivered;
+        }
+
+        @Override
+        public void notifyDenied(String channel, String replyAddress, String toolName) {
+            this.deniedTool = toolName;
+        }
     }
 }
