@@ -120,7 +120,8 @@ class ChannelDeduplicationTest {
                 .setBody("{\"p1\":{\"status\":{\"status_str\":\"success\",\"completed\":true}}}"));
 
         ComfyUiClient client = new ComfyUiClient(
-                server.url("/").toString(), true, new com.fasterxml.jackson.databind.ObjectMapper());
+                server.url("/").toString(), true,
+                new com.fasterxml.jackson.databind.ObjectMapper(), false);
 
         Map<String, Object> stats = client.systemStats();
         assertThat(stats.get("system")).isNotNull();

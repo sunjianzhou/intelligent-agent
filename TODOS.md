@@ -4,6 +4,36 @@
 
 ---
 
+## 2026-08-27 ComfyUI 升级：免费高性能模型 + img2img + 实时进度 + 容器环境
+
+> 背景：ComfyUI 生态进入「全免费高性能」阶段——Qwen-Image（Apache-2.0，2025-08 起 ComfyUI 原生支持）、
+> FLUX.1 schnell（Apache-2.0 可商用）、HiDream-I1（MIT）等开源旗舰模型本地免费跑，NVIDIA 还提供
+> NVFP4 量化（FLUX/Qwen 最高约 4.6x 加速）。原接入（2025-08 落地）只覆盖 SD15/SDXL/FLUX 模板，
+> 本次按用户确认的范围升级：
+
+- ✅ **img2img 前后端打通**：前端早已发送 `init_image_base64`/`denoising_strength`，后端此前完全忽略。
+  `ComfyUiClient.uploadImage`（/upload/image multipart）→ 各模型模板 LoadImage → VAEEncode →
+  KSampler(denoise)，`ImageProxyController` 透传参数，返回 `mode=img2img`。
+- ✅ **模型发现升级（多 loader）**：`listModels` 从 `CheckpointLoaderSimple` 扩展为同时解析
+  `UNETLoader`（unet_name）与 `DiffusionModelLoader`（model）——FLUX/Qwen/SD3.5 等 UNET 系模型
+  不再从模型列表缺席；新增 `listClips`/`listVaes` 按 `CLIPLoader.clip_name`/`VAELoader.vae_name` 动态发现。
+- ✅ **新模板**：`qwenTxt2ImgWorkflow`（UNETLoader + CLIPLoader(type=qwen_image) + VAELoader +
+  EmptySD3LatentImage，cfg 钳制 [1,5]）、`sd35Txt2ImgWorkflow`（UNETLoader + DualCLIPLoader(type=sd3,
+  clip_g+t5xxl) + cfg 4.5）；`ModelKind` 增加 QWEN/SD35 探测（文件名关键词 qwen / sd3.5|sd35）。
+- ✅ **FLUX 模板去硬编码**：CLIP/VAE 文件名由 object_info 动态发现（关键词 t5xxl / ae），
+  发现失败才回退默认名；`resolveClipVae` 对 FLUX/Qwen/SD3.5 分别选名。
+- ✅ **实时进度**：`ComfyUiClient.startProgress` 订阅 ComfyUI `/ws`（JDK HttpClient WebSocket，
+  解析 progress 数值 + executing(node=null)/execution_success|error 完成信号；连接失败静默降级轮询）；
+  `ImageService.progress()` 返回真实 progress/value/max/status + 估算 ETA，前端原有 1.5s 轮询直接生效。
+  `wsProgressEnabled` 构造开关：单测 MockWebServer 不响应 WS 握手，测试置 false 防止 mock 队列被消费。
+- ✅ **容器环境升级**：`comfyui/Dockerfile` CUDA 12.1.1 → 12.8.1（cudnn9），`entrypoint.sh`
+  torch 2.5.1 → 2.7.1 / torchvision 0.22.1 / torchaudio 2.7.1（PyTorch 官方 cu128 源），
+  适配新模型与 NVFP4 等新量化路径。
+- 测试：`ImageServiceTest` +5（多 loader 发现 / Qwen 模板+cfg 钳制 / SD3.5 DualCLIP /
+  img2img 上传+LoadImage+denoise / 进度快照）；后端全量 **572 用例绿（0 失败）**。
+- 未做（超出本次范围，可选后续）：ControlNet/inpainting 预设、/ws 预览图流式回传、
+  免费模型一键下载引导（HuggingFace/ModelScope 直链）、Chat 内 ImageGenTool 参数补全（sampler/LoRA/img2img）。
+
 ## 2026-08-24 Agent 架构审查（对照顶级 agent 设计基线）
 
 > 审查范围：ReAct 编排、上下文管理、记忆/RAG、工具、评估、可观测性、安全、IM 渠道。

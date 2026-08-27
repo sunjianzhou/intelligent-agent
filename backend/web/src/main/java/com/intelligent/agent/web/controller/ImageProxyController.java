@@ -97,9 +97,14 @@ public class ImageProxyController {
         String model = String.valueOf(body.getOrDefault("model", "")).trim();
         String sampler = String.valueOf(body.getOrDefault("sampler_name", "")).trim();
         List<ComfyUiClient.Lora> loras = ComfyUiClient.parseLoras(body.get("loras"));
+        String initImageBase64 = body.get("init_image_base64") instanceof String s
+                ? s.trim() : "";
+        double denoisingStrength = body.get("denoising_strength") instanceof Number n
+                ? n.doubleValue() : 0.75;
         return ResponseEntity.ok(imageService.generate(prompt,
                 String.valueOf(body.getOrDefault("negative_prompt", "")),
-                width, height, steps, cfg, seed, model, sampler, loras));
+                width, height, steps, cfg, seed, model, sampler, loras,
+                initImageBase64, denoisingStrength));
     }
 
     @GetMapping("/api/image/loras")

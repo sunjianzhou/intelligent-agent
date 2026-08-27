@@ -31,6 +31,7 @@ public class ImageService {
     private static final Pattern SAFE_FILENAME = Pattern.compile("^[\\w\\-]+\\.(png|jpg|jpeg|webp)$");
     private static final int MAX_HISTORY_POLLS = 60;
     private static final String CUSTOM_WORKFLOW_FILE = "comfyui-workflow.json";
+    private static final int MAX_INIT_IMAGE_BYTES = 14_000_000;
 
     @Value("${image.gen.provider:comfyui}")
     private String provider;
@@ -46,6 +47,10 @@ public class ImageService {
 
     private final ComfyUiClient comfyUiClient;
     private volatile JsonFileStore workflowStore;
+    /** 实时进度（ComfyUI /ws 事件写入；HTTP 轮询读取）。 */
+    private volatile String activePromptId;
+    private volatile ComfyUiClient.ProgressState currentProgress;
+    private volatile long progressStartedAt;
 
     public ImageService(ComfyUiClient comfyUiClient) {
         this.comfyUiClient = comfyUiClient;
@@ -103,19 +108,38 @@ public class ImageService {
                 null, null, null);
     }
 
-    /**
-     * 生成入口：模型自动匹配模板（SD15/SDXL/FLUX），支持 LoRA 注入与自定义工作流。
-     * modelOverride 为空时用当前默认模型；custom 工作流存在时按 {{placeholder}} 替换后提交。
-     */
+    /** 生成入口（兼容旧签名）。 */
     public Map<String, Object> generate(String prompt, String negativePrompt, int width, int height,
                                         int steps, double cfg, int seed,
                                         String modelOverride, String sampler,
                                         List<ComfyUiClient.Lora> loras) {
+        return generate(prompt, negativePrompt, width, height, steps, cfg, seed,
+                modelOverride, sampler, loras, null, 0.0);
+    }
+
+    /**
+     * 生成入口：模型自动匹配模板（SD15/SDXL/FLUX），支持 LoRA 注入与自定义工作流。
+     * modelOverride 为空时用当前默认模型；custom 工作流存在时按 {{placeholder}} 替换后提交。
+     * initImageBase64 非空时走 img2img（上传底图 + LoadImage/VAEEncode + denoise）。
+     */
+    public Map<String, Object> generate(String prompt, String negativePrompt, int width, int height,
+                                        int steps, double cfg, int seed,
+                                        String modelOverride, String sampler,
+                                        List<ComfyUiClient.Lora> loras,
+                                        String initImageBase64, double denoisingStrength) {
         try {
             String effectiveModel = (modelOverride == null || modelOverride.isBlank())
                     ? (model == null || model.isBlank() ? "model.safetensors" : model)
                     : modelOverride;
             String workflowKind = "sd15";
+            boolean img2img = initImageBase64 != null && !initImageBase64.isBlank();
+            String initImageName = null;
+            if (img2img) {
+                initImageName = uploadInitImage(initImageBase64);
+                if (initImageName == null) {
+                    return Map.of("success", false, "message", "底图上传失败或 base64 格式错误");
+                }
+            }
             Map<String, Object> workflow;
             Map<String, Object> custom = workflowStore().read(CUSTOM_WORKFLOW_FILE);
             if (custom != null && !custom.isEmpty()) {
@@ -126,25 +150,57 @@ public class ImageService {
                 switch (ComfyUiClient.ModelKind.detect(effectiveModel)) {
                     case FLUX -> {
                         workflowKind = "flux";
+                        ClipVae clipVae = resolveClipVae("flux");
                         workflow = ComfyUiClient.fluxTxt2ImgWorkflow(
                                 prompt, negativePrompt, effectiveModel, width, height,
-                                steps, cfg, seed, sampler, loras);
+                                steps, cfg, seed, sampler, loras, clipVae.clip(),
+                                clipVae.vae(), initImageName, denoisingStrength);
+                    }
+                    case QWEN -> {
+                        workflowKind = "qwen";
+                        ClipVae clipVae = resolveClipVae("qwen");
+                        workflow = ComfyUiClient.qwenTxt2ImgWorkflow(
+                                prompt, negativePrompt, effectiveModel, width, height,
+                                steps, cfg, seed, sampler, loras, clipVae.clip(),
+                                clipVae.vae(), initImageName, denoisingStrength);
+                    }
+                    case SD35 -> {
+                        workflowKind = "sd35";
+                        ClipVae clipVae = resolveClipVae("sd35");
+                        workflow = ComfyUiClient.sd35Txt2ImgWorkflow(
+                                prompt, negativePrompt, effectiveModel, width, height,
+                                steps, cfg, seed, sampler, loras, clipVae.clip(),
+                                clipVae.clip2(), clipVae.vae(), initImageName, denoisingStrength);
                     }
                     case SDXL -> {
                         workflowKind = "sdxl";
                         workflow = ComfyUiClient.sdxlTxt2ImgWorkflow(
                                 prompt, negativePrompt, effectiveModel, width, height,
-                                steps, cfg, seed, sampler, loras);
+                                steps, cfg, seed, sampler, loras, initImageName, denoisingStrength);
                     }
                     default -> {
                         workflow = ComfyUiClient.txt2ImgWorkflow(
                                 prompt, negativePrompt, effectiveModel, width, height,
-                                steps, cfg, seed, sampler, loras);
+                                steps, cfg, seed, sampler, loras, initImageName, denoisingStrength);
                     }
                 }
             }
             String promptId = comfyUiClient.submitPrompt(workflow);
-            String imageFile = pollForImage(promptId);
+            String imageFile;
+            activePromptId = promptId;
+            currentProgress = new ComfyUiClient.ProgressState(0.0, 0, 0, "queued");
+            progressStartedAt = System.currentTimeMillis();
+            AutoCloseable listener = comfyUiClient.startProgress(promptId,
+                    state -> currentProgress = state);
+            try {
+                imageFile = pollForImage(promptId);
+            } finally {
+                try {
+                    listener.close();
+                } catch (Exception e) {
+                    log.debug("ComfyUI 进度监听关闭异常: {}", e.getMessage());
+                }
+            }
             if (imageFile == null) {
                 return Map.of("success", false, "message", "生成超时或未产出图片");
             }
@@ -157,11 +213,79 @@ public class ImageService {
             result.put("prompt_id", promptId);
             result.put("model", effectiveModel);
             result.put("workflow_kind", workflowKind);
+            if (img2img) {
+                result.put("mode", "img2img");
+            }
             return result;
         } catch (Exception e) {
             log.error("图片生成失败: {}", e.getMessage());
             return Map.of("success", false, "message", "图片生成失败: " + e.getMessage());
         }
+    }
+
+    /** 上传底图（base64 → ComfyUI /upload/image），失败返回 null。 */
+    private String uploadInitImage(String base64) {
+        try {
+            String raw = base64.contains(",") ? base64.substring(base64.indexOf(',') + 1) : base64;
+            byte[] bytes = java.util.Base64.getDecoder().decode(raw.trim());
+            if (bytes.length > MAX_INIT_IMAGE_BYTES) {
+                log.warn("底图超过 10MB 上限: {} bytes", bytes.length);
+                return null;
+            }
+            String name = "init_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10)
+                    + ".png";
+            return comfyUiClient.uploadImage(bytes, name);
+        } catch (IllegalArgumentException e) {
+            log.warn("底图 base64 解码失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** FLUX/Qwen/SD3.5 的 CLIP/VAE 文件名发现：优先按关键词匹配 object_info，失败回退默认名。 */
+    private ClipVae resolveClipVae(String kind) {
+        try {
+            List<String> clips = comfyUiClient.listClips();
+            List<String> vaes = comfyUiClient.listVaes();
+            return switch (kind) {
+                case "qwen" -> new ClipVae(
+                        pick(clips, "qwen", "qwen_2.5_vl_7b_fp8_scaled.safetensors"),
+                        null,
+                        pick(vaes, "qwen", "qwen_image_vae.safetensors"));
+                case "sd35" -> new ClipVae(
+                        pick(clips, "clip_g", "clip_g.safetensors"),
+                        pick(clips, "t5xxl", "t5xxl_fp8_e4m3fn.safetensors"),
+                        pick(vaes, "sd3.5", "sd3.5_medium_vae.safetensors"));
+                default -> new ClipVae(
+                        pick(clips, "t5xxl", "t5xxl_fp8_e4m3fn.safetensors"),
+                        null,
+                        pick(vaes, "ae", "ae.safetensors"));
+            };
+        } catch (Exception e) {
+            log.warn("CLIP/VAE 文件发现失败（使用默认名）: {}", e.getMessage());
+            return switch (kind) {
+                case "qwen" -> new ClipVae("qwen_2.5_vl_7b_fp8_scaled.safetensors", null,
+                        "qwen_image_vae.safetensors");
+                case "sd35" -> new ClipVae("clip_g.safetensors", "t5xxl_fp8_e4m3fn.safetensors",
+                        "sd3.5_medium_vae.safetensors");
+                default -> new ClipVae("t5xxl_fp8_e4m3fn.safetensors", null, "ae.safetensors");
+            };
+        }
+    }
+
+    private static String pick(List<String> names, String keyword, String fallback) {
+        if (names == null || names.isEmpty()) {
+            return fallback;
+        }
+        String lower = keyword == null ? "" : keyword.toLowerCase();
+        for (String name : names) {
+            if (name != null && name.toLowerCase().contains(lower)) {
+                return name;
+            }
+        }
+        return names.get(0);
+    }
+
+    private record ClipVae(String clip, String clip2, String vae) {
     }
 
     public Map<String, Object> listLoras() {
@@ -270,8 +394,21 @@ public class ImageService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("success", true);
         result.put("provider", provider);
-        result.put("progress", 0.0);
-        result.put("eta", 0.0);
+        ComfyUiClient.ProgressState state = currentProgress;
+        if (state == null || activePromptId == null) {
+            result.put("progress", 0.0);
+            result.put("eta", 0.0);
+            result.put("status", "idle");
+            return result;
+        }
+        result.put("progress", state.progress());
+        result.put("value", state.value());
+        result.put("max", state.max());
+        result.put("status", state.status());
+        double p = state.progress();
+        long elapsed = System.currentTimeMillis() - progressStartedAt;
+        double eta = p <= 0.01 ? 0.0 : Math.max(0.0, elapsed * (1.0 - p) / p / 1000.0);
+        result.put("eta", Math.round(eta));
         return result;
     }
 

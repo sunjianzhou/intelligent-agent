@@ -324,7 +324,7 @@ Vue 3 + Pinia + Vue Router 4 + Element Plus + Font Awesome 6 + marked + DOMPurif
 | `/memory` | MemoryView | 短期/长期记忆，搜索，导出 |
 | `/knowledge` | KnowledgeView | 知识库管理：拖拽上传、分块统计、文件列表（含描述/大小/创建时间）、删除 |
 | `/project` | ProjectView | 三栏：项目列表 / SpecEditor / TaskTree |
-| `/image` | ImageView | 图片生成：Prompt/风格预设/尺寸/步数/CFG 参数面板；Provider 状态徽章；生成结果 + 历史 Gallery |
+| `/image` | ImageView | 图片生成：Prompt/风格预设/尺寸/步数/CFG/img2img 底图+去噪/LoRA/自定义工作流；Provider 状态徽章；实时进度；生成结果 + 历史 Gallery |
 | `/admin/tools` | ToolsView | 工具列表（按分类过滤），跳转链接至 MCP 配置 |
 | `/admin/skills` | SkillView | 技能管理（MD 导入） |
 | `/admin/mcp` | MCPView | 工具 API Key + 推理参数 + 系统资源配置（三个卡片） |

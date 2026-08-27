@@ -11,8 +11,10 @@ export PIP_TRUSTED_HOST="${PIP_TRUSTED_HOST:-pypi.tuna.tsinghua.edu.cn}"
 if [ ! -f "$MARKER" ]; then
     echo "[comfyui] first run inside container, installing python deps (this can take a while)..."
     pip install --no-cache-dir --upgrade pip
-    # 与宿主机 conda 环境（ai-agent）保持一致的 torch/cuda 版本，避免 requirements.txt 拉取不匹配的版本
-    pip install --no-cache-dir torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1
+    # CUDA 12.8 + torch 2.7（cu128）：适配 FLUX.2/Qwen-Image 等新模型与 NVFP4 等新量化路径
+    # 显式指定 PyTorch 官方 cu128 源，避免 requirements.txt 拉取不匹配的版本
+    pip install --no-cache-dir torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 \
+        --index-url https://download.pytorch.org/whl/cu128
     pip install --no-cache-dir -r requirements.txt
     for req in custom_nodes/*/requirements.txt; do
         [ -f "$req" ] && pip install --no-cache-dir -r "$req" || true

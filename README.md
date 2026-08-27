@@ -108,7 +108,7 @@ cp .env.docker.example .env.docker    # 容器运行时变量（含 IM 集成、
 | 角色/提示词/灵魂层 | `PromptService` + `SystemPromptBuilder` + `SoulLoader`（`soul/` 目录热加载）+ `heart_record` 工具 |
 | 知识/技能/分析/教学 | `KnowledgeService` / `SkillService` / `AnalyticsService` / `TeachingService` 领域服务 |
 | IM 渠道 | Feishu（WS 长连接 + OAuth）/ WeCom / Telegram 通道 + `ChannelRouter` 去重 + 限流重试 |
-| 图片生成 | `ImageService` + ComfyUI（HTTP API，默认 txt2img 工作流）；SD WebUI / diffusers / SiliconFlow 未迁移（需求驱动再做） |
+| 图片生成 | `ImageService` + ComfyUI（txt2img / img2img；SD1.5/SDXL/FLUX/Qwen-Image/SD3.5 自动模板；LoRA 注入；自定义工作流；/ws 实时进度；5GB Gallery 自动清理）；SD WebUI / diffusers / SiliconFlow 未迁移（需求驱动再做） |
 | 多模态输入 | 聊天图片 base64 全链路透传至 Ollama images 字段 |
 | 消息撤回 | `ConversationService.retract` 级联删除短期记忆 + 长期检索排除 + 飞书官方撤回 |
 | 分支失败检测 | `BranchFailureDetector` 6 信号（同工具同错误/连续重复/错误+空响应/铁律违反扫描等），命中即终止本轮 |

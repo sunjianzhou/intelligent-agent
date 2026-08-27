@@ -31,7 +31,8 @@ class ImageServiceTest {
         comfyServer = new MockWebServer();
         comfyServer.start();
         ComfyUiClient client = new ComfyUiClient(
-                comfyServer.url("/").toString(), true, new com.fasterxml.jackson.databind.ObjectMapper());
+                comfyServer.url("/").toString(), true,
+                new com.fasterxml.jackson.databind.ObjectMapper(), false);
         service = new ImageService(client);
         ReflectionTestUtils.setField(service, "dataDir", tempDir.toString());
         ReflectionTestUtils.setField(service, "model", "model.safetensors");
@@ -64,6 +65,22 @@ class ImageServiceTest {
         List<String> models = (List<String>) service.listModels().get("models");
 
         assertThat(models).contains("model1.safetensors", "model2.safetensors");
+    }
+
+    @Test
+    void listModelsParsesMultipleLoaders() {
+        comfyServer.enqueue(new MockResponse().setResponseCode(200).setBody(
+                "{\"CheckpointLoaderSimple\":{\"input\":{\"required\":{\"ckpt_name\":"
+                        + "[[\"model1.safetensors\"]]}}},"
+                        + "\"UNETLoader\":{\"input\":{\"required\":{\"unet_name\":"
+                        + "[[\"flux1-dev.safetensors\",\"qwen_image_fp8.safetensors\"]]}}},"
+                        + "\"DiffusionModelLoader\":{\"input\":{\"required\":{\"model\":"
+                        + "[[\"sd3.5_medium.safetensors\"]]}}}}"));
+
+        List<String> models = (List<String>) service.listModels().get("models");
+
+        assertThat(models).containsExactly("model1.safetensors", "flux1-dev.safetensors",
+                "qwen_image_fp8.safetensors", "sd3.5_medium.safetensors");
     }
 
     @Test
@@ -108,16 +125,105 @@ class ImageServiceTest {
     @Test
     void fluxModelUsesFluxTemplate() throws Exception {
         ReflectionTestUtils.setField(service, "model", "flux1-dev.safetensors");
+        enqueueClipVaeDiscovery();
         enqueueSuccessfulGeneration("p3");
 
         service.generate("cat", "", 1024, 1024, 20, 7.0, 42);
 
+        comfyServer.takeRequest(); // listClips /object_info
+        comfyServer.takeRequest(); // listVaes /object_info
         String body = comfyServer.takeRequest().getBody().readUtf8();
         assertThat(body).contains("\"UNETLoader\"")
                 .contains("\"EmptySD3LatentImage\"")
                 .contains("\"t5xxl_fp8_e4m3fn.safetensors\"")
                 .contains("\"cfg\":1.0")
                 .doesNotContain("CheckpointLoaderSimple");
+    }
+
+    @Test
+    void qwenModelUsesQwenTemplateAndClampsCfg() throws Exception {
+        ReflectionTestUtils.setField(service, "model", "qwen_image_fp8_e4m3fn.safetensors");
+        enqueueClipVaeDiscovery();
+        enqueueSuccessfulGeneration("pq");
+
+        service.generate("cat", "", 1024, 1024, 20, 7.0, 42);
+
+        comfyServer.takeRequest(); // listClips /object_info
+        comfyServer.takeRequest(); // listVaes /object_info
+        String body = comfyServer.takeRequest().getBody().readUtf8();
+        assertThat(body)
+                .contains("\"UNETLoader\"")
+                .contains("\"qwen_image_fp8_e4m3fn.safetensors\"")
+                .contains("\"CLIPLoader\"")
+                .contains("\"type\":\"qwen_image\"")
+                .contains("\"qwen_2.5_vl_7b_fp8_scaled.safetensors\"")
+                .contains("\"EmptySD3LatentImage\"")
+                // 用户 cfg=7 超出 Qwen 引导区间，钳制到 5.0
+                .contains("\"cfg\":5.0")
+                .doesNotContain("CheckpointLoaderSimple");
+    }
+
+    @Test
+    void sd35ModelUsesDualClipTemplate() throws Exception {
+        ReflectionTestUtils.setField(service, "model", "sd3.5_medium.safetensors");
+        enqueueClipVaeDiscovery();
+        enqueueSuccessfulGeneration("ps");
+
+        service.generate("cat", "", 1024, 1024, 20, 7.0, 42);
+
+        comfyServer.takeRequest(); // listClips /object_info
+        comfyServer.takeRequest(); // listVaes /object_info
+        String body = comfyServer.takeRequest().getBody().readUtf8();
+        assertThat(body)
+                .contains("\"DualCLIPLoader\"")
+                .contains("\"clip_name1\":\"clip_g.safetensors\"")
+                .contains("\"clip_name2\":\"t5xxl_fp8_e4m3fn.safetensors\"")
+                .contains("\"type\":\"sd3\"")
+                .contains("\"sd3.5_medium.safetensors\"")
+                .contains("\"cfg\":4.5");
+    }
+
+    @Test
+    void img2imgUploadsInitImageAndBuildsLoadImageWorkflow() throws Exception {
+        comfyServer.enqueue(new MockResponse().setResponseCode(200)
+                .setBody("{\"name\":\"init_uploaded.png\"}"));
+        enqueueSuccessfulGeneration("pi");
+
+        Map<String, Object> result = service.generate("cat in snow", "", 512, 512, 20, 7.0, 42,
+                null, "euler", List.of(),
+                "aGVsbG8taW1n", 0.6);
+
+        assertThat(result.get("success")).isEqualTo(true);
+        assertThat(result.get("mode")).isEqualTo("img2img");
+        // 第一个请求是 /upload/image 的 multipart 上传
+        assertThat(comfyServer.takeRequest().getPath()).startsWith("/upload/image");
+        String body = comfyServer.takeRequest().getBody().readUtf8();
+        assertThat(body)
+                .contains("\"LoadImage\"")
+                .contains("\"init_uploaded.png\"")
+                .contains("\"VAEEncode\"")
+                .contains("\"denoise\":0.6")
+                .doesNotContain("\"EmptyLatentImage\"");
+    }
+
+    @Test
+    void progressReflectsWsSnapshot() {
+        Map<String, Object> idle = service.progress();
+        assertThat(idle.get("progress")).isEqualTo(0.0);
+        assertThat(idle.get("status")).isEqualTo("idle");
+
+        ReflectionTestUtils.setField(service, "activePromptId", "p1");
+        ReflectionTestUtils.setField(service, "currentProgress",
+                new ComfyUiClient.ProgressState(0.5, 5, 10, "running"));
+        ReflectionTestUtils.setField(service, "progressStartedAt",
+                System.currentTimeMillis() - 5000);
+
+        Map<String, Object> running = service.progress();
+        assertThat(running.get("progress")).isEqualTo(0.5);
+        assertThat(running.get("value")).isEqualTo(5);
+        assertThat(running.get("max")).isEqualTo(10);
+        assertThat(running.get("status")).isEqualTo("running");
+        assertThat((Number) running.get("eta")).isNotNull();
     }
 
     @Test
@@ -235,5 +341,18 @@ class ImageServiceTest {
                         + "\"outputs\":{\"9\":{\"images\":[{\"filename\":\"a.png\"}]}}}}"));
         comfyServer.enqueue(new MockResponse().setResponseCode(200)
                 .setBody("png-binary-data"));
+    }
+
+    /** FLUX/Qwen/SD3.5 模板会先做 CLIP/VAE 文件发现（两次 /object_info）。 */
+    private void enqueueClipVaeDiscovery() {
+        comfyServer.enqueue(new MockResponse().setResponseCode(200).setBody(
+                "{\"CLIPLoader\":{\"input\":{\"required\":{\"clip_name\":"
+                        + "[[\"t5xxl_fp8_e4m3fn.safetensors\","
+                        + "\"qwen_2.5_vl_7b_fp8_scaled.safetensors\","
+                        + "\"clip_g.safetensors\"]]}}}}"));
+        comfyServer.enqueue(new MockResponse().setResponseCode(200).setBody(
+                "{\"VAELoader\":{\"input\":{\"required\":{\"vae_name\":"
+                        + "[[\"ae.safetensors\",\"qwen_image_vae.safetensors\","
+                        + "\"sd3.5_medium_vae.safetensors\"]]}}}}"));
     }
 }

@@ -76,7 +76,7 @@ public class IntegrationConfig {
 
     @Bean
     public ComfyUiClient comfyUiClient(ObjectMapper objectMapper) {
-        return new ComfyUiClient(comfyuiBaseUrl, comfyuiEnabled, objectMapper);
+        return new ComfyUiClient(comfyuiBaseUrl, comfyuiEnabled, objectMapper, true);
     }
 
     @Bean
