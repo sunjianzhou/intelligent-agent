@@ -205,11 +205,9 @@ public class LlmProviderRouter {
     private Mono<LlmResponse> attemptComplete(String userId, String model, ChatTurn turn,
                                               List<ToolDefinition> tools) {
         LlmProvider provider = forUser(userId, model);
-        if (tools != null && !tools.isEmpty()) {
-            return provider.completeWithTools(turn, tools);
-        }
-        return provider.complete(turn)
-                .map(content -> new LlmResponse(content, List.of()));
+        // R-10：统一走 completeWithTools（tools 为 null 时与 complete 等价），
+        // 让 planning/reflection/最终作答等非工具调用也能带回 token 用量。
+        return provider.completeWithTools(turn, tools);
     }
 
     private Mono<FallbackResult> attemptCompleteChain(String userId, List<String> chain, int index,

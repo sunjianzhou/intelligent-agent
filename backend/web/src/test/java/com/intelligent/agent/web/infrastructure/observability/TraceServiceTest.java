@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -37,6 +38,22 @@ class TraceServiceTest {
         assertThat(trace.get("user_id")).isEqualTo("alice");
         assertThat(trace.get("status")).isEqualTo("ok");
         assertThat(trace.get("spans")).asList().hasSize(2);
+    }
+
+    @Test
+    void completeNotifiesUsageSinkWithFinishedTrace() {
+        AtomicReference<AgentRunTrace> received = new AtomicReference<>();
+        TraceService service = new TraceService(tempDir, 100, null, received::set);
+        service.begin("req-u", "u1", "s1", "web", "deepseek-chat");
+        service.addSpan("req-u", TraceSpan.ok("llm_call", 1, 20, Map.of(
+                "model", "deepseek-chat", "input_tokens", 120, "output_tokens", 30)));
+
+        service.complete("req-u", "ok");
+
+        assertThat(received.get()).isNotNull();
+        assertThat(received.get().requestId()).isEqualTo("req-u");
+        assertThat(received.get().userId()).isEqualTo("u1");
+        assertThat(received.get().spans()).hasSize(1);
     }
 
     @Test

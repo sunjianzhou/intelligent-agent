@@ -6,6 +6,7 @@ import com.intelligent.agent.web.ai.llm.AbstractHttpLlmProvider;
 import com.intelligent.agent.web.ai.llm.ChatMessage;
 import com.intelligent.agent.web.ai.llm.ChatTurn;
 import com.intelligent.agent.web.ai.llm.LlmResponse;
+import com.intelligent.agent.web.ai.llm.LlmUsage;
 import com.intelligent.agent.web.ai.llm.LlmProviderException;
 import com.intelligent.agent.web.ai.llm.ModelEvent;
 import com.intelligent.agent.web.ai.llm.OllamaOptions;
@@ -71,7 +72,8 @@ public class OllamaLlmProvider extends AbstractHttpLlmProvider {
                     sink.next(ModelEvent.token(token));
                 }
                 if (node.path("done").asBoolean(false)) {
-                    sink.next(ModelEvent.done(Map.of()));
+                    // R-10：done 事件携带 token 用量（流式最终回答成本核算）
+                    sink.next(ModelEvent.done(usageMap(node)));
                     return true;
                 }
                 return false;
@@ -111,11 +113,24 @@ public class OllamaLlmProvider extends AbstractHttpLlmProvider {
                                 parseArguments(tc.path("function").path("arguments"))));
                     }
                 }
-                return new LlmResponse(content, calls);
+                return new LlmResponse(content, calls, usageOf(root));
             } catch (Exception e) {
                 throw new LlmProviderException(redact(e.getMessage()), e);
             }
         });
+    }
+
+    private static LlmUsage usageOf(JsonNode root) {
+        return new LlmUsage(
+                root.path("prompt_eval_count").asLong(0),
+                root.path("eval_count").asLong(0));
+    }
+
+    private static Map<String, Object> usageMap(JsonNode node) {
+        Map<String, Object> usage = new LinkedHashMap<>();
+        usage.put("input_tokens", node.path("prompt_eval_count").asLong(0));
+        usage.put("output_tokens", node.path("eval_count").asLong(0));
+        return usage;
     }
 
     private HttpRequest chatRequest(ChatTurn turn, boolean stream) {

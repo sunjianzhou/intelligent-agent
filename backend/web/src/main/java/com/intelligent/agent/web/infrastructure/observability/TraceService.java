@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 /**
@@ -35,6 +36,8 @@ public class TraceService {
     private final int maxTraces;
     private final ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
     private final OtlpTraceExporter exporter;
+    /** R-10：trace 完成后的用量台账回调（llm_call span token 聚合，可空）。 */
+    private final Consumer<AgentRunTrace> usageSink;
 
     /** 进行中的 trace：requestId → 聚合器（spans 追加）。 */
     private final Map<String, MutableTrace> active = new ConcurrentHashMap<>();
@@ -52,9 +55,15 @@ public class TraceService {
     }
 
     public TraceService(Path dataDir, int maxTraces, OtlpTraceExporter exporter) {
+        this(dataDir, maxTraces, exporter, null);
+    }
+
+    public TraceService(Path dataDir, int maxTraces, OtlpTraceExporter exporter,
+                        Consumer<AgentRunTrace> usageSink) {
         this.tracesDir = dataDir.resolve("traces");
         this.maxTraces = maxTraces > 0 ? maxTraces : DEFAULT_MAX_TRACES;
         this.exporter = exporter;
+        this.usageSink = usageSink;
         try {
             Files.createDirectories(tracesDir);
         } catch (IOException e) {
@@ -102,6 +111,13 @@ public class TraceService {
         pruneIfNeeded();
         if (exporter != null) {
             exporter.export(finished);
+        }
+        if (usageSink != null) {
+            try {
+                usageSink.accept(finished);
+            } catch (Exception e) {
+                log.warn("用量台账记录失败 {}: {}", requestId, e.getMessage());
+            }
         }
     }
 

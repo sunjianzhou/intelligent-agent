@@ -2,6 +2,7 @@ package com.intelligent.agent.web.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.intelligent.agent.web.api.chat.LocalChatService;
+import com.intelligent.agent.web.domain.analytics.AnalyticsService;
 import com.intelligent.agent.web.dto.request.ChatRequest;
 import com.intelligent.agent.web.dto.WebSocketMessageType;
 import com.intelligent.agent.web.domain.conversation.ConversationService;
@@ -43,11 +44,12 @@ public class AgentService {
     private final ToolExecutor toolExecutor;
     private final ConversationService conversationService;
     private final ActiveChatLimiter activeChatLimiter;
+    private final AnalyticsService analyticsService;
 
     public AgentService(ObjectMapper objectMapper,
                         @Qualifier("streamExecutor") ExecutorService streamExecutor,
                         LocalChatService localChatService) {
-        this(objectMapper, streamExecutor, localChatService, null, null, null, null);
+        this(objectMapper, streamExecutor, localChatService, null, null, null, null, null);
     }
 
     /** 兼容构造：limiter 为 null（测试/非 Spring 装配路径）。 */
@@ -58,7 +60,18 @@ public class AgentService {
                         ToolExecutor toolExecutor,
                         ConversationService conversationService) {
         this(objectMapper, streamExecutor, localChatService, modelService, toolExecutor,
-                conversationService, null);
+                conversationService, null, null);
+    }
+
+    public AgentService(ObjectMapper objectMapper,
+                        @Qualifier("streamExecutor") ExecutorService streamExecutor,
+                        LocalChatService localChatService,
+                        ModelService modelService,
+                        ToolExecutor toolExecutor,
+                        ConversationService conversationService,
+                        ActiveChatLimiter activeChatLimiter) {
+        this(objectMapper, streamExecutor, localChatService, modelService, toolExecutor,
+                conversationService, activeChatLimiter, null);
     }
 
     @Autowired
@@ -68,7 +81,8 @@ public class AgentService {
                         ModelService modelService,
                         ToolExecutor toolExecutor,
                         ConversationService conversationService,
-                        ActiveChatLimiter activeChatLimiter) {
+                        ActiveChatLimiter activeChatLimiter,
+                        AnalyticsService analyticsService) {
         this.objectMapper = objectMapper;
         this.streamExecutor = streamExecutor;
         this.localChatService = localChatService;
@@ -76,6 +90,7 @@ public class AgentService {
         this.toolExecutor = toolExecutor;
         this.conversationService = conversationService;
         this.activeChatLimiter = activeChatLimiter;
+        this.analyticsService = analyticsService;
     }
 
     // ── 非流式（ChatController / 飞书接入用）──────────────────
@@ -86,6 +101,13 @@ public class AgentService {
     }
 
     public Map<String, Object> chatFull(ChatRequest request) {
+        if (quotaExceeded(request.getUserId())) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("response", "本月模型用量已达限额，请到「管理 → 统计」查看或调整限额");
+            result.put("success", false);
+            result.put("quota_exceeded", true);
+            return result;
+        }
         return localChatFull(request);
     }
 
@@ -93,6 +115,11 @@ public class AgentService {
 
     public void streamChatAsync(ChatRequest request, WebSocketSession session,
                                 String requestId, long startTime) {
+        if (quotaExceeded(request.getUserId())) {
+            log.warn("月用量限额拦截流式请求: {}", requestId);
+            sendError(session, requestId, "本月模型用量已达限额，请到「管理 → 统计」查看或调整限额");
+            return;
+        }
         if (activeChatLimiter != null && !activeChatLimiter.tryAcquire()) {
             log.warn("流式对话并发已达上限，拒绝请求: {}", requestId);
             sendBusy(session, requestId);
@@ -111,16 +138,24 @@ public class AgentService {
     }
 
     private void sendBusy(WebSocketSession session, String requestId) {
+        sendError(session, requestId, "服务繁忙，请稍后再试");
+    }
+
+    private void sendError(WebSocketSession session, String requestId, String message) {
         try {
             Map<String, Object> busyMsg = new HashMap<>();
             busyMsg.put("type", WebSocketMessageType.ERROR);
-            busyMsg.put("message", "服务繁忙，请稍后再试");
+            busyMsg.put("message", message);
             busyMsg.put("request_id", requestId);
             busyMsg.put("timestamp", LocalDateTime.now().toString());
             JsonUtil.sendJsonMessageQuiet(session, busyMsg);
         } catch (Exception ignored) {
             // best effort
         }
+    }
+
+    private boolean quotaExceeded(String userId) {
+        return analyticsService != null && analyticsService.usageQuotaExceeded(userId);
     }
 
     private void releaseChatSlot() {

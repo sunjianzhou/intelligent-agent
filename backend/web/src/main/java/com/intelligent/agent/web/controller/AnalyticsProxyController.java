@@ -66,6 +66,27 @@ public class AnalyticsProxyController {
         return ResponseEntity.ok(analyticsService.toolStats());
     }
 
+    /** R-10：用量/成本统计（按用户 + 月份，含每日趋势与限额余量）。 */
+    @GetMapping("/usage/{username}")
+    public ResponseEntity<Map<String, Object>> usageStats(
+            @PathVariable String username,
+            @RequestParam(required = false) String month) {
+        return ResponseEntity.ok(analyticsService.usageStats(username, month));
+    }
+
+    /** R-10：当前月是否已达用量限额。 */
+    @GetMapping("/usage-quota/{username}")
+    public ResponseEntity<Map<String, Object>> usageQuota(@PathVariable String username) {
+        Map<String, Object> stats = analyticsService.usageStats(username, null);
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("success", true);
+        result.put("exceeded", analyticsService.usageQuotaExceeded(username));
+        result.put("monthly_limit_cny", stats.get("monthly_limit_cny"));
+        result.put("total_cost_cny", stats.get("total_cost_cny"));
+        result.put("month", stats.get("month"));
+        return ResponseEntity.ok(result);
+    }
+
     private static String str(Object value) {
         return value == null ? null : String.valueOf(value);
     }

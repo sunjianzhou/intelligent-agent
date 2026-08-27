@@ -81,7 +81,7 @@ class OllamaLlmProviderTest {
                         {"message":{"role":"assistant","content":"","tool_calls":[
                           {"function":{"name":"calculator","arguments":{"expression":"1+2"}}},
                           {"function":{"name":"time_tool","arguments":"{\\"action\\":\\"timestamp\\"}"}}
-                        ]},"done":true}
+                        ]},"done":true,"prompt_eval_count":128,"eval_count":42}
                         """)
                 .setHeader("Content-Type", "application/json"));
 
@@ -94,6 +94,10 @@ class OllamaLlmProviderTest {
                     assertThat(resp.toolCalls()).containsExactly(
                             ToolCall.of("calculator", Map.of("expression", "1+2")),
                             ToolCall.of("time_tool", Map.of("action", "timestamp")));
+                    // R-10：token 用量
+                    assertThat(resp.usage()).isNotNull();
+                    assertThat(resp.usage().inputTokens()).isEqualTo(128);
+                    assertThat(resp.usage().outputTokens()).isEqualTo(42);
                 })
                 .verifyComplete();
     }
@@ -101,7 +105,8 @@ class OllamaLlmProviderTest {
     @Test
     void completeWithToolsFallsBackToPlainContent() {
         server.enqueue(new MockResponse()
-                .setBody("{\"message\":{\"content\":\"直接回答\"},\"done\":true}")
+                .setBody("{\"message\":{\"content\":\"直接回答\"},\"done\":true,"
+                        + "\"prompt_eval_count\":96,\"eval_count\":21}")
                 .setHeader("Content-Type", "application/json"));
 
         StepVerifier.create(provider.completeWithTools(
@@ -110,6 +115,8 @@ class OllamaLlmProviderTest {
                 .assertNext(resp -> {
                     assertThat(resp.content()).isEqualTo("直接回答");
                     assertThat(resp.hasNativeToolCalls()).isFalse();
+                    assertThat(resp.usage()).isNotNull();
+                    assertThat(resp.usage().totalTokens()).isEqualTo(117);
                 })
                 .verifyComplete();
     }

@@ -7,6 +7,7 @@ import com.intelligent.agent.web.domain.task.TaskService;
 import com.intelligent.agent.web.domain.knowledge.KnowledgeService;
 import com.intelligent.agent.web.domain.skill.SkillService;
 import com.intelligent.agent.web.domain.analytics.AnalyticsService;
+import com.intelligent.agent.web.domain.analytics.AnalyticsService.CostConfig;
 import com.intelligent.agent.web.domain.teaching.TeachingService;
 import com.intelligent.agent.web.infrastructure.vectorstore.VectorMemoryRepository;
 import com.intelligent.agent.web.infrastructure.observability.TraceService;
@@ -17,6 +18,7 @@ import org.springframework.context.annotation.Configuration;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Map;
 
 /**
  * 领域服务装配。数据目录默认 backend/web/data，
@@ -37,6 +39,16 @@ public class DomainConfig {
 
     @Value("${ai.trace.export.timeout-ms:5000}")
     private long traceExportTimeoutMs;
+
+    @Value("${ai.cost.enabled:true}")
+    private boolean costEnabled;
+
+    @Value("${ai.cost.monthly-limit-cny:0}")
+    private double costMonthlyLimitCny;
+
+    @SuppressWarnings("unchecked")
+    @Value("#{${ai.cost.per-1m-tokens:{}}}")
+    private Map<String, Map<String, Double>> costPer1mTokens;
 
     @Bean
     public RoleService roleService() {
@@ -70,7 +82,8 @@ public class DomainConfig {
 
     @Bean
     public AnalyticsService analyticsService() {
-        return new AnalyticsService(Path.of(dataDir));
+        return new AnalyticsService(Path.of(dataDir),
+                new CostConfig(costEnabled, costMonthlyLimitCny, costPer1mTokens));
     }
 
     @Bean
@@ -80,10 +93,11 @@ public class DomainConfig {
 
     /** G4：Agent 运行追踪（data/traces/ 落盘，默认 500 条上限；可选 OTLP 导出）。 */
     @Bean
-    public TraceService traceService() {
+    public TraceService traceService(AnalyticsService analyticsService) {
         OtlpTraceExporter exporter = new OtlpTraceExporter(
                 traceExportEnabled, traceExportEndpoint,
                 Duration.ofMillis(Math.max(100, traceExportTimeoutMs)));
-        return new TraceService(Path.of(dataDir), TraceService.DEFAULT_MAX_TRACES, exporter);
+        return new TraceService(Path.of(dataDir), TraceService.DEFAULT_MAX_TRACES, exporter,
+                analyticsService::recordFromTrace);
     }
 }

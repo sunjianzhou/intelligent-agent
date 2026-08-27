@@ -14,6 +14,7 @@ import com.intelligent.agent.web.ai.llm.LlmProvider;
 import com.intelligent.agent.web.ai.llm.LlmProviderException;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.ai.llm.LlmResponse;
+import com.intelligent.agent.web.ai.llm.LlmUsage;
 import com.intelligent.agent.web.ai.llm.ModelEvent;
 import com.intelligent.agent.web.ai.memory.AgentContext;
 import com.intelligent.agent.web.ai.memory.ContextBudget;
@@ -40,6 +41,7 @@ import reactor.core.scheduler.Schedulers;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -410,10 +412,18 @@ public class AgentOrchestrator {
         long[] start = {0};
         return source
                 .doOnSubscribe(s -> start[0] = System.currentTimeMillis())
-                .doOnSuccess(r -> traceService.addSpan(traceId, TraceSpan.ok("llm_call",
-                        start[0], System.currentTimeMillis() - start[0],
-                        Map.of("model", ctx.model() == null ? "" : ctx.model(),
-                                "stream", stream, "status", "ok"))))
+                .doOnSuccess(r -> {
+                    Map<String, Object> details = new LinkedHashMap<>();
+                    details.put("model", ctx.model() == null ? "" : ctx.model());
+                    details.put("stream", stream);
+                    details.put("status", "ok");
+                    if (r.usage() != null) {
+                        details.put("input_tokens", r.usage().inputTokens());
+                        details.put("output_tokens", r.usage().outputTokens());
+                    }
+                    traceService.addSpan(traceId, TraceSpan.ok("llm_call",
+                            start[0], System.currentTimeMillis() - start[0], details));
+                })
                 .doOnError(e -> traceService.addSpan(traceId, TraceSpan.error("llm_call",
                         start[0], System.currentTimeMillis() - start[0],
                         Map.of("model", ctx.model() == null ? "" : ctx.model(),
@@ -422,17 +432,26 @@ public class AgentOrchestrator {
 
     /** 流式 LLM 调用埋点（G4）。 */
     private Flux<ModelEvent> traceLlmStream(String traceId, Flux<ModelEvent> source,
-                                            AgentRequestContext ctx) {
+                                            AgentRequestContext ctx,
+                                            java.util.concurrent.atomic.AtomicReference<LlmUsage> usageRef) {
         if (traceService == null || traceId == null) {
             return source;
         }
         long[] start = {0};
         return source
                 .doOnSubscribe(s -> start[0] = System.currentTimeMillis())
-                .doOnComplete(() -> traceService.addSpan(traceId, TraceSpan.ok("llm_call",
-                        start[0], System.currentTimeMillis() - start[0],
-                        Map.of("model", ctx.model() == null ? "" : ctx.model(),
-                                "stream", true, "status", "ok"))))
+                .doOnComplete(() -> {
+                    Map<String, Object> details = new LinkedHashMap<>();
+                    details.put("model", ctx.model() == null ? "" : ctx.model());
+                    details.put("stream", true);
+                    details.put("status", "ok");
+                    if (usageRef != null && usageRef.get() != null) {
+                        details.put("input_tokens", usageRef.get().inputTokens());
+                        details.put("output_tokens", usageRef.get().outputTokens());
+                    }
+                    traceService.addSpan(traceId, TraceSpan.ok("llm_call",
+                            start[0], System.currentTimeMillis() - start[0], details));
+                })
                 .doOnError(e -> traceService.addSpan(traceId, TraceSpan.error("llm_call",
                         start[0], System.currentTimeMillis() - start[0],
                         Map.of("model", ctx.model() == null ? "" : ctx.model(),
@@ -1060,7 +1079,18 @@ public class AgentOrchestrator {
         Flux<ModelEvent> answer = router.streamWithFallback(ctx.userId(), ctx.model(),
                         buildTurn(ctx, finalMessages), tracker)
                 .onErrorResume(e -> Flux.just(ModelEvent.error(safeMessage(e))));
-        answer = traceLlmStream(traceId, answer, ctx);
+        // R-10：流式 done 事件携带 token 用量 → 记入 llm_call span
+        java.util.concurrent.atomic.AtomicReference<LlmUsage> streamUsage =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        answer = answer.doOnNext(event -> {
+            if ("done".equals(event.type()) && event.data() instanceof Map<?, ?> data) {
+                LlmUsage usage = LlmUsage.fromMap(data);
+                if (usage != null) {
+                    streamUsage.set(usage);
+                }
+            }
+        });
+        answer = traceLlmStream(traceId, answer, ctx, streamUsage);
         if (state.executedCalls().isEmpty()) {
             // R-05：无工具路径直接透传 token；结束前先发引用事件
             return answer.concatMap(event -> {

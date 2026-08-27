@@ -1,10 +1,14 @@
 package com.intelligent.agent.web.domain.analytics;
 
+import com.intelligent.agent.web.infrastructure.observability.AgentRunTrace;
+import com.intelligent.agent.web.infrastructure.observability.TraceSpan;
 import com.intelligent.agent.web.infrastructure.filesystem.JsonFileStore;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -20,9 +24,52 @@ import java.util.Map;
 public class AnalyticsService {
 
     private final JsonFileStore store;
+    /** R-10：成本配置（null = 不核算成本/不限额）。 */
+    private final CostConfig costConfig;
 
     public AnalyticsService(Path dataDir) {
+        this(dataDir, null);
+    }
+
+    public AnalyticsService(Path dataDir, CostConfig costConfig) {
         this.store = new JsonFileStore(dataDir);
+        this.costConfig = costConfig;
+    }
+
+    /** R-10：模型单价配置（每百万 token，单位 CNY）。价格表按模型名精确或包含匹配。 */
+    public record CostConfig(boolean enabled, double monthlyLimitCny,
+                             Map<String, Map<String, Double>> per1mTokens) {
+
+        public CostConfig {
+            per1mTokens = per1mTokens == null ? Map.of() : Map.copyOf(per1mTokens);
+        }
+
+        public record Price(double inputPer1m, double outputPer1m) {
+        }
+
+        /** 按模型名解析单价：精确匹配 → 大小写不敏感包含匹配 → null（本地模型默认免费）。 */
+        public Price resolve(String model) {
+            if (!enabled || model == null || model.isBlank()) {
+                return null;
+            }
+            Map<String, Double> exact = per1mTokens.get(model);
+            if (exact != null) {
+                return priceOf(exact);
+            }
+            String lower = model.toLowerCase();
+            for (Map.Entry<String, Map<String, Double>> entry : per1mTokens.entrySet()) {
+                if (lower.contains(entry.getKey().toLowerCase())) {
+                    return priceOf(entry.getValue());
+                }
+            }
+            return null;
+        }
+
+        private static Price priceOf(Map<String, Double> p) {
+            return new Price(
+                    p.getOrDefault("input", 0.0),
+                    p.getOrDefault("output", 0.0));
+        }
     }
 
     // ── 反馈 ──────────────────────────────────────────────────
@@ -248,6 +295,163 @@ public class AnalyticsService {
         return result;
     }
 
+    // ── R-10 用量/成本台账 ──────────────────────────────────
+
+    /** 从完成的 trace 提取 llm_call span 的 token 用量写入台账。 */
+    public void recordFromTrace(AgentRunTrace trace) {
+        if (trace == null || trace.spans() == null) {
+            return;
+        }
+        for (TraceSpan span : trace.spans()) {
+            if (!"llm_call".equals(span.name())) {
+                continue;
+            }
+            Object in = span.details().get("input_tokens");
+            Object out = span.details().get("output_tokens");
+            long input = in instanceof Number ? ((Number) in).longValue() : 0;
+            long output = out instanceof Number ? ((Number) out).longValue() : 0;
+            if (input <= 0 && output <= 0) {
+                continue;
+            }
+            String model = str(span.details().get("model"));
+            if (model == null || model.isBlank()) {
+                model = trace.model();
+            }
+            recordUsage(trace.userId(), model, trace.channel(), input, output,
+                    Instant.ofEpochMilli(span.startedAt()));
+        }
+    }
+
+    public void recordUsage(String userId, String model, String channel,
+                            long inputTokens, long outputTokens) {
+        recordUsage(userId, model, channel, inputTokens, outputTokens, Instant.now());
+    }
+
+    public void recordUsage(String userId, String model, String channel,
+                            long inputTokens, long outputTokens, Instant at) {
+        if (inputTokens <= 0 && outputTokens <= 0) {
+            return;
+        }
+        List<Map<String, Object>> records = usageRecords();
+        Map<String, Object> record = new LinkedHashMap<>();
+        record.put("user_id", userId == null ? "" : userId);
+        record.put("model", model == null ? "" : model);
+        record.put("channel", channel == null ? "" : channel);
+        record.put("input_tokens", inputTokens);
+        record.put("output_tokens", outputTokens);
+        record.put("created_at", at.toString());
+        records.add(record);
+        saveUsage(records);
+    }
+
+    /** 用量/成本统计：按用户（空 = 全部）+ 月份聚合，含每日趋势与限额余量。 */
+    public Map<String, Object> usageStats(String username, String month) {
+        String monthPrefix = (month == null || month.isBlank())
+                ? LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM"))
+                : month.trim();
+        Map<String, Map<String, Object>> byModel = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> byDay = new LinkedHashMap<>();
+        long totalInput = 0, totalOutput = 0;
+        double totalCost = 0;
+        int calls = 0;
+        for (Map<String, Object> record : usageRecords()) {
+            String user = str(record.get("user_id"));
+            if (username != null && !username.isBlank() && !username.equals(user)) {
+                continue;
+            }
+            String createdAt = str(record.get("created_at"));
+            if (createdAt == null || !createdAt.startsWith(monthPrefix)) {
+                continue;
+            }
+            String model = str(record.getOrDefault("model", "未知"));
+            long input = num(record.get("input_tokens"));
+            long output = num(record.get("output_tokens"));
+            double cost = costOf(model, input, output);
+            totalInput += input;
+            totalOutput += output;
+            totalCost += cost;
+            calls++;
+            accumulate(byModel.computeIfAbsent(model, k -> statEntry()), input, output, cost);
+            String day = createdAt.length() >= 10 ? createdAt.substring(0, 10) : createdAt;
+            accumulate(byDay.computeIfAbsent(day, k -> statEntry()), input, output, cost);
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("success", true);
+        result.put("month", monthPrefix);
+        result.put("calls", calls);
+        result.put("total_input_tokens", totalInput);
+        result.put("total_output_tokens", totalOutput);
+        result.put("total_tokens", totalInput + totalOutput);
+        result.put("total_cost_cny", round2(totalCost));
+        result.put("by_model", byModel);
+        List<Map<String, Object>> daily = new ArrayList<>();
+        List<String> days = new ArrayList<>(byDay.keySet());
+        days.sort(String::compareTo);
+        for (String day : days) {
+            Map<String, Object> point = new LinkedHashMap<>(byDay.get(day));
+            point.put("date", day);
+            daily.add(point);
+        }
+        result.put("daily", daily);
+        if (costConfig != null && costConfig.enabled() && costConfig.monthlyLimitCny() > 0) {
+            result.put("monthly_limit_cny", costConfig.monthlyLimitCny());
+            result.put("remaining_cny", round2(Math.max(0, costConfig.monthlyLimitCny() - totalCost)));
+            result.put("quota_exceeded", totalCost >= costConfig.monthlyLimitCny());
+        } else {
+            result.put("monthly_limit_cny", 0);
+            result.put("remaining_cny", 0);
+            result.put("quota_exceeded", false);
+        }
+        return result;
+    }
+
+    /** 当前月累计成本是否已达月限额（未启用/无限额恒 false）。 */
+    public boolean usageQuotaExceeded(String username) {
+        if (costConfig == null || !costConfig.enabled() || costConfig.monthlyLimitCny() <= 0) {
+            return false;
+        }
+        Map<String, Object> stats = usageStats(username, null);
+        double cost = ((Number) stats.getOrDefault("total_cost_cny", 0)).doubleValue();
+        return cost >= costConfig.monthlyLimitCny();
+    }
+
+    private double costOf(String model, long input, long output) {
+        CostConfig.Price price = costConfig == null ? null : costConfig.resolve(model);
+        if (price == null) {
+            return 0;
+        }
+        return input / 1_000_000.0 * price.inputPer1m()
+                + output / 1_000_000.0 * price.outputPer1m();
+    }
+
+    private static Map<String, Object> statEntry() {
+        Map<String, Object> stat = new LinkedHashMap<>();
+        stat.put("calls", 0);
+        stat.put("input_tokens", 0L);
+        stat.put("output_tokens", 0L);
+        stat.put("cost_cny", 0.0);
+        return stat;
+    }
+
+    private static void accumulate(Map<String, Object> stat, long input, long output, double cost) {
+        stat.put("calls", ((Number) stat.get("calls")).intValue() + 1);
+        stat.put("input_tokens", ((Number) stat.get("input_tokens")).longValue() + input);
+        stat.put("output_tokens", ((Number) stat.get("output_tokens")).longValue() + output);
+        stat.put("cost_cny", round2(((Number) stat.get("cost_cny")).doubleValue() + cost));
+    }
+
+    private static double round2(double value) {
+        return Math.round(value * 100.0) / 100.0;
+    }
+
+    private List<Map<String, Object>> usageRecords() {
+        return recordsAt("analytics", "usage.json");
+    }
+
+    private void saveUsage(List<Map<String, Object>> records) {
+        saveRecords(records, "analytics", "usage.json");
+    }
+
     // ── 存储辅助 ──────────────────────────────────────────────
 
     private List<Map<String, Object>> feedbackRecords(String username) {
@@ -289,6 +493,10 @@ public class AnalyticsService {
 
     private static String str(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private static long num(Object value) {
+        return value instanceof Number ? ((Number) value).longValue() : 0L;
     }
 
     @SuppressWarnings("unchecked")

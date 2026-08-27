@@ -1,4 +1,10 @@
 ai:
+  # R-10 成本/用量：per-1m-tokens 为每百万 token 单价（CNY），本地模型默认免费；
+  # monthly-limit-cny 为月度成本上限（0 = 不限），超限后拒绝新请求。
+  cost:
+    enabled: ${AI_COST_ENABLED:true}
+    monthly-limit-cny: ${AI_COST_MONTHLY_LIMIT_CNY:0}
+    per-1m-tokens: ${AI_COST_PER_1M_TOKENS:{}}
   # 灵魂层目录（SOUL/USER/MEMORY/IDENTITY/HEARTBEAT + 可选 whisper/heart/rules）
   soul:
     dir: ${SOUL_DIR:../../soul}

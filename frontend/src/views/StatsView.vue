@@ -46,6 +46,65 @@
       </div>
     </div>
 
+    <!-- R-10 用量/成本概览 -->
+    <div class="overview-row usage-row" v-if="usage">
+      <div class="ov-card">
+        <div class="ov-val">{{ fmtNumber(usage.total_tokens) }}</div>
+        <div class="ov-label">本月 Tokens</div>
+      </div>
+      <div class="ov-card cost">
+        <div class="ov-val">¥{{ fmtCny(usage.total_cost_cny) }}</div>
+        <div class="ov-label">本月估算成本</div>
+      </div>
+      <div class="ov-card" v-if="usage.monthly_limit_cny > 0">
+        <div class="ov-val">¥{{ fmtCny(usage.monthly_limit_cny) }}</div>
+        <div class="ov-label">月限额</div>
+      </div>
+      <div class="ov-card" v-if="usage.monthly_limit_cny > 0">
+        <div class="ov-val" :class="usage.quota_exceeded ? 'rate-bad' : 'rate-good'">
+          ¥{{ fmtCny(usage.remaining_cny) }}
+        </div>
+        <div class="ov-label">{{ usage.quota_exceeded ? '已超限，新请求被拒' : '剩余额度' }}</div>
+      </div>
+      <div class="ov-card calls">
+        <div class="ov-val">{{ usage.calls }}</div>
+        <div class="ov-label">本月 LLM 调用</div>
+      </div>
+    </div>
+
+    <!-- R-10 用量成本明细 -->
+    <div class="charts-row" v-if="usage">
+      <div class="chart-card">
+        <div class="chart-title"><i class="fas fa-coins" /> 按模型用量/成本（{{ usage.month }}）</div>
+        <div v-if="!Object.keys(usage.by_model || {}).length" class="empty-tip">暂无数据</div>
+        <div v-else class="rank-list">
+          <div v-for="(m, name) in usage.by_model" :key="name" class="rank-item">
+            <span class="rank-name">{{ name }}</span>
+            <div class="rank-bar-wrap">
+              <div class="rank-bar cost-bar"
+                   :style="{ width: rankBarWidth(m.input_tokens + m.output_tokens, maxModelTokens) + '%' }" />
+            </div>
+            <span class="rank-count">{{ fmtNumber(m.input_tokens + m.output_tokens) }} tok</span>
+            <span class="tool-avg">¥{{ fmtCny(m.cost_cny) }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title"><i class="fas fa-chart-line" /> 每日成本趋势</div>
+        <div v-if="!usage.daily?.length" class="empty-tip">暂无数据</div>
+        <div v-else class="bar-chart">
+          <div v-for="d in usage.daily" :key="d.date" class="bar-item">
+            <div class="bar-wrap">
+              <div class="bar cost-bar"
+                   :style="{ height: barHeight(d.cost_cny, maxDailyCost) + '%' }"
+                   :title="`${d.date}: ¥${fmtCny(d.cost_cny)}`" />
+            </div>
+            <div class="bar-label">{{ d.date.slice(5) }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="charts-row">
       <!-- 每日对话趋势 -->
       <div class="chart-card">
@@ -231,7 +290,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { getAnalyticsStats, getAnalyticsRecords, getSkillLogs, getSkillStats, getToolCalls, getToolStats } from '@/services/api'
+import { getAnalyticsStats, getAnalyticsRecords, getSkillLogs, getSkillStats, getToolCalls, getToolStats, getUsageStats } from '@/services/api'
 import { formatISOShort } from '@/utils/date'
 
 
@@ -239,6 +298,7 @@ const authStore    = useAuthStore()
 const username     = computed(() => authStore.username || 'admin')
 const loading      = ref(false)
 const stats        = ref(null)
+const usage        = ref(null)
 const records      = ref([])
 const ratingFilter = ref('')
 
@@ -274,6 +334,21 @@ const maxToolCount = computed(() =>
 const maxSkillCount = computed(() =>
   Math.max(1, ...Object.values(stats.value?.skill_usage || {0: 0}))
 )
+const maxModelTokens = computed(() => {
+  const vals = Object.values(usage.value?.by_model || {}).map(m => (m.input_tokens || 0) + (m.output_tokens || 0))
+  return vals.length ? Math.max(1, ...vals) : 1
+})
+const maxDailyCost = computed(() =>
+  Math.max(0.01, ...(usage.value?.daily?.map(d => d.cost_cny) || [0]))
+)
+
+const fmtNumber = (v) => {
+  const n = Number(v || 0)
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M'
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K'
+  return String(n)
+}
+const fmtCny = (v) => Number(v || 0).toFixed(2)
 
 const barHeight      = (val, max) => Math.max(8, Math.round(val / max * 100))
 const rankBarWidth   = (val, max) => Math.max(4, Math.round(val / max * 100))
@@ -315,6 +390,11 @@ const loadStats = async () => {
   if (res?.success) stats.value = res.stats
 }
 
+const loadUsage = async () => {
+  const res = await getUsageStats(username.value)
+  if (res?.success) usage.value = res
+}
+
 const loadRecords = async () => {
   const res = await getAnalyticsRecords(
     username.value, 50, ratingFilter.value || null
@@ -325,7 +405,7 @@ const loadRecords = async () => {
 const load = async () => {
   loading.value = true
   try {
-    await Promise.all([loadStats(), loadRecords(), loadSkillData(), loadToolData()])
+    await Promise.all([loadStats(), loadRecords(), loadSkillData(), loadToolData(), loadUsage()])
   } finally {
     loading.value = false
   }
@@ -421,6 +501,10 @@ onMounted(load)
 .ov-card.rate .ov-val.rate-warn { color: #f57c00; }
 .ov-card.rate .ov-val.rate-bad  { color: #e53935; }
 .ov-card.time    .ov-val { color: #f57c00; }
+.ov-card.cost    .ov-val { color: #e53935; }
+.ov-card.calls   .ov-val { color: #5c6bc0; }
+.ov-val.rate-good { color: #43a047; }
+.ov-val.rate-bad  { color: #e53935; }
 
 /* ── 图表行 ── */
 .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -464,6 +548,7 @@ onMounted(load)
 .rank-bar-wrap { flex: 1; height: 6px; background: #f0f0f0; border-radius: 3px; overflow: hidden; }
 .rank-bar { height: 100%; background: var(--color-primary); border-radius: 3px; transition: width 0.4s; }
 .rank-bar.skill-bar { background: #f57c00; }
+.rank-bar.cost-bar { background: #f59e0b; }
 .rank-count { font-size: 0.78rem; color: #888; min-width: 24px; text-align: right; }
 
 /* 记录列表 */

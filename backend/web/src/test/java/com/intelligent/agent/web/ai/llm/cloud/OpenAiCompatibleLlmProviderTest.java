@@ -98,7 +98,7 @@ class OpenAiCompatibleLlmProviderTest {
                         {"choices":[{"message":{"role":"assistant","content":null,"tool_calls":[
                           {"id":"call_1","type":"function","function":{"name":"calculator","arguments":"{\\"expression\\":\\"2*3\\"}"}},
                           {"id":"call_2","type":"function","function":{"name":"web_search","arguments":{"query":"java"}}}
-                        ]}}]}
+                        ]}}],"usage":{"prompt_tokens":210,"completion_tokens":45}}
                         """)
                 .setHeader("Content-Type", "application/json"));
 
@@ -110,6 +110,9 @@ class OpenAiCompatibleLlmProviderTest {
                     assertThat(resp.toolCalls()).containsExactly(
                             ToolCall.of("calculator", Map.of("expression", "2*3")),
                             ToolCall.of("web_search", Map.of("query", "java")));
+                    assertThat(resp.usage()).isNotNull();
+                    assertThat(resp.usage().inputTokens()).isEqualTo(210);
+                    assertThat(resp.usage().outputTokens()).isEqualTo(45);
                 })
                 .verifyComplete();
     }

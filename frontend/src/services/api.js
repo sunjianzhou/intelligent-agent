@@ -200,6 +200,10 @@ export const getToolCalls  = (limit = 50, toolName = null) => {
   return request(`${BASE}/analytics/tool-calls?${params}`)
 }
 export const getToolStats = () => request(`${BASE}/analytics/tool-stats`)
+export const getUsageStats = (username, month) =>
+  request(`${BASE}/analytics/usage/${username}${month ? `?month=${month}` : ''}`)
+export const getUsageQuota = (username) =>
+  request(`${BASE}/analytics/usage-quota/${username}`)
 
 // ── Projects CRUD ─────────────────────────────────────────────────────────────
 

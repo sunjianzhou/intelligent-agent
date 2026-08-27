@@ -6,6 +6,7 @@ import com.intelligent.agent.web.ai.llm.AbstractHttpLlmProvider;
 import com.intelligent.agent.web.ai.llm.ChatMessage;
 import com.intelligent.agent.web.ai.llm.ChatTurn;
 import com.intelligent.agent.web.ai.llm.LlmResponse;
+import com.intelligent.agent.web.ai.llm.LlmUsage;
 import com.intelligent.agent.web.ai.llm.LlmProviderException;
 import com.intelligent.agent.web.ai.llm.ModelEvent;
 import com.intelligent.agent.web.ai.tool.ToolCall;
@@ -75,7 +76,7 @@ public class OpenAiCompatibleLlmProvider extends AbstractHttpLlmProvider {
                 payload = payload.substring(5).trim();
             }
             if (payload.equals("[DONE]")) {
-                sink.next(ModelEvent.done(Map.of()));
+                sink.next(ModelEvent.done(Map.of())); // 兼容不含 usage 的流（usage 分片已先行发出）
                 return true;
             }
             if (payload.isEmpty() || !payload.startsWith("{")) {
@@ -86,6 +87,16 @@ public class OpenAiCompatibleLlmProvider extends AbstractHttpLlmProvider {
                 String token = node.path("choices").path(0).path("delta").path("content").asText("");
                 if (!token.isEmpty()) {
                     sink.next(ModelEvent.token(token));
+                }
+                // R-10：stream_options.include_usage 时末片携带 usage → done 事件带 token 用量
+                JsonNode usageNode = node.path("usage");
+                if (usageNode.isObject() && (usageNode.path("prompt_tokens").asLong(0) > 0
+                        || usageNode.path("completion_tokens").asLong(0) > 0)) {
+                    Map<String, Object> usage = new LinkedHashMap<>();
+                    usage.put("input_tokens", usageNode.path("prompt_tokens").asLong(0));
+                    usage.put("output_tokens", usageNode.path("completion_tokens").asLong(0));
+                    sink.next(ModelEvent.done(usage));
+                    return true;
                 }
                 return false;
             } catch (Exception e) {
@@ -111,7 +122,8 @@ public class OpenAiCompatibleLlmProvider extends AbstractHttpLlmProvider {
     public Mono<LlmResponse> completeWithTools(ChatTurn turn, List<ToolDefinition> tools) {
         return completeBody(chatRequest(turn, false, tools)).map(body -> {
             try {
-                JsonNode message = MAPPER.readTree(body).path("choices").path(0).path("message");
+                JsonNode root = MAPPER.readTree(body);
+                JsonNode message = root.path("choices").path(0).path("message");
                 String content = message.path("content").asText("").trim();
                 List<ToolCall> calls = new ArrayList<>();
                 JsonNode toolCalls = message.path("tool_calls");
@@ -125,7 +137,12 @@ public class OpenAiCompatibleLlmProvider extends AbstractHttpLlmProvider {
                                 parseArguments(tc.path("function").path("arguments"))));
                     }
                 }
-                return new LlmResponse(content, calls);
+                JsonNode usageNode = root.path("usage");
+                LlmUsage usage = usageNode.isObject()
+                        ? new LlmUsage(usageNode.path("prompt_tokens").asLong(0),
+                                usageNode.path("completion_tokens").asLong(0))
+                        : null;
+                return new LlmResponse(content, calls, usage);
             } catch (Exception e) {
                 throw new LlmProviderException(redact(e.getMessage()), e);
             }
@@ -144,6 +161,10 @@ public class OpenAiCompatibleLlmProvider extends AbstractHttpLlmProvider {
             payload.put("temperature", number(turn.options(), "temperature", 0.7));
             payload.put("max_tokens", integer(turn.options(), "max_tokens", 2048));
             payload.put("stream", stream);
+            if (stream) {
+                // R-10：请求流式用量，末片 usage 用于成本核算
+                payload.put("stream_options", Map.of("include_usage", true));
+            }
             if (tools != null && !tools.isEmpty()) {
                 payload.put("tools", ToolSchemas.toPayload(tools));
             }
