@@ -65,6 +65,23 @@ public class ConversationsProxyController {
         return ok(conversationService.clearAllConversations(UserContext.userId(req)));
     }
 
+    /** R-12：会话重命名（服务端持久化）。 */
+    @PutMapping("/api/conversations/{sessionId}/rename")
+    public ResponseEntity<Map<String, Object>> renameConversation(
+            @PathVariable String sessionId, @RequestBody Map<String, Object> body,
+            HttpServletRequest req) {
+        return guarded(() -> conversationService.renameConversation(
+                UserContext.userId(req), sessionId, str(body == null ? null : body.get("title"))));
+    }
+
+    /** R-12：导出会话 JSON（跨设备恢复用）。 */
+    @GetMapping("/api/conversations/{sessionId}/export")
+    public ResponseEntity<Map<String, Object>> exportConversation(
+            @PathVariable String sessionId, HttpServletRequest req) {
+        return guarded(() -> conversationService.exportConversation(
+                UserContext.userId(req), sessionId));
+    }
+
     @PostMapping("/api/conversations/append")
     public ResponseEntity<Map<String, Object>> appendConversation(
             @RequestBody Map<String, Object> body, HttpServletRequest req) {

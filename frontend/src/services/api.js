@@ -245,6 +245,14 @@ export const listConversations   = () => request(`${BASE}/conversations`)
 export const getConversation     = (id) => request(`${BASE}/conversations/${encodeURIComponent(id)}`)
 export const deleteConversation  = (id) => request(`${BASE}/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' })
 export const clearConversations  = () => request(`${BASE}/conversations`, { method: 'DELETE' })
+export const renameConversation  = (id, title) =>
+  request(`${BASE}/conversations/${encodeURIComponent(id)}/rename`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  })
+export const exportConversation  = (id) =>
+  request(`${BASE}/conversations/${encodeURIComponent(id)}/export`)
 export const branchConversation  = (messages, parentSessionId) =>
   request(`${BASE}/conversations/branch`, {
     method:  'POST',

@@ -19,14 +19,34 @@
         >
           <div class="history-item-top">
             <span class="history-item-date">{{ formatHistoryDate(sess.updated_at) }}</span>
-            <button class="history-item-del" title="删除" @click.stop="emit('delete', sess.session_id)">
-              <i class="fas fa-trash-alt" />
+            <span class="history-item-actions">
+              <button class="history-item-act" title="重命名" @click.stop="startRename(sess)">
+                <i class="fas fa-pen" />
+              </button>
+              <button class="history-item-act" title="导出 JSON" @click.stop="emit('export', sess.session_id)">
+                <i class="fas fa-download" />
+              </button>
+              <button class="history-item-del" title="删除" @click.stop="emit('delete', sess.session_id)">
+                <i class="fas fa-trash-alt" />
+              </button>
+            </span>
+          </div>
+          <div v-if="editingId === sess.session_id" class="rename-box" @click.stop>
+            <input
+              v-model="renameValue"
+              class="rename-input"
+              maxlength="100"
+              @keydown.enter="submitRename(sess)"
+              @keydown.esc="editingId = null"
+            />
+            <button class="rename-save" title="保存" @click.stop="submitRename(sess)">
+              <i class="fas fa-check" />
             </button>
           </div>
-          <div class="history-item-preview">
+          <div v-else class="history-item-preview">
             <span v-if="sess.parent_session_id" class="branch-badge">
               <i class="fas fa-code-branch" /> 分支
-            </span>{{ sess.preview || '新对话' }}
+            </span>{{ sess.title || sess.preview || '新对话' }}
           </div>
           <div class="history-item-count">{{ sess.message_count }} 条消息</div>
         </div>
@@ -39,12 +59,32 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
+
 defineProps({
   show: Boolean,
   loading: Boolean,
   sessions: Array,
 })
-const emit = defineEmits(['close', 'new', 'load', 'delete'])
+const emit = defineEmits(['close', 'new', 'load', 'delete', 'rename', 'export'])
+
+const editingId = ref(null)
+const renameValue = ref('')
+
+const startRename = (sess) => {
+  editingId.value = sess.session_id
+  renameValue.value = sess.title || sess.preview || ''
+}
+
+const submitRename = (sess) => {
+  const title = renameValue.value.trim()
+  if (!title) {
+    editingId.value = null
+    return
+  }
+  emit('rename', sess.session_id, title)
+  editingId.value = null
+}
 
 const formatHistoryDate = (iso) => {
   if (!iso) return ''
@@ -136,6 +176,23 @@ const formatHistoryDate = (iso) => {
   line-height: 1;
 }
 .history-item-del:hover { color: #e53935; background: #fce4e4; }
+.history-item-actions { display: inline-flex; gap: 2px; }
+.history-item-act {
+  background: none; border: none; color: #bbb;
+  cursor: pointer; padding: 2px 5px; font-size: 0.72rem; border-radius: 4px;
+  transition: color 0.15s, background 0.15s; line-height: 1;
+}
+.history-item-act:hover { color: var(--color-primary); background: #eef1ff; }
+.rename-box { display: flex; gap: 4px; margin: 2px 0; }
+.rename-input {
+  flex: 1; min-width: 0; border: 1px solid var(--color-border); border-radius: 4px;
+  padding: 3px 6px; font-size: 0.8rem; outline: none; background: var(--color-surface);
+}
+.rename-input:focus { border-color: var(--color-primary); }
+.rename-save {
+  background: var(--color-primary); color: #fff; border: none; border-radius: 4px;
+  padding: 0 7px; cursor: pointer; font-size: 0.72rem;
+}
 .history-item-preview {
   font-size: 0.84rem; color: var(--color-text-secondary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

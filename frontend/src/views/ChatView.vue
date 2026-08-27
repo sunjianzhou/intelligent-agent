@@ -108,6 +108,8 @@
       @new="onNewFromHistory"
       @load="loadSession"
       @delete="deleteSession"
+      @rename="renameSession"
+      @export="exportSession"
     />
 
     <!-- 配置条：角色 + 模型 -->
@@ -249,6 +251,7 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useProjectStore }      from '@/stores/project'
 import {
   listConversations, getConversation, deleteConversation,
+  renameConversation, exportConversation,
   branchConversation as apiBranchConversation,
   retractMessages as apiRetractMessages,
 } from '@/services/api'
@@ -730,6 +733,43 @@ const deleteSession = async (sessionId) => {
     } else {
       handleNewConversation()
     }
+  }
+}
+
+const renameSession = async (sessionId, title) => {
+  try {
+    const res = await renameConversation(sessionId, title)
+    if (res?.success) {
+      const sess = sessions.value.find(s => s.session_id === sessionId)
+      if (sess) sess.title = title
+      ElMessage({ message: '会话已重命名', type: 'success', duration: 1500 })
+    } else {
+      ElMessage({ message: res?.message || '重命名失败', type: 'error', duration: 2000 })
+    }
+  } catch {
+    ElMessage({ message: '重命名失败，请重试', type: 'error', duration: 2000 })
+  }
+}
+
+const exportSession = async (sessionId) => {
+  try {
+    const res = await exportConversation(sessionId)
+    if (!res?.success || !res.session) {
+      ElMessage({ message: res?.message || '导出失败', type: 'error', duration: 2000 })
+      return
+    }
+    const blob = new Blob([JSON.stringify(res.session, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = res.filename || `${sessionId}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    ElMessage({ message: '会话已导出为 JSON', type: 'success', duration: 1500 })
+  } catch {
+    ElMessage({ message: '导出失败，请重试', type: 'error', duration: 2000 })
   }
 }
 

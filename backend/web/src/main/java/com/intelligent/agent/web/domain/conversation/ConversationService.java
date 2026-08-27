@@ -54,6 +54,10 @@ public class ConversationService {
             entry.put("created_at", data.getOrDefault("created_at", ""));
             entry.put("updated_at", data.getOrDefault("updated_at", ""));
             entry.put("message_count", list(data.get("messages")).size());
+            // R-12：服务端标题（重命名后优先，未命名回退首条用户消息预览）
+            Object title = data.get("title");
+            entry.put("title", title == null || String.valueOf(title).isBlank()
+                    ? preview(data) : String.valueOf(title));
             entry.put("preview", preview(data));
             if (data.get("parent_session_id") != null) {
                 entry.put("parent_session_id", data.get("parent_session_id"));
@@ -82,6 +86,46 @@ public class ConversationService {
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("success", true);
+        result.put("session", session);
+        return result;
+    }
+
+    /** R-12：服务端会话重命名（持久化 title 字段，列表/详情可见）。 */
+    public Map<String, Object> renameConversation(String userId, String sessionId, String title) {
+        synchronized (lockFor(userId)) {
+            Map<String, Object> session = load(userId, sessionId);
+            if (session == null) {
+                throw new NotFoundException("会话不存在");
+            }
+            String clean = title == null ? "" : title.trim();
+            if (clean.isBlank()) {
+                throw new InvalidRequestException("标题不能为空");
+            }
+            if (clean.length() > 100) {
+                clean = clean.substring(0, 100);
+            }
+            session.put("title", clean);
+            session.put("updated_at", Instant.now().toString());
+            store.writeCompact(new String[]{"conversations", userId, sessionId + ".json"}, session);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("success", true);
+            result.put("session_id", sessionId);
+            result.put("title", clean);
+            return result;
+        }
+    }
+
+    /** R-12：导出会话 JSON（含全部消息与元数据，跨设备可恢复）。 */
+    public Map<String, Object> exportConversation(String userId, String sessionId) {
+        Map<String, Object> session = load(userId, sessionId);
+        if (session == null) {
+            throw new NotFoundException("会话不存在");
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("success", true);
+        result.put("session_id", sessionId);
+        result.put("exported_at", Instant.now().toString());
+        result.put("filename", sessionId + ".json");
         result.put("session", session);
         return result;
     }
