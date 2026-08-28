@@ -1,6 +1,10 @@
 package com.intelligent.agent.web.feishu;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.intelligent.agent.web.im.ChannelMessage;
+import com.intelligent.agent.web.im.ChannelType;
+import com.intelligent.agent.web.integration.DeliveryResult;
+import com.intelligent.agent.web.integration.telegram.TelegramChannelClient;
 import com.intelligent.agent.web.wecom.WeComConfig;
 import com.intelligent.agent.web.wecom.WeComMessageSender;
 import org.junit.jupiter.api.Tag;
@@ -89,6 +93,26 @@ class ImDeliveryVerifyTest {
         assertThat(messageId)
                 .as("企微 message/send 应返回 msgid（真实送达成功）")
                 .isNotBlank();
+    }
+
+    @Test
+    void telegramTextReachesHeartbeatReceiver() {
+        String token = env("TELEGRAM_BOT_TOKEN");
+        String receiver = env("TELEGRAM_HEARTBEAT_RECEIVER_ID");
+        assumeTrue(!token.isEmpty() && !receiver.isEmpty(),
+                "需要 TELEGRAM_BOT_TOKEN / TELEGRAM_HEARTBEAT_RECEIVER_ID");
+
+        TelegramChannelClient client = new TelegramChannelClient(token, true);
+        ChannelMessage message = new ChannelMessage(
+                ChannelType.TELEGRAM, receiver, MARKER + " Telegram 文本消息真实送达验证，请查收。",
+                "", "", "text", receiver, "p2p", true, "pending", null);
+
+        DeliveryResult result = client.send(message);
+
+        assertThat(result.accepted())
+                .as("Telegram sendMessage 应返回 message_id（真实送达成功）")
+                .isTrue();
+        assertThat(result.messageId()).isNotBlank();
     }
 
     private static String env(String key) {

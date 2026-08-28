@@ -277,6 +277,7 @@ export const switchImageModel       = (model) =>
     body: JSON.stringify({ model }),
   })
 export const listImageLoras = () => request(`${BASE}/image/loras`)
+export const listImageControlNets = () => request(`${BASE}/image/controlnets`)
 export const getComfyuiWorkflow = () => request(`${BASE}/image/comfyui-workflow`)
 export const saveComfyuiWorkflow = (workflow) =>
   request(`${BASE}/image/comfyui-workflow`, {

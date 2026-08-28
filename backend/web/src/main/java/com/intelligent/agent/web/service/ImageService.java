@@ -51,6 +51,8 @@ public class ImageService {
     private volatile String activePromptId;
     private volatile ComfyUiClient.ProgressState currentProgress;
     private volatile long progressStartedAt;
+    /** 生成中预览图（ComfyUI /ws 二进制帧 → base64；进度端点返回，下次生成前清空）。 */
+    private volatile String previewBase64;
 
     public ImageService(ComfyUiClient comfyUiClient) {
         this.comfyUiClient = comfyUiClient;
@@ -127,17 +129,60 @@ public class ImageService {
                                         String modelOverride, String sampler,
                                         List<ComfyUiClient.Lora> loras,
                                         String initImageBase64, double denoisingStrength) {
+        return generate(prompt, negativePrompt, width, height, steps, cfg, seed,
+                modelOverride, sampler, loras, initImageBase64, denoisingStrength,
+                null, 1.0, null, null);
+    }
+
+    /**
+     * 生成入口（ControlNet / 局部重绘 inpainting 预设）：
+     * controlNetName + controlImageBase64 非空时对 SD1.5/SDXL 模板注入 ControlNetApply 链；
+     * maskImageBase64 非空时走 LoadImageMask + SetLatentNoiseMask 局部重绘。
+     * 生成过程中 ComfyUI /ws 的预览帧实时写入 previewBase64，进度端点随快照返回。
+     */
+    public Map<String, Object> generate(String prompt, String negativePrompt, int width, int height,
+                                        int steps, double cfg, int seed,
+                                        String modelOverride, String sampler,
+                                        List<ComfyUiClient.Lora> loras,
+                                        String initImageBase64, double denoisingStrength,
+                                        String controlNetName, double controlNetStrength,
+                                        String controlImageBase64, String maskImageBase64) {
         try {
             String effectiveModel = (modelOverride == null || modelOverride.isBlank())
                     ? (model == null || model.isBlank() ? "model.safetensors" : model)
                     : modelOverride;
             String workflowKind = "sd15";
             boolean img2img = initImageBase64 != null && !initImageBase64.isBlank();
+            boolean controlNet = controlNetName != null && !controlNetName.isBlank()
+                    && controlImageBase64 != null && !controlImageBase64.isBlank();
+            boolean inpainting = maskImageBase64 != null && !maskImageBase64.isBlank();
             String initImageName = null;
             if (img2img) {
                 initImageName = uploadInitImage(initImageBase64);
                 if (initImageName == null) {
                     return Map.of("success", false, "message", "底图上传失败或 base64 格式错误");
+                }
+            }
+            if (controlNet || inpainting) {
+                ComfyUiClient.ModelKind kind = ComfyUiClient.ModelKind.detect(effectiveModel);
+                if (kind != ComfyUiClient.ModelKind.SD15
+                        && kind != ComfyUiClient.ModelKind.SDXL) {
+                    return Map.of("success", false,
+                            "message", "ControlNet / 局部重绘预设目前仅支持 SD1.5/SDXL 模型模板");
+                }
+            }
+            String controlImageName = null;
+            if (controlNet) {
+                controlImageName = uploadInitImage(controlImageBase64, "control_");
+                if (controlImageName == null) {
+                    return Map.of("success", false, "message", "ControlNet 参考图上传失败");
+                }
+            }
+            String maskImageName = null;
+            if (inpainting) {
+                maskImageName = uploadInitImage(maskImageBase64, "mask_");
+                if (maskImageName == null) {
+                    return Map.of("success", false, "message", "蒙版图上传失败");
                 }
             }
             Map<String, Object> workflow;
@@ -174,14 +219,20 @@ public class ImageService {
                     }
                     case SDXL -> {
                         workflowKind = "sdxl";
-                        workflow = ComfyUiClient.sdxlTxt2ImgWorkflow(
+                        workflow = ComfyUiClient.sdControlNetWorkflow(
                                 prompt, negativePrompt, effectiveModel, width, height,
-                                steps, cfg, seed, sampler, loras, initImageName, denoisingStrength);
+                                steps, cfg, seed, sampler, loras, true,
+                                initImageName, denoisingStrength,
+                                controlNetName, controlNetStrength, controlImageName,
+                                maskImageName);
                     }
                     default -> {
-                        workflow = ComfyUiClient.txt2ImgWorkflow(
+                        workflow = ComfyUiClient.sdControlNetWorkflow(
                                 prompt, negativePrompt, effectiveModel, width, height,
-                                steps, cfg, seed, sampler, loras, initImageName, denoisingStrength);
+                                steps, cfg, seed, sampler, loras, false,
+                                initImageName, denoisingStrength,
+                                controlNetName, controlNetStrength, controlImageName,
+                                maskImageName);
                     }
                 }
             }
@@ -189,9 +240,12 @@ public class ImageService {
             String imageFile;
             activePromptId = promptId;
             currentProgress = new ComfyUiClient.ProgressState(0.0, 0, 0, "queued");
+            previewBase64 = null;
             progressStartedAt = System.currentTimeMillis();
             AutoCloseable listener = comfyUiClient.startProgress(promptId,
-                    state -> currentProgress = state);
+                    state -> currentProgress = state,
+                    bytes -> previewBase64 = java.util.Base64.getEncoder()
+                            .encodeToString(bytes));
             try {
                 imageFile = pollForImage(promptId);
             } finally {
@@ -216,6 +270,12 @@ public class ImageService {
             if (img2img) {
                 result.put("mode", "img2img");
             }
+            if (inpainting) {
+                result.put("mode", "inpaint");
+            }
+            if (controlNet) {
+                result.put("mode", "controlnet");
+            }
             return result;
         } catch (Exception e) {
             log.error("图片生成失败: {}", e.getMessage());
@@ -225,6 +285,10 @@ public class ImageService {
 
     /** 上传底图（base64 → ComfyUI /upload/image），失败返回 null。 */
     private String uploadInitImage(String base64) {
+        return uploadInitImage(base64, "init_");
+    }
+
+    private String uploadInitImage(String base64, String prefix) {
         try {
             String raw = base64.contains(",") ? base64.substring(base64.indexOf(',') + 1) : base64;
             byte[] bytes = java.util.Base64.getDecoder().decode(raw.trim());
@@ -232,7 +296,7 @@ public class ImageService {
                 log.warn("底图超过 10MB 上限: {} bytes", bytes.length);
                 return null;
             }
-            String name = "init_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10)
+            String name = prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 10)
                     + ".png";
             return comfyUiClient.uploadImage(bytes, name);
         } catch (IllegalArgumentException e) {
@@ -295,6 +359,17 @@ public class ImageService {
         result.put("provider", provider);
         result.put("loras", loras);
         result.put("count", loras.size());
+        return result;
+    }
+
+    /** 可用 ControlNet 模型列表（/object_info 动态发现）。 */
+    public Map<String, Object> listControlNets() {
+        List<String> controlNets = comfyUiClient.listControlNets();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("success", true);
+        result.put("provider", provider);
+        result.put("controlnets", controlNets);
+        result.put("count", controlNets.size());
         return result;
     }
 
@@ -405,6 +480,9 @@ public class ImageService {
         result.put("value", state.value());
         result.put("max", state.max());
         result.put("status", state.status());
+        if (previewBase64 != null && !previewBase64.isBlank()) {
+            result.put("preview_base64", previewBase64);
+        }
         double p = state.progress();
         long elapsed = System.currentTimeMillis() - progressStartedAt;
         double eta = p <= 0.01 ? 0.0 : Math.max(0.0, elapsed * (1.0 - p) / p / 1000.0);

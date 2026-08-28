@@ -26,6 +26,8 @@ import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Duration;
 import java.nio.ByteBuffer;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 
 /**
  * ComfyUI 集成客户端（Plan 2 / Task 5）：
@@ -198,6 +200,19 @@ public class ComfyUiClient {
         }
     }
 
+    /** ComfyUI 可用 ControlNet 模型（/object_info 解析 ControlNetLoader.control_net_name）。 */
+    public List<String> listControlNets() {
+        try {
+            Set<String> controlNets = new LinkedHashSet<>();
+            collectLoaderNames(getJson("object_info"), "ControlNetLoader",
+                    "control_net_name", controlNets);
+            return new ArrayList<>(controlNets);
+        } catch (Exception e) {
+            log.warn("ComfyUI ControlNet 列表查询失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
     /** ComfyUI 可用 VAE 文件（/object_info 解析 VAELoader.vae_name）。 */
     public List<String> listVaes() {
         try {
@@ -360,6 +375,27 @@ public class ComfyUiClient {
                                                   int steps, double cfg, int seed,
                                                   String sampler, List<Lora> loras, boolean sdxl,
                                                   String initImageName, double denoise) {
+        return sdControlNetWorkflow(prompt, negativePrompt, model, width, height,
+                steps, cfg, seed, sampler, loras, sdxl, initImageName, denoise,
+                null, 1.0, null, null);
+    }
+
+    /**
+     * SD1.5/SDXL 工作流模板（ControlNet + 局部重绘 inpainting 预设，R-08 后续）：
+     * controlNetName + controlImageName 非空时插入 ControlNetLoader → ControlNetApply 链
+     * （conditioning 前置，强度可调）；maskImageName 非空时走
+     * LoadImage + LoadImageMask + VAEEncode + SetLatentNoiseMask 局部重绘路径。
+     */
+    public static Map<String, Object> sdControlNetWorkflow(String prompt, String negativePrompt,
+                                                           String model, int width, int height,
+                                                           int steps, double cfg, int seed,
+                                                           String sampler, List<Lora> loras,
+                                                           boolean sdxl,
+                                                           String initImageName, double denoise,
+                                                           String controlNetName,
+                                                           double controlNetStrength,
+                                                           String controlImageName,
+                                                           String maskImageName) {
         Map<String, Object> graph = new LinkedHashMap<>();
         graph.put("4", node("CheckpointLoaderSimple", Map.of("ckpt_name", model)));
         String modelRef = "4";
@@ -383,6 +419,20 @@ public class ComfyUiClient {
                 "text", negativePrompt == null || negativePrompt.isBlank()
                         ? "lowres, bad anatomy" : negativePrompt,
                 "clip", List.of(clipRef, 1))));
+        String positiveRef = "6";
+        if (controlNetName != null && !controlNetName.isBlank()
+                && controlImageName != null && !controlImageName.isBlank()) {
+            graph.put("cn_loader", node("ControlNetLoader", Map.of(
+                    "control_net_name", controlNetName)));
+            graph.put("cn_img", node("LoadImage", Map.of("image", controlImageName)));
+            graph.put("cn_apply", node("ControlNetApply", Map.of(
+                    "conditioning", List.of("6", 0),
+                    "control_net", List.of("cn_loader", 0),
+                    "image", List.of("cn_img", 0),
+                    "strength", Math.max(0.0, Math.min(2.0, controlNetStrength <= 0 ? 1.0
+                            : controlNetStrength)))));
+            positiveRef = "cn_apply";
+        }
         String negativeRef = "7";
         if (sdxl) {
             graph.put("10", node("CLIPSetLastLayer", Map.of(
@@ -395,7 +445,20 @@ public class ComfyUiClient {
         kInputs.put("cfg", cfg);
         kInputs.put("sampler_name", sampler == null || sampler.isBlank() ? "euler" : sampler);
         kInputs.put("scheduler", sdxl ? "karras" : "normal");
-        if (initImageName != null && !initImageName.isBlank()) {
+        if (maskImageName != null && !maskImageName.isBlank()
+                && initImageName != null && !initImageName.isBlank()) {
+            // 局部重绘：底图 + 蒙版 → VAEEncode → SetLatentNoiseMask（标准 checkpoint 即可）
+            graph.put("load_init", node("LoadImage", Map.of("image", initImageName)));
+            graph.put("load_mask", node("LoadImageMask", Map.of(
+                    "image", maskImageName, "channel", "alpha")));
+            graph.put("vae_encode", node("VAEEncode", Map.of(
+                    "pixels", List.of("load_init", 0), "vae", List.of("4", 2))));
+            graph.put("noise_mask", node("SetLatentNoiseMask", Map.of(
+                    "samples", List.of("vae_encode", 0),
+                    "mask", List.of("load_mask", 0))));
+            kInputs.put("denoise", denoise <= 0 ? 0.75 : denoise);
+            kInputs.put("latent_image", List.of("noise_mask", 0));
+        } else if (initImageName != null && !initImageName.isBlank()) {
             graph.put("load_init", node("LoadImage", Map.of("image", initImageName)));
             graph.put("vae_encode", node("VAEEncode", Map.of(
                     "pixels", List.of("load_init", 0), "vae", List.of("4", 2))));
@@ -408,7 +471,7 @@ public class ComfyUiClient {
             kInputs.put("latent_image", List.of("5", 0));
         }
         kInputs.put("model", List.of(modelRef, 0));
-        kInputs.put("positive", List.of("6", 0));
+        kInputs.put("positive", List.of(positiveRef, 0));
         kInputs.put("negative", List.of(negativeRef, 0));
         graph.put("3", node("KSampler", kInputs));
         graph.put("8", node("VAEDecode", Map.of(
@@ -599,8 +662,18 @@ public class ComfyUiClient {
     public record ProgressState(double progress, int value, int max, String status) {
     }
 
+    /** /ws 二进制预览帧解析结果（ComfyUI 帧：4 字节头长 + JSON 头 + 图片字节）。 */
+    public record PreviewFrame(String type, String promptId, byte[] image) {
+    }
+
     /** 订阅 ComfyUI /ws 实时进度事件；返回 closeable（失败时静默降级为轮询，不影响生成）。 */
     public AutoCloseable startProgress(String promptId, Consumer<ProgressState> listener) {
+        return startProgress(promptId, listener, null);
+    }
+
+    /** 订阅 ComfyUI /ws 实时进度 + 生成中预览图（PNG 字节，可为 null）。 */
+    public AutoCloseable startProgress(String promptId, Consumer<ProgressState> listener,
+                                       Consumer<byte[]> previewListener) {
         if (!enabled || !wsProgressEnabled || promptId == null || listener == null) {
             return () -> { };
         }
@@ -608,7 +681,8 @@ public class ComfyUiClient {
             String wsUrl = baseUrl.replaceFirst("^http", "ws") + "ws?clientId=" + clientId;
             AtomicReference<WebSocket> wsRef = new AtomicReference<>();
             CompletableFuture<WebSocket> future = wsHttpClient.newWebSocketBuilder()
-                    .buildAsync(URI.create(wsUrl), new ProgressWebSocket(promptId, listener));
+                    .buildAsync(URI.create(wsUrl),
+                            new ProgressWebSocket(promptId, listener, previewListener));
             future.thenAccept(wsRef::set);
             future.exceptionally(ex -> {
                 log.debug("ComfyUI /ws 连接失败（降级轮询）: {}", ex.getMessage());
@@ -626,16 +700,54 @@ public class ComfyUiClient {
         }
     }
 
+    /**
+     * 解析 ComfyUI /ws 二进制预览帧；非法输入返回 null。
+     * 帧格式：int32 头长度 + UTF-8 JSON 头（{type:"preview", data:{prompt_id,...}}）+ PNG 字节。
+     */
+    public static PreviewFrame parsePreviewFrame(byte[] payload) {
+        if (payload == null || payload.length < 4) {
+            return null;
+        }
+        ByteBuffer buf = ByteBuffer.wrap(payload);
+        int headerLen = buf.getInt();
+        if (headerLen <= 0 || headerLen > payload.length - 4) {
+            return null;
+        }
+        byte[] headerBytes = new byte[headerLen];
+        buf.get(headerBytes);
+        byte[] imageBytes = new byte[buf.remaining()];
+        buf.get(imageBytes);
+        try {
+            Map<?, ?> header = new ObjectMapper().readValue(
+                    new String(headerBytes, StandardCharsets.UTF_8), Map.class);
+            String type = String.valueOf(header.get("type"));
+            String promptId = "";
+            Object data = header.get("data");
+            if (data instanceof Map<?, ?> d) {
+                Object pid = d.get("prompt_id");
+                promptId = pid == null ? "" : String.valueOf(pid);
+            }
+            return new PreviewFrame(type, promptId, imageBytes);
+        } catch (Exception e) {
+            log.debug("ComfyUI /ws 预览帧头解析失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
     /** ComfyUI /ws 事件监听：progress 数值 + executing(node=null)/execution_* 完成信号。 */
     private final class ProgressWebSocket implements WebSocket.Listener {
 
         private final String promptId;
         private final Consumer<ProgressState> listener;
+        private final Consumer<byte[]> previewListener;
         private final StringBuilder textBuffer = new StringBuilder();
+        private final ByteArrayOutputStream binaryBuffer = new ByteArrayOutputStream();
 
-        private ProgressWebSocket(String promptId, Consumer<ProgressState> listener) {
+        private ProgressWebSocket(String promptId, Consumer<ProgressState> listener,
+                                  Consumer<byte[]> previewListener) {
             this.promptId = promptId;
             this.listener = listener;
+            this.previewListener = previewListener;
         }
 
         @Override
@@ -656,8 +768,26 @@ public class ComfyUiClient {
 
         @Override
         public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
-            webSocket.request(1); // 预览图暂不处理，只续读
+            while (data.hasRemaining()) {
+                binaryBuffer.write(data.get());
+            }
+            if (last) {
+                handleBinary(binaryBuffer.toByteArray());
+                binaryBuffer.reset();
+            }
+            webSocket.request(1);
             return null;
+        }
+
+        private void handleBinary(byte[] payload) {
+            if (previewListener == null) {
+                return;
+            }
+            PreviewFrame frame = parsePreviewFrame(payload);
+            if (frame != null && "preview".equals(frame.type)
+                    && promptId.equals(frame.promptId) && frame.image().length > 0) {
+                previewListener.accept(frame.image());
+            }
         }
 
         private void handleEvent(String json) {

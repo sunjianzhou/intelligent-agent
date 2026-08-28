@@ -43,8 +43,37 @@
     配置 `ai.checkpoint.*`（默认开）。
   - 测试：`ToolCheckpointStoreTest` 6 + `AgentOrchestratorCheckpointTest` 4（同 id 重放不重复执行 /
     不同 id 重执行 / 完结清理 / 无 id 不缓存）。
-- 剩余开放项：**Telegram bot 真实送达验收（需凭证，外部阻塞）**；ComfyUI 升级可选后续
-  （ControlNet/inpainting 预设、/ws 预览图流式回传、免费模型一键下载引导、Chat 内 ImageGenTool 参数补全）。
+- 剩余开放项：**Telegram bot 真实送达验收（仅差凭证；验收用例已就绪，见下节）**。
+
+## 2026-08-28 ComfyUI 可选后续 + Telegram 验收就绪
+
+> 上节 R-08~R-16 落地后继续推进「ComfyUI 升级未做项」与 Telegram 验收，后端全量 **650 用例绿（0 失败）**，
+> 前端 29 用例 + 构建通过（commit `15e7271` 之后新增，随本次一并提交）。
+
+- ✅ **Chat 内 ImageGenTool 参数补全**：`image_generation` 工具新增 sampler / loras / model /
+  init_image_base64 / denoising_strength / controlnet / controlnet_strength /
+  control_image_base64 / mask_image_base64 参数并透传 ImageService（`ImageGenToolTest` 3 用例）。
+- ✅ **生成过程预览图回传**：`ComfyUiClient` 解析 ComfyUI /ws 二进制预览帧
+  （4 字节头长 + JSON 头 + PNG 字节，`parsePreviewFrame`），生成中实时写入
+  `progress.preview_base64`；前端「图片生成」页生成中展示实时预览缩略图
+  （`ComfyUiClientWorkflowTest` 覆盖帧解析）。
+- ✅ **ControlNet / inpainting 预设**（SD1.5/SDXL）：
+  - `ComfyUiClient.sdControlNetWorkflow`：ControlNetLoader → ControlNetApply 链（强度钳制 [0,2]，
+    positive 前置）；局部重绘走 LoadImage + LoadImageMask + VAEEncode + SetLatentNoiseMask；
+  - `ImageService.generate` 扩展签名（controlnet_name / control_image_base64 / mask_image_base64），
+    FLUX/Qwen/SD3.5 请求 ControlNet/蒙版时明确拒绝；`GET /api/image/controlnets` 动态发现；
+  - 前端：ControlNet 模型选择 + 强度 + 参考图上传、局部重绘蒙版上传（基于 img2img 底图）。
+  - 测试：`ComfyUiClientWorkflowTest` 6 + `ImageServiceTest` +5（controlnet 链 / inpaint 工作流 /
+    非 SD 拒绝 / 预览 base64 / controlnets 列表）。
+- ✅ **免费模型一键下载引导**：`docs/comfyui-models.md`（FLUX.1 schnell / Qwen-Image / HiDream-I1 /
+  SDXL / SD1.5 / ControlNet / t5xxl+ae 的 HF + ModelScope 直链与目录、下载命令、校验）；
+  前端「图片生成」页新增可折叠下载引导表。
+- ⏳ **Telegram 真实送达验收**：`ImDeliveryVerifyTest` 新增
+  `telegramTextReachesHeartbeatReceiver`（`@Tag("im-verify")`，设了
+  `TELEGRAM_BOT_TOKEN` / `TELEGRAM_HEARTBEAT_RECEIVER_ID` 即真实发送并断言 message_id；
+  凭证缺失时 assumeTrue 跳过）；`.env.docker.example` 补充 Telegram 配置注释。
+  代码侧验收路径已全部就绪，**只差 Bot Token / chat_id 凭证**即可一键运行
+  `mvn test -Dgroups=im-verify -DexcludedGroups=`。
 
 ---
 

@@ -101,10 +101,18 @@ public class ImageProxyController {
                 ? s.trim() : "";
         double denoisingStrength = body.get("denoising_strength") instanceof Number n
                 ? n.doubleValue() : 0.75;
+        String controlNetName = String.valueOf(body.getOrDefault("controlnet_name", "")).trim();
+        double controlNetStrength = body.get("controlnet_strength") instanceof Number cn
+                ? cn.doubleValue() : 1.0;
+        String controlImageBase64 = body.get("control_image_base64") instanceof String cs
+                ? cs.trim() : "";
+        String maskImageBase64 = body.get("mask_image_base64") instanceof String ms
+                ? ms.trim() : "";
         return ResponseEntity.ok(imageService.generate(prompt,
                 String.valueOf(body.getOrDefault("negative_prompt", "")),
                 width, height, steps, cfg, seed, model, sampler, loras,
-                initImageBase64, denoisingStrength));
+                initImageBase64, denoisingStrength,
+                controlNetName, controlNetStrength, controlImageBase64, maskImageBase64));
     }
 
     @GetMapping("/api/image/loras")
@@ -113,6 +121,15 @@ public class ImageProxyController {
             return ResponseEntity.ok(imageService.listLoras());
         }
         return ResponseEntity.ok(Map.of("loras", java.util.Collections.emptyList()));
+    }
+
+    /** R-08 后续：可用 ControlNet 模型列表（ControlNetLoader 动态发现）。 */
+    @GetMapping("/api/image/controlnets")
+    public ResponseEntity<Map<String, Object>> listControlNets() {
+        if (imageService != null) {
+            return ResponseEntity.ok(imageService.listControlNets());
+        }
+        return ResponseEntity.ok(Map.of("controlnets", java.util.Collections.emptyList()));
     }
 
     @GetMapping("/api/image/comfyui-workflow")

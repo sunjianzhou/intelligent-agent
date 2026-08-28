@@ -333,6 +333,92 @@ class ImageServiceTest {
                         new ComfyUiClient.Lora("e.safetensors", 1.0, 1.0));
     }
 
+    @Test
+    void controlnetGenerateUploadsReferenceAndBuildsChain() throws Exception {
+        comfyServer.enqueue(new MockResponse().setResponseCode(200)
+                .setBody("{\"name\":\"control_uploaded.png\"}"));
+        enqueueSuccessfulGeneration("pc");
+
+        Map<String, Object> result = service.generate("cat", "", 512, 512, 20, 7.0, 42,
+                null, "euler", List.of(), null, 0.0,
+                "control_v11p_sd15_canny.safetensors", 1.2, "cm9sZS1pbWc=", null);
+
+        assertThat(result.get("success")).isEqualTo(true);
+        assertThat(result.get("mode")).isEqualTo("controlnet");
+        assertThat(comfyServer.takeRequest().getPath()).startsWith("/upload/image");
+        String body = comfyServer.takeRequest().getBody().readUtf8();
+        assertThat(body)
+                .contains("\"ControlNetLoader\"")
+                .contains("\"control_v11p_sd15_canny.safetensors\"")
+                .contains("\"ControlNetApply\"")
+                .contains("\"strength\":1.2")
+                .contains("\"positive\":[\"cn_apply\",0]");
+    }
+
+    @Test
+    void inpaintGenerateBuildsMaskedWorkflow() throws Exception {
+        comfyServer.enqueue(new MockResponse().setResponseCode(200)
+                .setBody("{\"name\":\"init_uploaded.png\"}"));
+        comfyServer.enqueue(new MockResponse().setResponseCode(200)
+                .setBody("{\"name\":\"mask_uploaded.png\"}"));
+        enqueueSuccessfulGeneration("pm");
+
+        Map<String, Object> result = service.generate("fix", "", 512, 512, 20, 7.0, 42,
+                null, "euler", List.of(), "aW5pdC1pbWc=", 0.7,
+                null, 1.0, null, "bWFzay1pbWc=");
+
+        assertThat(result.get("success")).isEqualTo(true);
+        assertThat(result.get("mode")).isEqualTo("inpaint");
+        comfyServer.takeRequest(); // init 上传
+        assertThat(comfyServer.takeRequest().getPath()).startsWith("/upload/image");
+        String body = comfyServer.takeRequest().getBody().readUtf8();
+        assertThat(body)
+                .contains("\"LoadImageMask\"")
+                .contains("\"SetLatentNoiseMask\"")
+                .contains("\"denoise\":0.7")
+                .contains("\"latent_image\":[\"noise_mask\",0]");
+    }
+
+    @Test
+    void controlnetRejectedForNonSdModels() {
+        ReflectionTestUtils.setField(service, "model", "flux1-dev.safetensors");
+
+        Map<String, Object> result = service.generate("cat", "", 512, 512, 20, 7.0, 42,
+                null, "euler", List.of(), null, 0.0,
+                "control.safetensors", 1.0, "cm9sZS1pbWc=", null);
+
+        assertThat(result.get("success")).isEqualTo(false);
+        assertThat(String.valueOf(result.get("message"))).contains("SD1.5/SDXL");
+    }
+
+    @Test
+    void progressReturnsPreviewBase64() {
+        ReflectionTestUtils.setField(service, "activePromptId", "p1");
+        ReflectionTestUtils.setField(service, "currentProgress",
+                new ComfyUiClient.ProgressState(0.3, 3, 10, "running"));
+        ReflectionTestUtils.setField(service, "progressStartedAt",
+                System.currentTimeMillis() - 3000);
+        ReflectionTestUtils.setField(service, "previewBase64", "aGVsbG8=");
+
+        Map<String, Object> running = service.progress();
+        assertThat(running.get("preview_base64")).isEqualTo("aGVsbG8=");
+    }
+
+    @Test
+    void listControlNetsParsesObjectInfo() {
+        comfyServer.enqueue(new MockResponse().setResponseCode(200).setBody(
+                "{\"ControlNetLoader\":{\"input\":{\"required\":{\"control_net_name\":"
+                        + "[[\"control_v11p_sd15_canny.safetensors\","
+                        + "\"control_v11f1p_sd15_depth.safetensors\"]]}}}}"));
+
+        List<String> controlNets =
+                (List<String>) service.listControlNets().get("controlnets");
+
+        assertThat(controlNets).containsExactly(
+                "control_v11p_sd15_canny.safetensors",
+                "control_v11f1p_sd15_depth.safetensors");
+    }
+
     private void enqueueSuccessfulGeneration(String promptId) {
         comfyServer.enqueue(new MockResponse().setResponseCode(200)
                 .setBody("{\"prompt_id\":\"" + promptId + "\"}"));

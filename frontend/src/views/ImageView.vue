@@ -25,6 +25,28 @@
       </span>
     </div>
 
+    <!-- 免费模型下载引导（HuggingFace / ModelScope 直链） -->
+    <details class="model-guide" v-if="providerName === 'comfyui'">
+      <summary><i class="fas fa-download" /> 免费模型下载引导</summary>
+      <div class="model-guide-body">
+        <p>把模型文件放入 ComfyUI 对应目录后重启 ComfyUI，即可在模型列表中选择。</p>
+        <table class="guide-table">
+          <thead>
+            <tr><th>模型</th><th>类型</th><th>放入目录</th><th>HuggingFace</th><th>ModelScope</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="m in MODEL_GUIDE" :key="m.name">
+              <td>{{ m.name }}</td>
+              <td>{{ m.kind }}</td>
+              <td><code>{{ m.dir }}</code></td>
+              <td><a v-if="m.hf" :href="m.hf" target="_blank" rel="noopener">下载</a></td>
+              <td><a v-if="m.ms" :href="m.ms" target="_blank" rel="noopener">下载</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+
     <!-- 主体：左侧参数面板 + 右侧结果区 -->
     <div class="main-layout">
 
@@ -132,6 +154,47 @@
         <!-- 高级选项（ComfyUI：LoRA + 自定义工作流） -->
         <div class="param-section" v-if="providerName === 'comfyui'">
           <label class="param-label">
+            ControlNet <span class="en-tip">（SD1.5/SDXL，需下载对应 control 模型）</span>
+          </label>
+          <select v-model="form.controlnet" class="sampler-select">
+            <option value="">不使用</option>
+            <option v-for="c in controlNets" :key="c" :value="c">{{ c }}</option>
+          </select>
+          <div v-if="form.controlnet" class="controlnet-row">
+            <label class="param-label">强度 <span class="param-val">{{ form.controlnetStrength }}</span></label>
+            <input type="range" v-model.number="form.controlnetStrength" min="0.1" max="2" step="0.05" class="steps-slider" />
+            <div v-if="form.controlImagePreview" class="img2img-preview-wrap">
+              <img :src="form.controlImagePreview" class="img2img-preview" />
+              <button class="img2img-clear" @click="clearControlImage" title="移除参考图">
+                <i class="fas fa-times" />
+              </button>
+            </div>
+            <label v-else class="img2img-upload-btn">
+              <i class="fas fa-upload" /> 上传参考图
+              <input type="file" accept="image/*" style="display:none" @change="onControlImageFile" />
+            </label>
+          </div>
+        </div>
+
+        <!-- 局部重绘（inpaint） -->
+        <div class="param-section" v-if="providerName === 'comfyui' && form.initImagePreview">
+          <label class="param-label">
+            局部重绘蒙版 <span class="en-tip">（可选，白色区域重绘）</span>
+          </label>
+          <div v-if="form.maskImagePreview" class="img2img-preview-wrap">
+            <img :src="form.maskImagePreview" class="img2img-preview" />
+            <button class="img2img-clear" @click="clearMaskImage" title="移除蒙版">
+              <i class="fas fa-times" />
+            </button>
+          </div>
+          <label v-else class="img2img-upload-btn">
+            <i class="fas fa-upload" /> 上传蒙版
+            <input type="file" accept="image/*" style="display:none" @change="onMaskImageFile" />
+          </label>
+        </div>
+
+        <div class="param-section" v-if="providerName === 'comfyui'">
+          <label class="param-label">
             LoRA <span class="en-tip">（逗号分隔：文件名:强度，如 detail.safetensors:0.8）</span>
           </label>
           <input
@@ -203,6 +266,13 @@
           </div>
           <p>正在生成图片，请稍候…</p>
           <p class="gen-hint">本地模型首次生成可能需要 30 秒以上</p>
+          <!-- ComfyUI 实时预览（/ws 预览帧回传） -->
+          <img
+            v-if="previewBase64"
+            :src="'data:image/png;base64,' + previewBase64"
+            class="live-preview"
+            alt="生成中预览"
+          />
           <!-- 进度条（SD WebUI 实时进度） -->
           <div v-if="progressPct > 0" class="progress-wrap">
             <div class="progress-bar" :style="{ width: progressPct + '%' }" />
@@ -277,6 +347,7 @@ import {
   generateImage, listGeneratedImages, deleteGeneratedImage,
   getImageProgress,
   getComfyuiWorkflow, saveComfyuiWorkflow, resetComfyuiWorkflow,
+  listImageControlNets,
 } from '@/services/api'
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
@@ -304,6 +375,50 @@ const STYLE_PRESETS = [
   { label: '素描',       value: 'pencil sketch, black and white, detailed lines' },
 ]
 
+// 免费模型一键下载引导（HuggingFace / ModelScope 直链）
+const MODEL_GUIDE = [
+  {
+    name: 'FLUX.1 schnell', kind: '基础模型', dir: 'models/unet/',
+    hf: 'https://huggingface.co/black-forest-labs/FLUX.1-schnell',
+    ms: 'https://modelscope.cn/models/AI-ModelScope/FLUX.1-schnell',
+  },
+  {
+    name: 'Qwen-Image', kind: '基础模型', dir: 'models/unet/',
+    hf: 'https://huggingface.co/Qwen/Qwen-Image',
+    ms: 'https://modelscope.cn/models/Qwen/Qwen-Image',
+  },
+  {
+    name: 'HiDream-I1', kind: '基础模型', dir: 'models/diffusion_models/',
+    hf: 'https://huggingface.co/black-forest-labs?q=HiDream',
+    ms: 'https://modelscope.cn/models/HiDream/HiDream-I1',
+  },
+  {
+    name: 'SDXL base 1.0', kind: '基础模型', dir: 'models/checkpoints/',
+    hf: 'https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0',
+    ms: 'https://modelscope.cn/models/AI-ModelScope/stable-diffusion-xl-base-1.0',
+  },
+  {
+    name: 'SD 1.5', kind: '基础模型', dir: 'models/checkpoints/',
+    hf: 'https://huggingface.co/runwayml/stable-diffusion-v1-5',
+    ms: 'https://modelscope.cn/models/AI-ModelScope/stable-diffusion-v1-5',
+  },
+  {
+    name: 'ControlNet Canny/SD1.5', kind: 'ControlNet', dir: 'models/controlnet/',
+    hf: 'https://huggingface.co/lllyasviel/ControlNet-v1-1',
+    ms: 'https://modelscope.cn/models/licyks/ControlNet-v1-1',
+  },
+  {
+    name: 'ControlNet Canny/SDXL', kind: 'ControlNet', dir: 'models/controlnet/',
+    hf: 'https://huggingface.co/diffusers/controlnet-canny-sdxl-1.0',
+    ms: '',
+  },
+  {
+    name: 't5xxl / ae (FLUX 配套)', kind: 'CLIP/VAE', dir: 'models/clip/ · models/vae/',
+    hf: 'https://huggingface.co/comfyanonymous/flux_text_encoders',
+    ms: '',
+  },
+]
+
 // ── 状态 ─────────────────────────────────────────────────────────────────────
 
 const form = ref({
@@ -318,6 +433,12 @@ const form = ref({
   initImageB64:      null,             // pure base64 for API
   denoisingStrength: 0.75,
   loras:             '',               // ComfyUI LoRA："name:强度, name2" 逗号分隔
+  controlnet:        '',
+  controlnetStrength: 1.0,
+  controlImagePreview: null,
+  controlImageB64:    null,
+  maskImagePreview:   null,
+  maskImageB64:       null,
 })
 
 const providerOk    = ref(false)
@@ -335,6 +456,8 @@ const galleryLoading = ref(false)
 const previewImg     = ref(null)
 const progressPct    = ref(0)
 const progressEta    = ref(0)
+const previewBase64  = ref(null)
+const controlNets    = ref([])
 let   _progressTimer = null
 const workflowJson      = ref('')
 const usingCustomWorkflow = ref(false)
@@ -393,10 +516,18 @@ const loadStatus = async () => {
     statusLoaded.value = true
 
     if (providerOk.value) await loadModels()
+    if (providerOk.value && providerName.value === 'comfyui') await loadControlNets()
   } catch {
     statusLoaded.value = true
     unavailableMsg.value = '无法连接到后端服务'
   }
+}
+
+const loadControlNets = async () => {
+  try {
+    const res = await listImageControlNets()
+    controlNets.value = res?.controlnets || []
+  } catch { /* 非 ComfyUI 或后端未就绪时静默 */ }
 }
 
 const loadModels = async () => {
@@ -498,18 +629,21 @@ const startProgressPoll = () => {
   if (!['sd_webui', 'comfyui', 'diffusers'].includes(providerName.value)) return
   progressPct.value = 0
   progressEta.value = 0
+  previewBase64.value = null
   const interval = providerName.value === 'comfyui' ? 1500 : 1000
   _progressTimer = setInterval(async () => {
     const data = await getImageProgress().catch(() => null)
     if (!data) return
     progressPct.value = Math.round((data.progress || 0) * 100)
     progressEta.value = data.eta || 0
+    if (data.preview_base64) previewBase64.value = data.preview_base64
   }, interval)
 }
 
 const stopProgressPoll = () => {
   if (_progressTimer) { clearInterval(_progressTimer); _progressTimer = null }
   progressPct.value = 0
+  previewBase64.value = null
 }
 
 // ── img2img ───────────────────────────────────────────────────────────────────
@@ -530,6 +664,35 @@ const onImg2imgFile = (e) => {
 const clearImg2img = () => {
   form.value.initImagePreview = null
   form.value.initImageB64     = null
+}
+
+// ── ControlNet / 蒙版 ─────────────────────────────────────────────────────────
+
+const readImageFile = (file, apply) => {
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = (ev) => apply(ev.target.result)
+  reader.readAsDataURL(file)
+}
+
+const onControlImageFile = (e) => readImageFile(e.target.files?.[0], (dataUrl) => {
+  form.value.controlImagePreview = dataUrl
+  form.value.controlImageB64     = dataUrl.split(',')[1] || null
+})
+
+const clearControlImage = () => {
+  form.value.controlImagePreview = null
+  form.value.controlImageB64     = null
+}
+
+const onMaskImageFile = (e) => readImageFile(e.target.files?.[0], (dataUrl) => {
+  form.value.maskImagePreview = dataUrl
+  form.value.maskImageB64     = dataUrl.split(',')[1] || null
+})
+
+const clearMaskImage = () => {
+  form.value.maskImagePreview = null
+  form.value.maskImageB64     = null
 }
 
 // ── 生成 ─────────────────────────────────────────────────────────────────────
@@ -562,6 +725,10 @@ const doGenerate = async () => {
       sampler_name:       form.value.sampler,
       init_image_base64:  form.value.initImageB64 || undefined,
       denoising_strength: form.value.denoisingStrength,
+      controlnet_name:    form.value.controlnet || undefined,
+      controlnet_strength: form.value.controlnetStrength,
+      control_image_base64: form.value.controlImageB64 || undefined,
+      mask_image_base64:  form.value.maskImageB64 || undefined,
     })
     if (res?.success) {
       lastResult.value = res
@@ -885,6 +1052,58 @@ const formatDate = (iso) => {
 [data-theme="dark"] .result-meta { border-color: #2d3451; }
 [data-theme="dark"] .gallery-item { background: #1a1f2e; border-color: #2d3451; }
 [data-theme="dark"] .gallery-title { color: #c9d1d9; }
+
+/* ── R-08 后续：实时预览 / ControlNet / 模型引导 ─────────────── */
+.live-preview {
+  max-width: 320px;
+  max-height: 320px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border, #d0d7de);
+  margin: 12px auto 0;
+  display: block;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+.controlnet-row {
+  margin-top: 8px;
+}
+.model-guide {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  border: 1px dashed var(--color-border, #d0d7de);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.model-guide summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--color-text, #24292f);
+}
+.model-guide-body {
+  margin-top: 8px;
+  color: var(--color-text-secondary, #57606a);
+}
+.model-guide-body p { margin: 0 0 6px; }
+.guide-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.guide-table th, .guide-table td {
+  border: 1px solid var(--color-border, #d0d7de);
+  padding: 4px 6px;
+  text-align: left;
+}
+.guide-table code {
+  font-size: 11px;
+  background: rgba(127, 127, 127, 0.12);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+[data-theme="dark"] .model-guide { border-color: #2d3451; }
+[data-theme="dark"] .model-guide summary { color: #c9d1d9; }
+[data-theme="dark"] .model-guide-body { color: #8b949e; }
+[data-theme="dark"] .guide-table th,
+[data-theme="dark"] .guide-table td { border-color: #2d3451; color: #c9d1d9; }
 
 @media (max-width: 768px) {
   .main-layout { grid-template-columns: 1fr; }
