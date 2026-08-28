@@ -8,6 +8,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
+import com.intelligent.agent.web.infrastructure.monitoring.MetricsRegistry;
 
 /** 按模型名持有熔断器与装饰器缓存；{@code wrap()} 在 enabled 时返回熔断装饰器。 */
 public class CircuitBreakerRegistry {
@@ -15,11 +17,22 @@ public class CircuitBreakerRegistry {
     private final CircuitBreakerConfig config;
     private final Map<String, LlmCircuitBreaker> breakers = new ConcurrentHashMap<>();
     private final Map<String, CircuitBreakerLlmProvider> wrappers = new ConcurrentHashMap<>();
+    private final Consumer<Map<String, Object>> onOpenedAlert;
+    private final MetricsRegistry metrics;
 
     public CircuitBreakerRegistry(CircuitBreakerConfig config) {
+        this(config, null, null);
+    }
+
+    /** R-13：熔断打开时回调告警（限频在 AlertService 内）+ 指标计数。 */
+    public CircuitBreakerRegistry(CircuitBreakerConfig config,
+                                  Consumer<Map<String, Object>> onOpenedAlert,
+                                  MetricsRegistry metrics) {
         this.config = config == null
                 ? new CircuitBreakerConfig(true, 5, Duration.ofSeconds(30), 100)
                 : config;
+        this.onOpenedAlert = onOpenedAlert;
+        this.metrics = metrics;
     }
 
     /** enabled=false 时原样返回 delegate（零开销旁路）。 */
@@ -29,9 +42,21 @@ public class CircuitBreakerRegistry {
         }
         return wrappers.computeIfAbsent(modelKey, k -> {
             breakers.put(k, new LlmCircuitBreaker(
-                    config.failureThreshold(), config.cooldown(), config.windowSize()));
+                    config.failureThreshold(), config.cooldown(), config.windowSize(),
+                    System::currentTimeMillis, () -> fireOpened(k)));
             return new CircuitBreakerLlmProvider(delegate, k, this);
         });
+    }
+
+    private void fireOpened(String modelKey) {
+        if (metrics != null) {
+            metrics.increment("llm_breaker_opened");
+        }
+        if (onOpenedAlert != null) {
+            onOpenedAlert.accept(Map.of(
+                    "model", modelKey == null ? "" : modelKey,
+                    "message", "模型熔断器打开: " + modelKey));
+        }
     }
 
     boolean tryAcquire(String modelKey) {
@@ -48,7 +73,13 @@ public class CircuitBreakerRegistry {
 
     private LlmCircuitBreaker breaker(String modelKey) {
         return breakers.computeIfAbsent(modelKey, k -> new LlmCircuitBreaker(
-                config.failureThreshold(), config.cooldown(), config.windowSize()));
+                config.failureThreshold(), config.cooldown(), config.windowSize(),
+                System::currentTimeMillis, () -> fireOpened(k)));
+    }
+
+    /** 指标注册表（可能为 null，调用方需判空）。 */
+    public MetricsRegistry metrics() {
+        return metrics;
     }
 
     /** SLO/状态快照：GET /api/llm/status 的载荷来源。 */

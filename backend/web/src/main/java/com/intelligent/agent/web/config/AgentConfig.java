@@ -3,6 +3,7 @@ package com.intelligent.agent.web.config;
 import com.intelligent.agent.web.ai.agent.AgentOrchestrator;
 import com.intelligent.agent.web.ai.agent.ActiveChatLimiter;
 import com.intelligent.agent.web.ai.agent.BranchFailureDetector;
+import com.intelligent.agent.web.ai.agent.ToolCheckpointStore;
 import com.intelligent.agent.web.ai.agent.planning.LlmTaskPlanner;
 import com.intelligent.agent.web.ai.agent.planning.PlanningComplexityDetector;
 import com.intelligent.agent.web.ai.agent.planning.TaskPlanner;
@@ -30,6 +31,7 @@ import com.intelligent.agent.web.ai.tool.ToolExecutor;
 import com.intelligent.agent.web.ai.tool.builtin.CalculatorTool;
 import com.intelligent.agent.web.ai.tool.builtin.TimeTool;
 import com.intelligent.agent.web.ai.tool.builtin.file.FileTool;
+import com.intelligent.agent.web.ai.tool.builtin.file.FileEditTool;
 import com.intelligent.agent.web.ai.tool.builtin.shell.ShellTool;
 import com.intelligent.agent.web.ai.tool.builtin.web.WebSearchTool;
 import com.intelligent.agent.web.ai.tool.builtin.web.WebFetchTool;
@@ -94,9 +96,33 @@ public class AgentConfig {
         return new TimeTool();
     }
 
+    /** R-08：只读文件工具；安全目录可配（空 = 默认 home + cwd）。 */
     @Bean
-    public FileTool fileTool() {
-        return new FileTool();
+    public FileTool fileTool(
+            @Value("${ai.file.safe-directories:}") List<String> safeDirectories) {
+        List<Path> dirs = resolveSafeDirectories(safeDirectories, true);
+        return new FileTool(dirs);
+    }
+
+    /** R-08：受控文件编辑工具（写操作需审批）；安全目录可配（空 = 仅 cwd）。 */
+    @Bean
+    public FileEditTool fileEditTool(
+            @Value("${ai.file-edit.safe-directories:}") List<String> safeDirectories) {
+        return new FileEditTool(resolveSafeDirectories(safeDirectories, false));
+    }
+
+    private static List<Path> resolveSafeDirectories(List<String> dirs, boolean includeHome) {
+        if (dirs == null || dirs.isEmpty()) {
+            if (includeHome) {
+                return List.of(Path.of(System.getProperty("user.home")),
+                        Path.of("").toAbsolutePath());
+            }
+            return List.of(Path.of("").toAbsolutePath());
+        }
+        return dirs.stream()
+                .filter(d -> d != null && !d.isBlank())
+                .map(Path::of)
+                .toList();
     }
 
     @Bean
@@ -225,11 +251,27 @@ public class AgentConfig {
                                                SkillMatcher skillMatcher,
                                                ContextBudget contextBudget,
                                                SubAgentExecutor subAgentExecutor,
-                                               com.intelligent.agent.web.ai.agent.approval.ApprovalNotifier approvalNotifier) {
+                                               com.intelligent.agent.web.ai.agent.approval.ApprovalNotifier approvalNotifier,
+                                               @Value("${ai.llm.vision-check-enabled:true}") boolean visionCheckEnabled,
+                                               @Value("${ai.llm.vision-models:}") List<String> visionModels,
+                                               ToolCheckpointStore checkpointStore) {
         return new AgentOrchestrator(llmProviderRouter, toolExecutor, conversationMemoryService,
                 promptService, branchFailureDetector, AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS,
                 traceService, configRuntimeService, taskPlanner, answerReflector, approvalGate,
-                skillMatcher, contextBudget, subAgentExecutor, approvalNotifier);
+                skillMatcher, contextBudget, subAgentExecutor, approvalNotifier,
+                visionCheckEnabled, visionModels == null ? List.of() : visionModels,
+                checkpointStore);
+    }
+
+    /** R-16：工具轮结果断点缓存（中断后同 requestId 重发跳过已执行工具）。 */
+    @Bean
+    public ToolCheckpointStore toolCheckpointStore(
+            @Value("${ai.checkpoint.tool-results-enabled:true}") boolean enabled,
+            @Value("${ai.checkpoint.ttl:10m}") Duration ttl,
+            @Value("${ai.checkpoint.max-entries:2000}") int maxEntries) {
+        return new ToolCheckpointStore(enabled,
+                ttl == null ? 600_000L : ttl.toMillis(),
+                maxEntries, System::currentTimeMillis);
     }
 
     /** R-07：子代理/多代理编排执行器（只读研究子代理，并行分组 + 按序合并）。 */

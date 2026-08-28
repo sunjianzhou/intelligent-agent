@@ -3,6 +3,7 @@ package com.intelligent.agent.web.ai.llm;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * 推理并发闸门（runtime inference_concurrency 驱动）：超过上限的请求排队等待。
@@ -15,6 +16,7 @@ public class InferenceGate {
 
     private final Object lock = new Object();
     private final Map<String, Integer> activeByKey = new HashMap<>();
+    private final Consumer<String> onQueueTimeout;
     private volatile int maxConcurrency;
 
     public InferenceGate() {
@@ -22,7 +24,13 @@ public class InferenceGate {
     }
 
     public InferenceGate(int maxConcurrency) {
+        this(maxConcurrency, null);
+    }
+
+    /** R-13：{@code onQueueTimeout} 在限时获取超时（推理队列满）时回调一次。 */
+    public InferenceGate(int maxConcurrency, Consumer<String> onQueueTimeout) {
         this.maxConcurrency = Math.max(1, maxConcurrency);
+        this.onQueueTimeout = onQueueTimeout;
     }
 
     /** 默认槽位（空 key）无限期获取。 */
@@ -45,6 +53,7 @@ public class InferenceGate {
         String k = key == null ? "" : key;
         boolean timed = timeout != null && !timeout.isZero() && !timeout.isNegative();
         long deadline = timed ? System.nanoTime() + timeout.toNanos() : 0;
+        boolean timedOut = false;
         synchronized (lock) {
             while (activeByKey.getOrDefault(k, 0) >= maxConcurrency) {
                 if (!timed) {
@@ -53,13 +62,30 @@ public class InferenceGate {
                 }
                 long remainingNanos = deadline - System.nanoTime();
                 if (remainingNanos <= 0) {
-                    return false;
+                    timedOut = true;
+                    break;
                 }
                 lock.wait(remainingNanos / 1_000_000L,
                         (int) (remainingNanos % 1_000_000L));
             }
-            activeByKey.merge(k, 1, Integer::sum);
-            return true;
+            if (!timedOut) {
+                activeByKey.merge(k, 1, Integer::sum);
+            }
+        }
+        if (timedOut) {
+            fireQueueTimeout(k);
+            return false;
+        }
+        return true;
+    }
+
+    private void fireQueueTimeout(String key) {
+        if (onQueueTimeout != null) {
+            try {
+                onQueueTimeout.accept(key);
+            } catch (RuntimeException ignored) {
+                // 告警回调失败不影响闸门语义
+            }
         }
     }
 

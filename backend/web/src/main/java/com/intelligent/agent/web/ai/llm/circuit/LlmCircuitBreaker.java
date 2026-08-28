@@ -23,6 +23,7 @@ public class LlmCircuitBreaker {
     private final long cooldownMillis;
     private final int windowSize;
     private final LongSupplier nowMillis;
+    private final Runnable onOpened;
 
     private State state = State.CLOSED;
     private final Deque<Boolean> window = new ArrayDeque<>();
@@ -37,11 +38,18 @@ public class LlmCircuitBreaker {
 
     LlmCircuitBreaker(int failureThreshold, Duration cooldown, int windowSize,
                       LongSupplier nowMillis) {
+        this(failureThreshold, cooldown, windowSize, nowMillis, null);
+    }
+
+    /** R-13：{@code onOpened} 在熔断器首次进入 OPEN（CLOSED→OPEN 或 HALF_OPEN→OPEN）时回调一次。 */
+    LlmCircuitBreaker(int failureThreshold, Duration cooldown, int windowSize,
+                      LongSupplier nowMillis, Runnable onOpened) {
         this.failureThreshold = Math.max(1, failureThreshold);
         this.cooldownMillis = Math.max(0, cooldown == null
                 ? Duration.ofSeconds(30).toMillis() : cooldown.toMillis());
         this.windowSize = Math.max(1, windowSize);
         this.nowMillis = nowMillis == null ? System::currentTimeMillis : nowMillis;
+        this.onOpened = onOpened;
     }
 
     /** 放行前检查：OPEN 且未过冷却期、HALF_OPEN 已有试探在飞时拒绝（返回 false）。 */
@@ -86,9 +94,21 @@ public class LlmCircuitBreaker {
             state = State.OPEN;
             trialInProgress = false;
             lastOpenedAt = nowMillis.getAsLong();
+            fireOpened();
         } else if (state == State.CLOSED && consecutiveFailures >= failureThreshold) {
             state = State.OPEN;
             lastOpenedAt = nowMillis.getAsLong();
+            fireOpened();
+        }
+    }
+
+    private void fireOpened() {
+        if (onOpened != null) {
+            try {
+                onOpened.run();
+            } catch (RuntimeException ignored) {
+                // 告警回调失败不影响熔断状态机
+            }
         }
     }
 

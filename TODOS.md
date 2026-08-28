@@ -4,6 +4,49 @@
 
 ---
 
+## 2026-08-28 收尾：R-08 编码工具 + P2 全部落地（R-13 指标告警 / R-14 图片理解 / R-15 工具 SDK / R-16 中断恢复）
+
+> 用户授权按推荐方向逐项推进（无交互确认），五项全部按 TODOS 验收标准落地，后端全量 **636 用例绿（0 失败）**。
+
+- ✅ **R-08 受控文件编辑（方向定为编码 agent）**：
+  - `FileTool` 收敛为纯只读（read/list/info/exists）+ `preview`（write/append/delete 的 unified diff
+    预览，LCS 行级 diff + `@@` hunk，>512KB 跳过、>1200 行退化为整文件替换表示）；
+  - 新增 `FileEditTool`（`file_edit_tool`）：write/append/create/delete/copy/move，
+    `approvalRequired=true`（web/WS 卡片 + 飞书卡片审批后才执行），
+    白名单目录可配（`ai.file-edit.safe-directories`，空 = 仅 cwd），
+    路径校验含 normalize 前缀 + 符号链接真实路径双重防护；
+  - `AgentConfig` 装配两个工具；`ai.file.safe-directories` / `ai.file-edit.safe-directories` 配置。
+  - 测试：`FileEditToolTest` 8（写入/幂等/追加/增删改移/越界/符号链接逃逸/目录删除拒绝）+ `BuiltinToolTest` 调整。
+- ✅ **R-13 轻量指标 + 告警**：
+  - `MetricsRegistry`（进程内计数器 + 环形直方图分位数 p50/p90/p95/p99）+ `GET /api/metrics` 聚合
+    （指标 + 熔断状态 + 推理闸门 active/max + 流式并发 active/max）；
+  - `AlertService` 按类型限频（默认 5min）写入通知队列 → WS 广播 / REST 轮询；
+    断路器 CLOSED→OPEN 与 HALF_OPEN→OPEN、推理队列排队超时均触发告警；
+  - LLM 调用埋点：llm_calls/successes/failures/rejections + llm_latency_ms；
+    配置 `ai.alerts.*` / `ai.metrics.*`；ObjectProvider 懒注入打断 Spring 循环依赖。
+  - 测试：`MetricsRegistryTest` 3 + `AlertServiceTest` 3 + `CircuitBreakerRegistryTest` +1 + `InferenceGateTest` +1。
+- ✅ **R-14 图片理解链路**：
+  - `LlmVisionSupport` 视觉能力判定（关键词 vl/llava/4o/gemini/claude-3 等 + `ai.llm.vision-models` 显式列表）；
+  - `AgentOrchestrator` 附图片时先校验：非视觉模型直接给清晰错误（stream error 事件 / complete 错误文案），
+    不空转调用 LLM；视觉模型正常走 Ollama images / OpenAI 多段 content 既有链路；
+  - `PromptService` 附图片时注入 `[IMAGE ATTACHED]` 提示（先描述再回答）；
+    配置 `ai.llm.vision-check-enabled`（默认开）。
+  - 测试：`LlmVisionSupportTest` 2 + `AgentOrchestratorVisionGuardTest` 7 + `PromptServiceTest` +1。
+- ✅ **R-15 工具开发 SDK/脚手架**：
+  - `docs/tool-development.md`（30 分钟新增工具指南：AgentTool/ToolDefinition、三步流程、安全/注入防护/测试规范）；
+  - `docs/tool-dev-template/`：`DiceTool.java` + `DiceToolTest.java` 可复制模板 + `new_tool.ps1` 脚手架脚本。
+- ✅ **R-16 流式中断恢复**：
+  - `ToolCheckpointStore`：按 requestId + 工具调用签名（参数规范 JSON，键排序）缓存工具轮结果，
+    TTL 10min + 容量上限（满淘汰最旧）；成功完结后清理同 requestId 断点；
+  - `AgentOrchestrator` 工具轮先查断点：命中直接复用结果（不重复执行、不重复审批，span 记为 `tool_replay`）；
+    配置 `ai.checkpoint.*`（默认开）。
+  - 测试：`ToolCheckpointStoreTest` 6 + `AgentOrchestratorCheckpointTest` 4（同 id 重放不重复执行 /
+    不同 id 重执行 / 完结清理 / 无 id 不缓存）。
+- 剩余开放项：**Telegram bot 真实送达验收（需凭证，外部阻塞）**；ComfyUI 升级可选后续
+  （ControlNet/inpainting 预设、/ws 预览图流式回传、免费模型一键下载引导、Chat 内 ImageGenTool 参数补全）。
+
+---
+
 ## 2026-08-27 ComfyUI 升级：免费高性能模型 + img2img + 实时进度 + 容器环境
 
 > 背景：ComfyUI 生态进入「全免费高性能」阶段——Qwen-Image（Apache-2.0，2025-08 起 ComfyUI 原生支持）、
@@ -71,8 +114,8 @@
   - 测试：ConversationsProxyControllerTest +3；后端全量 598 用例绿，前端 29 用例 + 构建通过。
 - **T7 ✅（无需新增）**：eval 长会话压缩质量用例已在 R-06 落地——`golden-cases.json`
   `compression-001`（12 轮会话后关键事实保持，期望 Java 21 + 第一轮关键事实保留）。
-- M3 全部完成。剩余开放项：R-08 编码/工作区工具（方向待确认）、P2（R-13 指标告警 / R-14 图片理解 /
-  R-15 工具 SDK / R-16 流式中断恢复）、Telegram bot 真实送达验收（需凭证）。
+- M3 全部完成；R-08 与 P2（R-13~R-16）已于 2026-08-28 全部落地（见顶部收尾节）。
+  剩余开放项：Telegram bot 真实送达验收（需凭证）。
 
 ## 2026-08-24 Agent 架构审查（对照顶级 agent 设计基线）
 
@@ -97,7 +140,7 @@
 | 编号 | 差距 | 现状 | 改进方案 | 验收标准 |
 |------|------|------|----------|----------|
 | R-07 ✅（2026-08-26 落地，commit `a9ad9be`） | 无子代理/多代理编排 | 全部单 agent 串行 ReAct，复杂任务无法并行研究/实现 | 在 `TaskPlanner` 产物之上增加子任务并行执行器（Java 侧，类似 spawn_agent），结果合并回主对话；trace 记录子任务 span | 复杂任务可拆分为 ≥2 子任务并行执行且结果正确合并 |
-| R-08 | 代码/工作区工具缺失（方向待确认） | `FileTool` 只读白名单、`ShellTool` 命令白名单，agent 无法编辑文件 | 若定位编码 agent：新增受控 `FileEditTool`（白名单目录 + diff 预览 + 审批）；若保持个人助理定位则关闭本条 | 受控目录内编辑成功、目录外拒绝、diff 审批流程可用 |
+| R-08 ✅（2026-08-28 落地，方向定为编码 agent） | 代码/工作区工具缺失 | `FileTool` 只读白名单、`ShellTool` 命令白名单，agent 无法编辑文件 | 新增受控 `FileEditTool`（白名单目录 + diff 预览 + 审批） | 受控目录内编辑成功、目录外拒绝、diff 审批流程可用 |
 | R-09 ✅（2026-08-27 落地，commit `0c5d3d8`） | IM 渠道 HITL 审批缺失 | `approvalRequired` 工具在 web/WS 有审批卡片，IM 渠道直发无审批 UI | 复用飞书卡片按钮（已具备卡片能力）把审批事件推送到 IM；或 IM 渠道对 approvalRequired 工具默认拒绝 | 飞书渠道发起审批并可卡片批准/拒绝 |
 | R-10 ✅（2026-08-27 落地，commit `b75b1fb`） | 无成本/用量指标 | trace 有耗时但无 token/cost 统计，无法按用户/模型看用量与预算 | trace span 记录 token 数（输入/输出），聚合每用户/模型成本；AnalyticsView 增加成本卡片与限额 | 管理端可查每用户/模型成本与月限额 |
 | R-11 ✅（2026-08-27 落地，commit `3f47357`） | 加密密钥与 JWT 耦合 | `SecretCrypto` 密钥由 `JWT_SECRET` SHA-256 派生，轮换 JWT_SECRET 即丢失全部加密存量（已知债） | 独立密钥文件 + keyId 版本化加密（密文带版本头），支持平滑轮换 | 轮换密钥后旧密文可读、新写入用新密钥；迁移测试通过 |
@@ -107,10 +150,10 @@
 
 | 编号 | 差距 | 现状 | 改进方案 | 验收标准 |
 |------|------|------|----------|----------|
-| R-13 | 无指标告警 | Prometheus `/metrics` 曾评估暂缓，用 trace/health 替代；无断路器打开/队列满告警 | 重开轻量 metrics（计数/直方图内存聚合）+ 告警事件推送（复用通知队列） | 断路器打开或推理队列满时产生告警通知 |
-| R-14 | 图片理解缺失 | 图片生成（ComfyUI）已通，但无视觉模型理解图片内容（qwen2.5:7b 非视觉） | 接入视觉模型（qwen2.5-vl 等）或云端视觉，图片输入走视觉链路 | 上传图片后可描述内容并回答相关问题 |
-| R-15 | 工具开发无 SDK/脚手架 | 新增工具需手写 Java 注册，无模板与文档 | 提供工具开发模板/脚手架 + 文档 + 测试夹具 | 按文档 30 分钟内新增一个简单工具并过测试 |
-| R-16 | 流式中断无法恢复 | 取消流式直接断开，已执行工具结果丢弃 | 断点缓存：工具轮结果按 requestId 暂存，重发时跳过已执行步骤 | 中断后重试不重复执行副作用工具 |
+| R-13 ✅（2026-08-28 落地） | 无指标告警 | Prometheus `/metrics` 曾评估暂缓，用 trace/health 替代；无断路器打开/队列满告警 | 重开轻量 metrics（计数/直方图内存聚合）+ 告警事件推送（复用通知队列） | 断路器打开或推理队列满时产生告警通知 |
+| R-14 ✅（2026-08-28 落地） | 图片理解缺失 | 图片生成（ComfyUI）已通，但无视觉模型理解图片内容（qwen2.5:7b 非视觉） | 接入视觉模型（qwen2.5-vl 等）或云端视觉，图片输入走视觉链路 | 上传图片后可描述内容并回答相关问题 |
+| R-15 ✅（2026-08-28 落地） | 工具开发无 SDK/脚手架 | 新增工具需手写 Java 注册，无模板与文档 | 提供工具开发模板/脚手架 + 文档 + 测试夹具 | 按文档 30 分钟内新增一个简单工具并过测试 |
+| R-16 ✅（2026-08-28 落地） | 流式中断无法恢复 | 取消流式直接断开，已执行工具结果丢弃 | 断点缓存：工具轮结果按 requestId 暂存，重发时跳过已执行步骤 | 中断后重试不重复执行副作用工具 |
 
 ### M1 实施清单（/plan-eng-review 2026-08-24 锁定，2026-08-25 用户确认开工）
 

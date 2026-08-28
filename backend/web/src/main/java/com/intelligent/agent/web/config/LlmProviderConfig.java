@@ -8,7 +8,11 @@ import com.intelligent.agent.web.ai.llm.circuit.CircuitBreakerConfig;
 import com.intelligent.agent.web.ai.llm.circuit.CircuitBreakerRegistry;
 import com.intelligent.agent.web.ai.llm.cloud.OpenAiCompatibleLlmProvider;
 import com.intelligent.agent.web.ai.llm.ollama.OllamaLlmProvider;
+import com.intelligent.agent.web.infrastructure.monitoring.AlertService;
+import com.intelligent.agent.web.infrastructure.monitoring.MetricsRegistry;
+import com.intelligent.agent.web.infrastructure.scheduler.TaskSchedulerService;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -83,10 +87,16 @@ public class LlmProviderConfig {
                 new FallbackRateLimiter(fallbackDailyLimit));
     }
 
-    /** 全局并发推理闸门：上限由 runtime 配置 inference_concurrency 驱动（ConfigRuntimeService 注入）。 */
+    /** R-13：全局并发推理闸门；排队超时（队列满）触发告警 + 指标。 */
     @Bean
-    public InferenceGate inferenceGate() {
-        return new InferenceGate(1);
+    public InferenceGate inferenceGate(AlertService alertService, MetricsRegistry metricsRegistry) {
+        return new InferenceGate(1, key -> {
+            String model = key == null || key.isBlank() ? "default" : key;
+            metricsRegistry.increment("inference_queue_timeouts");
+            alertService.alert("inference_queue_full",
+                    "推理队列繁忙：模型 " + model + " 请求排队超时，已拒绝",
+                    Map.of("model", model));
+        });
     }
 
     @Bean
@@ -94,8 +104,32 @@ public class LlmProviderConfig {
             @Value("${ai.llm.circuit-breaker.enabled:true}") boolean enabled,
             @Value("${ai.llm.circuit-breaker.failure-threshold:5}") int failureThreshold,
             @Value("${ai.llm.circuit-breaker.cooldown:30s}") Duration cooldown,
-            @Value("${ai.llm.circuit-breaker.window-size:100}") int windowSize) {
+            @Value("${ai.llm.circuit-breaker.window-size:100}") int windowSize,
+            AlertService alertService, MetricsRegistry metricsRegistry) {
         return new CircuitBreakerRegistry(
-                new CircuitBreakerConfig(enabled, failureThreshold, cooldown, windowSize));
+                new CircuitBreakerConfig(enabled, failureThreshold, cooldown, windowSize),
+                data -> alertService.alert("circuit_breaker_opened",
+                        "模型熔断器打开: " + data.getOrDefault("model", ""), data),
+                metricsRegistry);
+    }
+
+    /** R-13：进程内指标注册表（计数器 + 直方图）。 */
+    @Bean
+    public MetricsRegistry metricsRegistry() {
+        return new MetricsRegistry();
+    }
+
+    /** R-13：系统告警（限频后写入通知队列 → WebSocket 广播 / REST 轮询）。 */
+    @Bean
+    public AlertService alertService(ObjectProvider<TaskSchedulerService> taskSchedulerServiceProvider,
+                                     @Value("${ai.alerts.enabled:true}") boolean enabled,
+                                     @Value("${ai.alerts.min-interval:300s}") Duration minInterval) {
+        return new AlertService(enabled, entry -> {
+                    TaskSchedulerService scheduler = taskSchedulerServiceProvider.getIfAvailable();
+                    if (scheduler != null) {
+                        scheduler.pushSystemNotification(entry);
+                    }
+                },
+                minInterval == null ? 300_000L : minInterval.toMillis());
     }
 }

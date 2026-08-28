@@ -7,16 +7,15 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 文件操作工具（TODO-110 Task 1）：read/write/list/create/delete/copy/move/info/exists。
+ * 只读文件操作工具（TODO-110 Task 1 + R-08 收敛）：read/list/info/exists + preview(diff 预览)。
  * 安全：路径必须落在配置的安全目录内（绝对化 + normalize 前缀校验），
  * 越界一律拒绝（对齐 Python FileTool + TODO-76 路径安全要求）。
+ * <p>写操作已拆到 {@link FileEditTool}（需审批）；本工具保持纯只读。</p>
  */
 public class FileTool implements AgentTool {
 
@@ -35,20 +34,24 @@ public class FileTool implements AgentTool {
     @Override
     public ToolDefinition definition() {
         return new ToolDefinition(
-                "file_tool", "文件和目录操作。action: read(读取全文), write(写入), list(列目录),"
-                        + " create, delete, copy, move, info, exists。参数: action, path, content(写时必填)",
-                false, null, null,
+                "file_tool", "只读文件和目录操作。action: read(读取全文), list(列目录),"
+                        + " info, exists, preview(变更预览 diff)。"
+                        + " preview 参数: path + action(write/append/delete) + content(write/append 时提供)，"
+                        + " 返回 unified diff 但不做任何修改。"
+                        + " 若要实际写入/删除/移动文件，请使用 file_edit_tool（需用户审批）。",
+                true, null, null,
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
                                 "action", Map.of("type", "string",
-                                        "enum", List.of("read", "write", "list", "create",
-                                                "delete", "copy", "move", "info", "exists")),
+                                        "enum", List.of("read", "list", "info", "exists", "preview")),
                                 "path", Map.of("type", "string", "description", "文件或目录路径"),
-                                "content", Map.of("type", "string", "description", "写入内容（write 时必填）"),
-                                "destination", Map.of("type", "string", "description", "目标路径（copy/move 时必填）"),
-                                "mode", Map.of("type", "string", "enum", List.of("text", "binary"),
-                                        "description", "读写模式，默认 text")),
+                                "content", Map.of("type", "string", "description", "预览用内容（preview 的 write/append 时提供）"),
+                                "preview_action", Map.of("type", "string",
+                                        "enum", List.of("write", "append", "delete"),
+                                        "description", "preview 要预览的操作类型"),
+                                "mode", Map.of("type", "string", "enum", List.of("text", "json"),
+                                        "description", "读取模式，默认 text")),
                         "required", List.of("action", "path")));
     }
 
@@ -66,14 +69,10 @@ public class FileTool implements AgentTool {
         try {
             return switch (action) {
                 case "read" -> read(target, arguments);
-                case "write" -> write(target, arguments);
                 case "list" -> list(target);
-                case "create" -> create(target);
-                case "delete" -> delete(target);
-                case "copy" -> copy(target, String.valueOf(arguments.getOrDefault("destination", "")));
-                case "move" -> move(target, String.valueOf(arguments.getOrDefault("destination", "")));
                 case "info" -> info(target);
                 case "exists" -> Map.of("path", path, "exists", Files.exists(target));
+                case "preview" -> preview(target, arguments);
                 default -> Map.of("error", "不支持的操作: " + action);
             };
         } catch (Exception e) {
@@ -103,17 +102,8 @@ public class FileTool implements AgentTool {
         return result;
     }
 
-    private Map<String, Object> write(Path path, Map<String, Object> arguments) throws IOException {
-        String content = String.valueOf(arguments.getOrDefault("content", ""));
-        if (path.getParent() != null) {
-            Files.createDirectories(path.getParent());
-        }
-        Files.writeString(path, content, StandardCharsets.UTF_8);
-        return Map.of("path", path.toString(), "written", content.length());
-    }
-
     private Map<String, Object> list(Path dir) throws IOException {
-        List<Map<String, Object>> files = new ArrayList<>();
+        List<Map<String, Object>> files = new java.util.ArrayList<>();
         if (Files.isDirectory(dir)) {
             try (var stream = Files.list(dir)) {
                 for (Path entry : stream.sorted().toList()) {
@@ -127,37 +117,6 @@ public class FileTool implements AgentTool {
         return Map.of("path", dir.toString(), "files", files);
     }
 
-    private Map<String, Object> create(Path path) throws IOException {
-        if (path.getParent() != null) {
-            Files.createDirectories(path.getParent());
-        }
-        Files.createFile(path);
-        return Map.of("path", path.toString(), "created", true);
-    }
-
-    private Map<String, Object> delete(Path path) throws IOException {
-        boolean deleted = Files.deleteIfExists(path);
-        return Map.of("path", path.toString(), "deleted", deleted);
-    }
-
-    private Map<String, Object> copy(Path source, String destination) throws IOException {
-        Path dest = Path.of(destination).toAbsolutePath().normalize();
-        if (!isSafe(dest)) {
-            return Map.of("error", "目标路径不在安全目录内: " + destination);
-        }
-        Files.copy(source, dest, StandardCopyOption.REPLACE_EXISTING);
-        return Map.of("from", source.toString(), "to", dest.toString());
-    }
-
-    private Map<String, Object> move(Path source, String destination) throws IOException {
-        Path dest = Path.of(destination).toAbsolutePath().normalize();
-        if (!isSafe(dest)) {
-            return Map.of("error", "目标路径不在安全目录内: " + destination);
-        }
-        Files.move(source, dest, StandardCopyOption.REPLACE_EXISTING);
-        return Map.of("from", source.toString(), "to", dest.toString());
-    }
-
     private Map<String, Object> info(Path path) throws IOException {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("path", path.toString());
@@ -167,6 +126,34 @@ public class FileTool implements AgentTool {
             result.put("size_bytes", Files.size(path));
             result.put("last_modified", Files.getLastModifiedTime(path).toString());
         }
+        return result;
+    }
+
+    /**
+     * 变更预览（只读）：对 write/append/delete 生成 unified diff，不落盘。
+     * 超大文件（> 512KB）拒绝预览，避免把整个文件读进上下文。
+     */
+    private Map<String, Object> preview(Path path, Map<String, Object> arguments) throws IOException {
+        String previewAction = String.valueOf(arguments.getOrDefault("preview_action", "write"));
+        if (Files.exists(path) && Files.size(path) > 512 * 1024) {
+            return Map.of("error", "文件超过 512KB，跳过预览: " + path);
+        }
+        String before = Files.exists(path) ? Files.readString(path, StandardCharsets.UTF_8) : "";
+        String after;
+        switch (previewAction) {
+            case "delete" -> after = "";
+            case "append" -> {
+                String content = String.valueOf(arguments.getOrDefault("content", ""));
+                String separator = before.isEmpty() || before.endsWith("\n") ? "" : "\n";
+                after = before + separator + content;
+            }
+            default -> after = String.valueOf(arguments.getOrDefault("content", ""));
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("path", path.toString());
+        result.put("preview_action", previewAction);
+        result.put("diff", UnifiedDiff.of(path.toString(), before, after));
+        result.put("changed", !before.equals(after));
         return result;
     }
 }

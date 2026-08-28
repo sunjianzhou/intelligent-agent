@@ -351,6 +351,13 @@ public class TaskSchedulerService {
         undelivered.stream().filter(java.util.Objects::nonNull).forEach(notifications::add);
     }
 
+    /** R-13：系统级告警/通知入队（无 user_id → WS 广播到所有在线会话 + REST 轮询可取）。 */
+    public void pushSystemNotification(Map<String, Object> entry) {
+        if (entry != null) {
+            notifications.add(entry);
+        }
+    }
+
     private void appendLog(String timestamp, String message) {
         try {
             Files.createDirectories(actionLog.getParent());

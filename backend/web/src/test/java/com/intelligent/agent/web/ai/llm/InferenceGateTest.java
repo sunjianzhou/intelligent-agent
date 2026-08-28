@@ -138,4 +138,20 @@ class InferenceGateTest {
         gate.release("model-a");
         assertThat(gate.active()).isZero();
     }
+
+    @Test
+    void timeoutCallbackFiresWhenQueueFull() throws Exception {
+        AtomicInteger timeouts = new AtomicInteger();
+        InferenceGate gate = new InferenceGate(1, key -> timeouts.incrementAndGet());
+        gate.acquire();
+
+        assertThat(gate.acquire(Duration.ofMillis(50))).isFalse();
+        assertThat(gate.acquire(Duration.ofMillis(50))).isFalse();
+        assertThat(timeouts).hasValue(2);
+
+        gate.release();
+        assertThat(gate.acquire(Duration.ofMillis(200))).isTrue();
+        assertThat(timeouts).hasValue(2);
+        gate.release();
+    }
 }

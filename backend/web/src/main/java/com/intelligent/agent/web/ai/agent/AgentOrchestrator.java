@@ -14,6 +14,7 @@ import com.intelligent.agent.web.ai.llm.LlmProvider;
 import com.intelligent.agent.web.ai.llm.LlmProviderException;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.ai.llm.LlmResponse;
+import com.intelligent.agent.web.ai.llm.LlmVisionSupport;
 import com.intelligent.agent.web.ai.llm.LlmUsage;
 import com.intelligent.agent.web.ai.llm.ModelEvent;
 import com.intelligent.agent.web.ai.memory.AgentContext;
@@ -78,6 +79,11 @@ public class AgentOrchestrator {
     private final ContextBudget contextBudget;
     private final SubAgentExecutor subAgentExecutor;
     private final ApprovalNotifier approvalNotifier;
+    /** R-14：附图片时是否校验模型视觉能力（Spring 装配默认开；单元测试默认关）。 */
+    private final boolean visionCheckEnabled;
+    private final List<String> visionModels;
+    /** R-16：工具轮结果断点缓存（中断后同 requestId 重发跳过已执行工具）。 */
+    private final ToolCheckpointStore checkpointStore;
 
     /** R-07：合并结果块上限（超出截断，避免子代理结果撑爆主对话上下文）。 */
     private static final int SUBAGENT_RESULT_BLOCK_MAX_CHARS = 8000;
@@ -209,6 +215,41 @@ public class AgentOrchestrator {
                              ApprovalGate approvalGate, SkillMatcher skillMatcher,
                              ContextBudget contextBudget, SubAgentExecutor subAgentExecutor,
                              ApprovalNotifier approvalNotifier) {
+        this(router, toolExecutor, memoryService, promptService, branchFailureDetector,
+                maxToolRounds, traceService, configRuntimeService, planner, reflector,
+                approvalGate, skillMatcher, contextBudget, subAgentExecutor, approvalNotifier,
+                false, List.of());
+    }
+
+    /** R-14：装配视觉校验后，附图片且模型不支持视觉时直接给出清晰错误，不再空转调用 LLM。 */
+    public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
+                             ConversationMemoryService memoryService,
+                             PromptService promptService,
+                             BranchFailureDetector branchFailureDetector, int maxToolRounds,
+                             TraceService traceService, ConfigRuntimeService configRuntimeService,
+                             TaskPlanner planner, AnswerReflector reflector,
+                             ApprovalGate approvalGate, SkillMatcher skillMatcher,
+                             ContextBudget contextBudget, SubAgentExecutor subAgentExecutor,
+                             ApprovalNotifier approvalNotifier,
+                             boolean visionCheckEnabled, List<String> visionModels) {
+        this(router, toolExecutor, memoryService, promptService, branchFailureDetector,
+                maxToolRounds, traceService, configRuntimeService, planner, reflector,
+                approvalGate, skillMatcher, contextBudget, subAgentExecutor, approvalNotifier,
+                visionCheckEnabled, visionModels, null);
+    }
+
+    /** R-16：装配断点缓存后，同 requestId 重发可复用已执行工具结果。 */
+    public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
+                             ConversationMemoryService memoryService,
+                             PromptService promptService,
+                             BranchFailureDetector branchFailureDetector, int maxToolRounds,
+                             TraceService traceService, ConfigRuntimeService configRuntimeService,
+                             TaskPlanner planner, AnswerReflector reflector,
+                             ApprovalGate approvalGate, SkillMatcher skillMatcher,
+                             ContextBudget contextBudget, SubAgentExecutor subAgentExecutor,
+                             ApprovalNotifier approvalNotifier,
+                             boolean visionCheckEnabled, List<String> visionModels,
+                             ToolCheckpointStore checkpointStore) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.toolExecutor = Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
         this.toolCallParser = new TextToolCallParser();
@@ -226,12 +267,20 @@ public class AgentOrchestrator {
         this.contextBudget = contextBudget;
         this.subAgentExecutor = subAgentExecutor;
         this.approvalNotifier = approvalNotifier;
+        this.visionCheckEnabled = visionCheckEnabled;
+        this.visionModels = visionModels == null ? List.of() : List.copyOf(visionModels);
+        this.checkpointStore = checkpointStore;
     }
 
     public Flux<ModelEvent> stream(AgentRequestContext context) {
         Objects.requireNonNull(context, "context must not be null");
         String traceId = beginTrace(context);
         long requestStart = System.currentTimeMillis();
+        java.util.Optional<String> visionError = visionGuardError(context);
+        if (visionError.isPresent()) {
+            endTrace(traceId, false);
+            return Flux.just(ModelEvent.error(visionError.get()));
+        }
         LlmProviderRouter.FallbackTracker tracker =
                 new LlmProviderRouter.FallbackTracker(effectiveModel(context));
         AgentContext memory = loadMemory(context, traceId);
@@ -302,6 +351,7 @@ public class AgentOrchestrator {
                     }
                     recordTurn(context, TaskSentinelUtils.strip(tokens.toString()),
                             traceId, tracker.used());
+                    clearCheckpoint(context);
                     endTrace(traceId, true);
                 })
                 .doOnError(e -> endTrace(traceId, false));
@@ -311,6 +361,11 @@ public class AgentOrchestrator {
         Objects.requireNonNull(context, "context must not be null");
         String traceId = beginTrace(context);
         long requestStart = System.currentTimeMillis();
+        java.util.Optional<String> visionError = visionGuardError(context);
+        if (visionError.isPresent()) {
+            endTrace(traceId, false);
+            return Mono.just(visionError.get());
+        }
         LlmProviderRouter.FallbackTracker tracker =
                 new LlmProviderRouter.FallbackTracker(effectiveModel(context));
         AgentContext memory = loadMemory(context, traceId);
@@ -356,6 +411,7 @@ public class AgentOrchestrator {
                                 "reason", tracker.reason() == null ? "" : tracker.reason()));
                     }
                     recordTurn(context, answer, traceId, tracker.used());
+                    clearCheckpoint(context);
                     endTrace(traceId, true);
                 })
                 .doOnError(e -> endTrace(traceId, false));
@@ -587,6 +643,45 @@ public class AgentOrchestrator {
             return ctx.model().trim();
         }
         return promptService == null ? null : promptService.effectiveModel(ctx);
+    }
+
+    /** R-14：附图片且启用校验时，当前模型不支持视觉 → 返回清晰错误文案。 */
+    private java.util.Optional<String> visionGuardError(AgentRequestContext ctx) {
+        if (!visionCheckEnabled || ctx.imageBase64() == null || ctx.imageBase64().isBlank()) {
+            return java.util.Optional.empty();
+        }
+        String model = effectiveModel(ctx);
+        if (model != null && LlmVisionSupport.isVisionModel(model, visionModels)) {
+            return java.util.Optional.empty();
+        }
+        String modelText = model == null || model.isBlank() ? "当前模型" : "当前模型 " + model;
+        return java.util.Optional.of(modelText + " 不支持图片理解，请切换到视觉模型"
+                + "（如 qwen2.5-vl，或在 ai.llm.vision-models 中登记）后再试。");
+    }
+
+    /** R-16：命中 requestId + 调用签名的断点缓存则复用结果（不执行、不重复审批）。 */
+    private ToolResult cachedResult(AgentRequestContext ctx, ToolCall call) {
+        if (checkpointStore == null || ctx.requestId() == null || ctx.requestId().isBlank()) {
+            return null;
+        }
+        return checkpointStore.get(ctx.requestId(), ToolCheckpointStore.signature(call))
+                .orElse(null);
+    }
+
+    /** R-16：已执行（非重放）的工具结果写入断点缓存，供中断重发复用。 */
+    private void storeResult(AgentRequestContext ctx, ToolCall call, ToolResult result) {
+        if (checkpointStore == null || ctx.requestId() == null || ctx.requestId().isBlank()
+                || result == null || ToolResult.DENIED.equals(result.status())) {
+            return;
+        }
+        checkpointStore.put(ctx.requestId(), ToolCheckpointStore.signature(call), result);
+    }
+
+    /** R-16：请求成功完结后清理该 requestId 的断点，避免同 id 复用陈旧结果。 */
+    private void clearCheckpoint(AgentRequestContext ctx) {
+        if (checkpointStore != null && ctx.requestId() != null && !ctx.requestId().isBlank()) {
+            checkpointStore.remove(ctx.requestId());
+        }
     }
 
     private static String recallSection(String header, List<MemoryRecord> records) {
@@ -958,11 +1053,16 @@ public class AgentOrchestrator {
             // G6 HITL：需审批的工具调用先请求用户决议。
             // web/WS → approval_required 事件（stream 路径）；飞书 IM → 卡片按钮送达后阻塞等待；
             // 其余 IM 渠道（无审批 UI）→ 默认拒绝 + 提示到 Web 端批准。
+            // R-16：命中断点缓存的调用直接复用结果（已批准过且已执行），跳过执行与重复审批。
             boolean[] approved = new boolean[calls.size()];
             Arrays.fill(approved, true);
+            Map<Integer, ToolResult> replayByIndex = new HashMap<>();
             for (int i = 0; i < calls.size(); i++) {
                 ToolCall call = calls.get(i);
-                if (needsApproval(ctx, call)) {
+                ToolResult replay = cachedResult(ctx, call);
+                if (replay != null) {
+                    replayByIndex.put(i, replay);
+                } else if (needsApproval(ctx, call)) {
                     ApprovalGate.ApprovalRequest request =
                             approvalGate.request(ctx.userId(), call.name(), call.arguments());
                     String channel = ctx.channel() == null ? "" : ctx.channel();
@@ -992,7 +1092,7 @@ public class AgentOrchestrator {
             }
             List<ToolCall> executable = new ArrayList<>();
             for (int i = 0; i < calls.size(); i++) {
-                if (approved[i]) {
+                if (approved[i] && !replayByIndex.containsKey(i)) {
                     executable.add(calls.get(i));
                 }
             }
@@ -1002,14 +1102,22 @@ public class AgentOrchestrator {
             Map<Integer, ToolResult> resultByIndex = new HashMap<>();
             int execIdx = 0;
             for (int i = 0; i < calls.size(); i++) {
-                resultByIndex.put(i, approved[i]
-                        ? results.get(execIdx++)
-                        : ToolResult.denied("用户拒绝了该工具调用（或审批超时），未执行"));
+                if (replayByIndex.containsKey(i)) {
+                    resultByIndex.put(i, replayByIndex.get(i));
+                } else {
+                    resultByIndex.put(i, approved[i]
+                            ? results.get(execIdx++)
+                            : ToolResult.denied("用户拒绝了该工具调用（或审批超时），未执行"));
+                }
             }
             List<Map<String, Object>> executed = new ArrayList<>(executedCalls);
             for (int i = 0; i < calls.size(); i++) {
                 ToolCall call = calls.get(i);
                 ToolResult result = resultByIndex.get(i);
+                boolean replayed = replayByIndex.containsKey(i);
+                if (!replayed) {
+                    storeResult(ctx, call, result);
+                }
                 executed.add(executedEntry(call, result.status()));
                 if (!ToolResult.SUCCESS.equals(result.status())
                         && !ToolResult.DENIED.equals(result.status())) {
@@ -1019,12 +1127,13 @@ public class AgentOrchestrator {
                         : (result.error() != null ? result.error() : result.status());
                 String text = markToolResultAsData(call.name(), truncateToolResult(raw));
                 next.add(ChatMessage.tool(text, "call_" + (executedCalls.size() + i)));
-                // G4：每个工具调用一个 span
-                addSpan(traceId, "tool_call", toolStart, Map.of(
-                        "tool", call.name(),
-                        "args", argsSummary(call.arguments()),
-                        "status", result.status(),
-                        "duration_ms", result.executionTimeMs()));
+                // G4：每个工具调用一个 span；R-16 命中断点为 tool_replay
+                addSpan(traceId, replayed ? "tool_replay" : "tool_call",
+                        toolStart, Map.of(
+                                "tool", call.name(),
+                                "args", argsSummary(call.arguments()),
+                                "status", replayed ? "replay" : result.status(),
+                                "duration_ms", replayed ? 0 : result.executionTimeMs()));
             }
             // 信号 1：同工具同错误 ≥3 次
             String sameError = BranchFailureDetector.detectSameToolError(failures);

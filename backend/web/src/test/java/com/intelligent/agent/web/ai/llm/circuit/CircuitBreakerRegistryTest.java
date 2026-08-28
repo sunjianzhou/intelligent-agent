@@ -1,11 +1,13 @@
 package com.intelligent.agent.web.ai.llm.circuit;
 
 import com.intelligent.agent.web.ai.llm.LlmProvider;
+import com.intelligent.agent.web.infrastructure.monitoring.MetricsRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -54,5 +56,28 @@ class CircuitBreakerRegistryTest {
             assertThat(b.get("state")).isEqualTo("CLOSED");
             assertThat(b.get("success_rate")).isEqualTo(0.0);
         });
+    }
+
+    @Test
+    void firesAlertAndMetricOnceWhenBreakerOpens() {
+        AtomicInteger alerts = new AtomicInteger();
+        MetricsRegistry metrics = new MetricsRegistry();
+        CircuitBreakerRegistry registry = new CircuitBreakerRegistry(
+                new CircuitBreakerConfig(true, 3, Duration.ofSeconds(30), 100),
+                data -> alerts.incrementAndGet(), metrics);
+        registry.wrap("qwen2.5:7b", delegate);
+
+        registry.recordFailure("qwen2.5:7b");
+        registry.recordFailure("qwen2.5:7b");
+        assertThat(alerts).hasValue(0);
+
+        registry.recordFailure("qwen2.5:7b");
+        assertThat(alerts).hasValue(1);
+        assertThat(metrics.counter("llm_breaker_opened")).isEqualTo(1);
+
+        // OPEN 期间的额外失败不重复告警
+        registry.recordFailure("qwen2.5:7b");
+        assertThat(alerts).hasValue(1);
+        assertThat(registry.status().get("breakers")).isNotNull();
     }
 }

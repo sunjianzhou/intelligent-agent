@@ -93,4 +93,15 @@ class PromptServiceTest {
         assertThat(service.buildSystemPrompt(AgentRequestContext.of("u1", "hi")))
                 .doesNotContain("[GROUP SCENE]");
     }
+
+    @Test
+    void imageHintInjectedWhenImageAttached() {
+        AgentRequestContext withImage = new AgentRequestContext(
+                "u1", "看图", "qwen2.5-vl:7b", null, null, null, true, true, "web", Map.of(),
+                "aGVsbG8=", null, false);
+
+        assertThat(service.buildSystemPrompt(withImage)).contains("[IMAGE ATTACHED]");
+        assertThat(service.buildSystemPrompt(AgentRequestContext.of("u1", "看图")))
+                .doesNotContain("[IMAGE ATTACHED]");
+    }
 }

@@ -56,6 +56,9 @@ ai:
     fallback:
       budget: ${LLM_FALLBACK_BUDGET:60s}
       daily-limit: ${LLM_FALLBACK_DAILY_LIMIT:50}
+    # R-14：图片理解——附图片时校验模型是否支持视觉（关键词 + 显式列表），不支持则给出清晰错误
+    vision-check-enabled: ${AI_LLM_VISION_CHECK_ENABLED:true}
+    vision-models: ${AI_LLM_VISION_MODELS:[]}
   # 真实 embedding（Ollama /api/embed，TODO-110 Task 5）
   embedding:
     enabled: ${EMBEDDING_ENABLED:true}
@@ -107,6 +110,24 @@ ai:
     allowed-domains: ${WEB_FETCH_ALLOWED_DOMAINS:[]}
     timeout-seconds: ${WEB_FETCH_TIMEOUT_SECONDS:10}
     max-body-chars: ${WEB_FETCH_MAX_BODY_CHARS:8000}
+  # R-08：文件工具安全目录（绝对路径列表，如 ["D:/workspace/intelligent_agent"]）。
+  # file_tool 只读（read/list/info/exists/preview）；file_edit_tool 可写且每次写操作需 HITL 审批。
+  # 空列表时：file_tool 默认 home + cwd；file_edit_tool 默认仅 cwd。
+  file:
+    safe-directories: ${AI_FILE_SAFE_DIRECTORIES:[]}
+  file-edit:
+    safe-directories: ${AI_FILE_EDIT_SAFE_DIRECTORIES:[]}
+  # R-13：轻量指标与告警（断路器打开 / 推理队列满 → 通知队列广播；/api/metrics 聚合）
+  metrics:
+    enabled: ${AI_METRICS_ENABLED:true}
+  alerts:
+    enabled: ${AI_ALERTS_ENABLED:true}
+    min-interval: ${AI_ALERTS_MIN_INTERVAL:300s}
+  # R-16：流式中断恢复——按 requestId 缓存工具轮结果，中断后同 id 重发跳过已执行副作用工具
+  checkpoint:
+    tool-results-enabled: ${AI_CHECKPOINT_TOOL_RESULTS_ENABLED:true}
+    ttl: ${AI_CHECKPOINT_TTL:10m}
+    max-entries: ${AI_CHECKPOINT_MAX_ENTRIES:2000}
 
 server:
   port: 8080

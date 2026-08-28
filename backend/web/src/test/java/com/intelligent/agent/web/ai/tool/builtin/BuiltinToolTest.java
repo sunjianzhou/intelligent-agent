@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.ai.tool.builtin;
 
 import com.intelligent.agent.web.ai.tool.builtin.file.FileTool;
+import com.intelligent.agent.web.ai.tool.builtin.file.FileEditTool;
 import com.intelligent.agent.web.ai.tool.builtin.shell.ShellTool;
 import com.intelligent.agent.web.ai.tool.builtin.web.WebSearchTool;
 import com.intelligent.agent.web.ai.tool.ToolCall;
@@ -80,12 +81,16 @@ class BuiltinToolTest {
     // ── File ─────────────────────────────────────────────────
 
     @Test
-    void fileToolReadWriteListWithinSafeDir() throws Exception {
-        FileTool tool = new FileTool(List.of(tempDir));
+    void fileToolReadOnlyAndEditToolWritesWithinSafeDir() throws Exception {
+        FileEditTool editTool = new FileEditTool(List.of(tempDir));
         Path file = tempDir.resolve("note.txt");
 
-        tool.execute(Map.of("action", "write", "path", file.toString(), "content", "hello 文件"));
+        Object written = editTool.execute(Map.of(
+                "action", "write", "path", file.toString(), "content", "hello 文件"));
+        assertThat(String.valueOf(written)).contains("changed=true");
         assertThat(Files.readString(file, StandardCharsets.UTF_8)).isEqualTo("hello 文件");
+
+        FileTool tool = new FileTool(List.of(tempDir));
 
         Map<String, Object> read = (Map<String, Object>) tool.execute(
                 Map.of("action", "read", "path", file.toString()));
@@ -98,6 +103,33 @@ class BuiltinToolTest {
         Map<String, Object> info = (Map<String, Object>) tool.execute(
                 Map.of("action", "info", "path", file.toString()));
         assertThat(info.get("exists")).isEqualTo(true);
+    }
+
+    @Test
+    void fileToolRejectsWriteActionAsReadOnly() throws Exception {
+        FileTool tool = new FileTool(List.of(tempDir));
+
+        Object result = tool.execute(Map.of(
+                "action", "write", "path", tempDir.resolve("x.txt").toString(), "content", "x"));
+
+        assertThat(String.valueOf(result)).contains("不支持的操作");
+    }
+
+    @Test
+    void fileToolPreviewShowsUnifiedDiffWithoutWriting() throws Exception {
+        FileTool tool = new FileTool(List.of(tempDir));
+        Path file = tempDir.resolve("preview.txt");
+        Files.writeString(file, "line1\nline2\nline3\n", StandardCharsets.UTF_8);
+
+        Map<String, Object> preview = (Map<String, Object>) tool.execute(Map.of(
+                "action", "preview", "path", file.toString(),
+                "preview_action", "write", "content", "line1\nline2 changed\nline3\n"));
+
+        assertThat(preview.get("changed")).isEqualTo(true);
+        assertThat(String.valueOf(preview.get("diff"))).contains("-line2");
+        assertThat(String.valueOf(preview.get("diff"))).contains("+line2 changed");
+        // 预览不落盘
+        assertThat(Files.readString(file, StandardCharsets.UTF_8)).isEqualTo("line1\nline2\nline3\n");
     }
 
     @Test

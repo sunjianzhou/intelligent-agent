@@ -6,15 +6,19 @@ import com.intelligent.agent.web.service.AgentService;
 import com.intelligent.agent.web.service.ModelService;
 import com.intelligent.agent.web.infrastructure.scheduler.TaskSchedulerService;
 import com.intelligent.agent.web.infrastructure.monitoring.SystemResourceService;
+import com.intelligent.agent.web.infrastructure.monitoring.MetricsRegistry;
 import com.intelligent.agent.web.service.ConfigRuntimeService;
 import com.intelligent.agent.web.ai.memory.ContextBudget;
 import com.intelligent.agent.web.ai.llm.circuit.CircuitBreakerRegistry;
+import com.intelligent.agent.web.ai.llm.InferenceGate;
+import com.intelligent.agent.web.ai.agent.ActiveChatLimiter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -32,6 +36,9 @@ public class HealthController {
     @Autowired(required = false) private ConfigRuntimeService configRuntimeService;
     @Autowired(required = false) private CircuitBreakerRegistry circuitBreakerRegistry;
     @Autowired(required = false) private ContextBudget contextBudget;
+    @Autowired(required = false) private MetricsRegistry metricsRegistry;
+    @Autowired(required = false) private InferenceGate inferenceGate;
+    @Autowired(required = false) private ActiveChatLimiter activeChatLimiter;
 
     // ── 健康检查 ──────────────────────────────────────────────
 
@@ -93,6 +100,33 @@ public class HealthController {
             return ResponseEntity.ok(circuitBreakerRegistry.status());
         }
         return ResponseEntity.ok(Map.of("enabled", false, "breakers", java.util.List.of()));
+    }
+
+    /** R-13：轻量指标聚合（计数器/直方图 + LLM 熔断状态 + 推理闸门 + 流式并发）。 */
+    @GetMapping("/metrics")
+    public ResponseEntity<Map<String, Object>> metrics() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("timestamp", System.currentTimeMillis());
+        if (metricsRegistry != null) {
+            result.putAll(metricsRegistry.snapshot());
+        } else {
+            result.put("counters", Map.of());
+            result.put("histograms", Map.of());
+        }
+        if (circuitBreakerRegistry != null) {
+            result.put("llm", circuitBreakerRegistry.status());
+        }
+        if (inferenceGate != null) {
+            result.put("inference", Map.of(
+                    "active", inferenceGate.active(),
+                    "max_concurrency", inferenceGate.maxConcurrency()));
+        }
+        if (activeChatLimiter != null) {
+            result.put("streams", Map.of(
+                    "active", activeChatLimiter.active(),
+                    "max", activeChatLimiter.maxConcurrency()));
+        }
+        return ResponseEntity.ok(result);
     }
 
     // ── 模型管理 ──────────────────────────────────────────────

@@ -104,6 +104,12 @@ public class PromptService {
         if ("group".equals(ctx.sceneChatType())) {
             prompt = prompt + "\n\n" + buildGroupSceneRule(ctx.sceneMentioned());
         }
+        // R-14：附图片时提示模型观察图片（视觉模型链路）
+        if (ctx.imageBase64() != null && !ctx.imageBase64().isBlank()) {
+            prompt = prompt + "\n\n[IMAGE ATTACHED] 用户当前消息附带一张图片。"
+                    + "请先观察并描述图片内容，再回答用户的问题；若图片与问题无关，"
+                    + "也要在回答中说明你看到了什么。";
+        }
         return prompt;
     }
 
