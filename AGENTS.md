@@ -47,7 +47,7 @@ the agent application itself.
 ```bash
 cd backend/web
 ./mvnw.cmd spring-boot:run     # Windows; JWT_SECRET / ADMIN_PASSWORD env required
-./mvnw.cmd test                # full suite (~566 tests)
+./mvnw.cmd test                # full suite (~650 tests)
 ./mvnw.cmd package
 ```
 
@@ -137,9 +137,12 @@ overrides (e.g. unrestricted overlay for dolphin).
 
 ### Tools (`ai/tool/`)
 
-Builtin tools: calculator, time, file (whitelisted read-only), shell (command whitelist),
-web_search, database (read-only), feishu_calendar, feishu_task, heart_record. MCP tools via
-`McpToolRegistry`. All registered in `AgentConfig`.
+Builtin tools (22, registered in `AgentConfig`): calculator / advanced_calculator, time,
+file (read-only + diff preview), file_edit (whitelisted write/delete/copy/move — every call
+goes through the HITL approval gate), shell (command whitelist), web_search, web_fetch
+(domain whitelist + SSRF), database (read-only), feishu_calendar / feishu_task, scheduler
+reminders/ai-tasks, image_generation (ComfyUI), channel_message, store/search_memories,
+system_info, heart_record. MCP tools via `McpToolRegistry`.
 
 ### Request flow boundaries to know before touching code
 

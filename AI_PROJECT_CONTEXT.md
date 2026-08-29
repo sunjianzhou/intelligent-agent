@@ -1,11 +1,16 @@
 # 智能体项目 — AI 上下文速查文档
 
 > **本文档专为大模型阅读设计**。新对话开始时先读此文件，5 分钟内建立完整项目认知，无需再反复询问基础背景。
-> 最后更新：2026-08-26（W13 Java 统一迁移完成 + 性能优化 + 迁移缺口收口 + R-07 子代理编排：Python Agent 已退役，
+> 最后更新：2026-08-29（W13 Java 统一迁移完成 + 性能优化 + 迁移缺口收口 + R-07 子代理编排 + R-08~R-16 收尾
+> + ComfyUI 可选后续：Python Agent 已退役，
 > 全部 AI 逻辑并入 Java 单后端；涉及 Python 的章节均已标注为历史，仅作对照参考，不再代表当前实现。
 > 2026-08-22 新增：异步 REST/流式并发上限/推理闸门超时与按模型分槽/向量记忆按用户分文件/
 > 技能运行时匹配注入/压测基线工具；2026-08-26 新增：R-07 子代理/多代理编排（计划并行分组 →
-> 只读研究子代理 → 结果按序合并），详见「八、路线图」与「九、当前运行状态」）
+> 只读研究子代理 → 结果按序合并）；2026-08-28~29 新增：R-08 受控文件编辑（file_edit_tool + diff 预览 + 审批）、
+> R-13 指标/告警（/api/metrics + 断路器/队列告警）、R-14 图片理解（视觉模型校验 + [IMAGE ATTACHED]）、
+> R-15 工具 SDK/脚手架、R-16 流式中断恢复（工具轮断点缓存）、ComfyUI 可选后续
+> （ControlNet/inpainting 预设、/ws 预览图回传、ImageGenTool 参数补全、模型下载引导）、
+> Telegram 真机验收用例就绪（仅差凭证），详见「八、路线图」与「九、当前运行状态」）
 
 ---
 
@@ -481,8 +486,8 @@ M3 剩余项：R-09 IM 渠道 HITL 审批 → R-10 成本/用量指标 → R-11 
 ## 九、当前运行状态（2026-08-26）
 
 - **已提交到 GitHub**：所有修改均已推送 master 分支
-- **测试覆盖**：Java 后端全量 566 用例绿（0 失败）；E2E 为 JUnit 黑盒（tests/e2e-java，70 用例）；
-  前端 Vitest 24+ 用例；压测/基线工具 `tests/perf-java`（@Tag("perf")，CI 手动 job，默认排除）
+- **测试覆盖**：Java 后端全量 650 用例绿（0 失败）；E2E 为 JUnit 黑盒（tests/e2e-java，70 用例）；
+  前端 Vitest 29 用例 + 构建通过；压测/基线工具 `tests/perf-java`（@Tag("perf")，CI 手动 job，默认排除）
 - **R-07 子代理编排**：复杂计划（≥2 步）并行派发只读子代理（`ai.subagent.*` 可配），结果按序合并；
   真机验证（qwen2.5:7b + Ollama）通过：4 步计划 group 1/1/1/0、三子代理同 start 并行执行、
   结果含真实计算与北京时间、trace `sub_agent` span 全 ok；修复本地模型嵌套 JSON 计划展开
@@ -495,7 +500,10 @@ M3 剩余项：R-09 IM 渠道 HITL 审批 → R-10 成本/用量指标 → R-11 
 - **已接通的 IM 渠道**：
   - 飞书（Feishu）：WS 长连接，启动自动建立，P2P + 群聊均支持
   - 企业微信（WeCom）：HTTP 回调 `https://intelligent.eu.cc/wecom/callback`，已验证端到端收发
-  - Telegram：adapter 已实现（限流 30/s + Inline Keyboard），待配置 Bot Token 后接通
+  - Telegram：adapter 已实现（限流 30/s + Inline Keyboard），真机验收用例已就绪
+    （`ImDeliveryVerifyTest.telegramTextReachesHeartbeatReceiver`，`@Tag("im-verify")`），仅差
+    `TELEGRAM_BOT_TOKEN` / `TELEGRAM_HEARTBEAT_RECEIVER_ID` 凭证即可一键运行
+    `mvn test -Dgroups=im-verify -DexcludedGroups=`
 - **Channel Adapter 抽象层**（2026-07-08，TODO-99~106）：
   - Java 侧（历史 Python 侧实现已退役）：`ChannelAdapter` interface + `FeishuChannelAdapter` + `ChannelAdapterManager`（Spring Bean，broadcast 并行）+ `ChannelRouter`（多通道并行广播 + 去重）
   - 可观测性：`GET /health/channels` 各 channel 指标端点（成功率/延迟/限流拒绝）
@@ -525,8 +533,16 @@ M3 剩余项：R-09 IM 渠道 HITL 审批 → R-10 成本/用量指标 → R-11 
     配置 `ai.skills.runtime-enabled` / `ai.skills.llm-timeout`）；
   - Trace 体系：`/api/traces` + OTLP 导出（OpenInference 属性）；压测工具与 CI 手动 job；
   - `.env` `JWT_SECRET` 需 ≥32 字符（jjwt 0.12 强制 ≥256 bits；轮换会失效 `SecretCrypto` 加密存量）。
-- **待办**：Telegram 真实送达验证（缺 bot token）；`[PROGRESS RECOVERY]` 与 Prometheus `/metrics`
-  未迁移（分别由任务树/待办注入和 trace+health 体系替代）；其余历史 TODO 均已完成或已归档。
+- **2026-08-28~29 收尾**：R-08 受控文件编辑（`FileEditTool` 白名单目录 + diff 预览 + HITL 审批；
+  `FileTool` 收敛只读）、R-13 轻量指标/告警（`MetricsRegistry` + `/api/metrics` +
+  断路器打开/推理队列满告警）、R-14 图片理解（`LlmVisionSupport` 视觉校验 + `[IMAGE ATTACHED]` 提示）、
+  R-15 工具开发 SDK（`docs/tool-development.md` + 模板 + `new_tool.ps1`）、
+  R-16 流式中断恢复（`ToolCheckpointStore` 按 requestId 断点缓存，重发复用工具结果）、
+  ComfyUI 可选后续（ControlNet / 局部重绘预设（SD1.5/SDXL）、/ws 生成中预览图回传、
+  `image_generation` 工具参数补全、`docs/comfyui-models.md` + 前端模型下载引导）。
+- **待办**：仅剩 Telegram 真实送达验收（用例已就绪，缺 bot token / chat_id 凭证）；
+  `[PROGRESS RECOVERY]` 与 Prometheus `/metrics` 未迁移（分别由任务树/待办注入和
+  trace+health 体系替代，已归档关闭）；其余历史 TODO 均已完成或已归档。
 
 ---
 
@@ -539,7 +555,7 @@ start_java_mode.bat                                 # 或 cd backend/web && mvnw
 cd frontend && npm run dev                          # 前端 dev server
 
 # 测试
-cd backend/web && mvnw test                         # Java 后端全量单元/契约测试（505 个）
+cd backend/web && mvnw test                         # Java 后端全量单元/契约测试（650 个）
 cd backend/web && ./mvnw.cmd -f ../../tests/e2e-java/pom.xml test   # Java E2E（需 backend + Ollama 运行）
 cd backend/web && ./mvnw.cmd -f ../../tests/perf-java/pom.xml test -Dgroups=perf -DexcludedGroups= -Dperf.saveBaseline=target/perf-report/baseline.json   # 压测/基线（需 backend + Ollama）
 

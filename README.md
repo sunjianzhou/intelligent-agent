@@ -108,16 +108,18 @@ cp .env.docker.example .env.docker    # 容器运行时变量（含 IM 集成、
 | 角色/提示词/灵魂层 | `PromptService` + `SystemPromptBuilder` + `SoulLoader`（`soul/` 目录热加载）+ `heart_record` 工具 |
 | 知识/技能/分析/教学 | `KnowledgeService` / `SkillService` / `AnalyticsService`（含 R-10 成本/用量聚合 + 月限额）/ `TeachingService` 领域服务 |
 | IM 渠道 | Feishu（WS 长连接 + OAuth + HITL 审批卡片）/ WeCom / Telegram 通道 + `ChannelRouter` 去重 + 限流重试 |
-| 图片生成 | `ImageService` + ComfyUI（txt2img / img2img；SD1.5/SDXL/FLUX/Qwen-Image/SD3.5 自动模板；LoRA 注入；自定义工作流；/ws 实时进度；5GB Gallery 自动清理）；SD WebUI / diffusers / SiliconFlow 未迁移（需求驱动再做） |
-| 多模态输入 | 聊天图片 base64 全链路透传至 Ollama images 字段 |
+| 图片生成 | `ImageService` + ComfyUI（txt2img / img2img / 局部重绘 / ControlNet（SD1.5/SDXL 预设）；SD1.5/SDXL/FLUX/Qwen-Image/SD3.5 自动模板；LoRA 注入；自定义工作流；/ws 实时进度 + 生成中预览图回传；5GB Gallery 自动清理）；SD WebUI / diffusers / SiliconFlow 未迁移（需求驱动再做） |
+| 多模态输入 | 聊天图片 base64 全链路透传至 Ollama images 字段；附图片时校验模型视觉能力（`ai.llm.vision-check-enabled`，非视觉模型给出清晰错误并提示切换 qwen2.5-vl 等） |
 | 消息撤回 | `ConversationService.retract` 级联删除短期记忆 + 长期检索排除 + 飞书官方撤回 |
 | 分支失败检测 | `BranchFailureDetector` 6 信号（同工具同错误/连续重复/错误+空响应/铁律违反扫描等），命中即终止本轮 |
+| 指标与告警 | `MetricsRegistry`（计数器 + P50/P90/P95/P99 直方图）+ `GET /api/metrics`；断路器打开 / 推理队列满触发告警（通知队列 → WS 广播 / REST 轮询，限频防风暴） |
+| 流式中断恢复 | 工具轮结果按 `requestId` + 调用签名断点缓存（TTL 10min），中断后同 id 重发自动复用，不重复执行副作用工具、不重复审批 |
 | CLI | Java CLI（`client/`）：login / chat / repl / model / persona / retract |
 
 **内置工具**：计算器 · 高级计算器/单位换算 · 时间 · 系统信息 · 文件读取（白名单） ·
-Web 搜索 · Web 正文抓取（白名单 + SSRF 防护） · Shell（命令白名单） · MySQL 只读查询 ·
-记忆写入/检索 · 提醒/定时任务 · 图片生成（ComfyUI） · IM 发消息 · 飞书日历/任务 ·
-心证管理（heart_record）
+文件编辑（受控目录 + diff 预览 + HITL 审批） · Web 搜索 · Web 正文抓取（白名单 + SSRF 防护） ·
+Shell（命令白名单） · MySQL 只读查询 · 记忆写入/检索 · 提醒/定时任务 · 图片生成（ComfyUI，
+含 ControlNet / 局部重绘 / img2img / LoRA） · IM 发消息 · 飞书日历/任务 · 心证管理（heart_record）
 
 ---
 
@@ -482,9 +484,9 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 | 层 | 测试框架 | 覆盖范围 |
 |------|------|------|
-| Java 后端测试 | `mvnw test`（505 个） | ReAct/分支检测、LLM provider 契约、记忆/蒸馏/缓存、角色/会话/项目/任务领域、工具、调度、IM 通道、技能匹配、迁移校验、E2E 契约（MockMvc）等 |
+| Java 后端测试 | `mvnw test`（650 个） | ReAct/分支检测、LLM provider 契约、记忆/蒸馏/缓存、角色/会话/项目/任务领域、工具、调度、IM 通道、技能匹配、迁移校验、E2E 契约（MockMvc）等 |
 | Backend 单元测试 | JUnit 5 | WebSocket 消息序列化、JWT 工具类、JSON 工具类 |
-| Frontend 单元测试 | Vitest（20 个） | JWT 处理逻辑等关键工具函数 |
+| Frontend 单元测试 | Vitest（29 个） | JWT 处理逻辑等关键工具函数 |
 | E2E 端到端测试 | JUnit + JDK HttpClient（tests/e2e-java，70 个） | 从客户端发起 HTTP 请求打通 Java:8080 全链路，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知/消息撤回/追踪 |
 | 压测/基线 | JUnit + JDK HttpClient（tests/perf-java，`@Tag("perf")`） | health / 非流式 chat / SSE 流式，输出 P50/P95/P99、RPS、首 token 延迟，支持基线对比；CI 手动 job |
 
@@ -507,7 +509,7 @@ intelligent_agent/
 │   └── src/main/java/com/intelligent/agent/web/
 │       ├── ai/agent/               AgentOrchestrator（ReAct）+ 分支失败检测 + 任务标记
 │       ├── ai/llm/                 Ollama / 云端 OpenAI 兼容 provider + 路由
-│       ├── ai/tool/                ToolExecutor + 内置工具（9 个）+ 文本工具解析
+│       ├── ai/tool/                ToolExecutor + 内置工具（22 个）+ 文本工具解析
 │       ├── ai/memory/              短期记忆 / 蒸馏 / 摘要 / 语义缓存 / 项目上下文
 │       ├── ai/prompt/              灵魂层加载 + SystemPromptBuilder + PromptService
 │       ├── domain/                 角色 / 会话 / 项目 / 任务 / 知识 / 技能 / 分析 / 教学

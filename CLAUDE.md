@@ -36,7 +36,7 @@ the agent application itself.
 ```bash
 cd backend/web
 ./mvnw.cmd spring-boot:run     # Windows; JWT_SECRET / ADMIN_PASSWORD env required
-./mvnw.cmd test                # full suite (~566 tests)
+./mvnw.cmd test                # full suite (~650 tests)
 ./mvnw.cmd package
 ```
 
