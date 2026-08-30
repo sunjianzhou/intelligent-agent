@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-08-30 前端移动端布局修复（QA 实测发现，browse 无头浏览器 375px 验证）
+
+> 启动后端 + Ollama + 前端后全页面真实点击巡检：桌面 15 页无水平溢出、无控制台错误；
+> 移动端（375x812）发现 3 处布局问题（截图与复测脚本见 `.qa/`），逐项修复。
+
+- ✅ **BUG-A 图片生成页模型下载引导表移动端被裁切**：`.guide-table` 宽 477px，而祖先
+  `.page-container` / `.main-content` 为 `overflow:hidden`，ModelScope 列与「下载」链接在手机上
+  不可见且不可滚动。修复：`.model-guide-body` 加 `overflow-x:auto`，表格可横向滚动。
+- ✅ **BUG-B 角色配置页头部操作区溢出，「删除」按钮在屏幕外**：`.editor-header`（343px 容器）
+  内的 `.header-actions` 356px 且不换行，「删除」按钮 x=356~416 被裁切、移动端不可达。
+  修复：`.editor-header` / `.header-actions` 允许 `flex-wrap` + gap，窄屏自动换行。
+- ✅ **IMPROVE-C 任务管理页筛选条无滚动提示**：`.filter-tabs` 6 个按钮共 428px 横向滚动且
+  滚动条隐藏（`scrollbar-width:none`），最后一个「已取消」仅露 6px。修复：移动端
+  `flex-wrap` 换行展示全部按钮；桌面保持单行横向滚动。
+- 验证 ✅：375px 复测——图片页表格可横向滚动且 ModelScope「下载」链接可达；角色页「删除」
+  按钮回到屏内；任务页 6 个筛选按钮全部可见。三页均无页面级横向溢出、无控制台错误；
+  桌面 1280px 复测无回归；前端 29 用例全绿 + 构建通过（`ImageView.vue` / `RoleEditorView.vue` /
+  `TasksView.vue` 三处纯 CSS 修复）。修复前后截图见 `.qa/*-mobile*.png`。
+
+---
+
 ## 2026-08-28 收尾：R-08 编码工具 + P2 全部落地（R-13 指标告警 / R-14 图片理解 / R-15 工具 SDK / R-16 中断恢复）
 
 > 用户授权按推荐方向逐项推进（无交互确认），五项全部按 TODOS 验收标准落地，
