@@ -347,6 +347,11 @@ onUnmounted(() => {
 .filter-btn:hover  { border-color: #667eea; color: #667eea; }
 .filter-btn.active { background: #667eea; border-color: #667eea; color: white; }
 .toolbar-right { display: flex; gap: 8px; }
+
+@media (max-width: 768px) {
+  .filter-tabs { flex-wrap: wrap; overflow-x: visible; }
+}
+
 .refresh-btn {
   padding: 8px 10px; border-radius: 8px;
   border: 1px solid #e0e3e8; background: white;
