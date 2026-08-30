@@ -1081,6 +1081,8 @@ const formatDate = (iso) => {
 .model-guide-body {
   margin-top: 8px;
   color: var(--color-text-secondary, #57606a);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .model-guide-body p { margin: 0 0 6px; }
 .guide-table {
