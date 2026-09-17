@@ -98,6 +98,14 @@ class EvalSuite {
         String evalModel = evalModel();
         log.info("[eval] 生效模型={}", evalModel.isBlank() ? defaultModel : evalModel);
 
+        // TD-08：把历次 JSONL 汇总成趋势报告，便于跨轮对比（失败不影响评测结论）
+        try {
+            Path trend = EvalTrendReporter.writeReport(outDir);
+            log.info("[eval] 趋势报告已刷新：{}", trend.toAbsolutePath());
+        } catch (Exception e) {
+            log.warn("[eval] 趋势报告生成失败：{}", e.getMessage());
+        }
+
         // 基线模式：只要求至少 1 个用例真实跑通（全挂说明环境/接线问题）
         assertThat(error).isLessThan(results.size());
 

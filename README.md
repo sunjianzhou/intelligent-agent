@@ -489,6 +489,7 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 | Frontend 单元测试 | Vitest（47 个） | 关键工具函数（JWT / token 估算 / 消息同步等）+ 18 个视图挂载冒烟（`viewsSmoke.test.js`，jsdom） |
 | E2E 端到端测试 | JUnit + JDK HttpClient（tests/e2e-java，70 个） | 从客户端发起 HTTP 请求打通 Java:8080 全链路，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知/消息撤回/追踪 |
 | 压测/基线 | JUnit + JDK HttpClient（tests/perf-java，`@Tag("perf")`） | health / 非流式 chat / SSE 流式，输出 P50/P95/P99、RPS、首 token 延迟，支持基线对比；CI 手动 job |
+| Eval 评测 | JUnit + `-Peval`（`EvalSuite`，36 个 golden 用例） | 走真实 AgentService + Ollama 推理，LLM-as-judge 按 rubric 0-10 打分；结果 JSONL 落 `backend/web/target/eval-results/`，同时汇总 `eval-trend.md` 趋势；质量门 `-Deval.min-score=7`（默认保护线 2） |
 
 ### 离线与移动端体验
 

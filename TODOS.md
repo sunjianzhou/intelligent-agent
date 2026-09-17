@@ -82,11 +82,33 @@
       待决策：(a) 公网入口应为 frontend nginx → 删 `SpaController` + 白名单 SPA 条目并订正文档；
       (b) 确实要后端直出 SPA → 需把前端构建产物打进 jar 或改 tunnel 指向（成本更高）。
       验收：两份文档对公网入口的表述一致；`SpaController` 要么删除要么真正可用。
-- [ ] **TD-08 eval 质量门常态化**
-      现状：`-Deval.min-score` 默认 2（保护线），质量门 7 需手动指定；eval 默认排除，
-      第三轮基线均分 8.25 无趋势记录。
-      方案：eval 结果 JSONL 汇总为趋势记录（或 CI artifact），固定周期跑 min-score=7。
-      验收：可见历次分数趋势；质量门可一键复现。
+- [x] ✅ 2026-09-17（commit `待填`）**TD-08 eval 质量门常态化**
+      落地：新增 `EvalTrendReporter`（把 `target/eval-results/eval-*.jsonl` 汇总成 markdown
+      趋势：历次运行用例数/ok/error/平均分/最低分/低于 7 分用例数 + 最近一次**全量**运行逐用例
+      得分与环比；自动跳过增量调试运行），`EvalSuite` 跑完自动刷新，另有离线契约测试
+      `EvalTrendReporterTest`（3 用例，不需要 Ollama）；干净检出/CI 上直接跳过。
+      一键命令：`cd backend/web && ./mvnw.cmd test -Dtest=EvalTrendReporterTest`（只汇总不推理）；
+      跑评测：`./mvnw.cmd -Peval test`，质量门 `-Deval.min-score=7`，单用例调试 `-Deval.cases=id1,id2`。
+      实测数据（`docs/eval-trend.md`）：6 次历史运行已被还原成趋势，2026-08-25 全量 36 例
+      平均 7.22 / 最低 0 / 12 例低于 7 分 → **质量门 7 目前必然失败**，低分项治理另开 TD-17。
+- [ ] **TD-17 低分 golden 用例治理（2026-09-17 趋势数据）**
+      数据：2026-08-25 全量 36 例平均 7.22，12 例低于质量线（`docs/eval-trend.md`）。两组根因：
+      ① 工具使用类：calc-001=5 / unit-002=5 / unit-004=5 / tool-combo-001=5 / time-001=5 /
+      web-001=2 —— 模型能给出答案但不用期望工具（裁判按"未使用期望工具"扣分）；
+      其中 time-001 由 10 掉到 5、web-001 由 5 掉到 2，属实质回退。
+      ② 记忆类：memory-002=0 / memory-search-001=0 / correction-001=0（纠错后仍召回旧事实）/
+      compression-001=5（长会话压缩没保住关键事实）/ memory-003=5；
+      `injection-memory-001=0` 是自带 minScore=0 的已知 canary。
+      ③ 评测可复现性缺陷（2026-09-17 查证）：`data/memory/eval-*.json` 从不清理——
+      29 个用例共用的 `eval-user.json` 已累积 **416KB**，专用 userId
+      （eval-mem2/3/4、eval-memsearch、eval-correction、eval-compression、eval-injection）
+      的 8-25 旧记忆也仍在。重复运行时"记住 / 不该记得"两类断言会被上一轮残留污染，
+      分数无法复现。修法：`EvalSuite` 开跑前清理这些 userId 的记忆（短期 + 长期），
+      或给每个用例用带 runId 的 userId。
+      ④ 今日（2026-09-17）实测单例耗时 48s / 136s / 86s（CPU 推理），36 例全量约需 50~60 分钟，
+      不适合在交互会话里跑 → 应放 CI（已具备 `run_eval` 手动 job）或夜间。
+      方案：先修 ③（评测本身要先可复现），再查 ②（功能正确性问题），最后按 TD-10 收敛工具选择。
+      验收：`-Deval.min-score=7` 全绿，或对确认属于 rubric 口径的用例调整判分并在本项说明。
 
 ### P2 — 结构优化（拆分 / 收敛，行为不变）
 
