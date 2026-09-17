@@ -57,21 +57,31 @@
       前端用例 29 → **47 全绿**（4.4s），`npm run build` 通过。
       踩坑记录：`vi.mock` 工厂若用 Proxy 且 `get('then')` 返回函数，模块会被当 thenable，
       `await import()` 永不返回（表现为全部用例 20s 超时）——mock 必须显式列出导出名。
-- [ ] **TD-15 聊天页缺远程模型入口（用户 2026-09-17 反馈）**
-      现状：`ChatView` 头部模型下拉只渲染 `store.availableModels`（WS `available_models`），
-      而 `ModelService.getModels` 只把**已配置的云端模型**并入该列表
-      （`backend/web/.../service/ModelService.java:82-100`）；本机
-      `backend/web/data/cloud_providers.json` 为 `{ "providers": [] }`，
-      所以下拉只有本地模型，且 18 个条目共用同一个 `fa-cube` 图标，
-      没有任何「去配置远程模型」的引导；移动端 BottomSheet「角色与模型」同样如此。
-      结论：入口没被删除（模型管理页 `/admin/models` → 云端模型 → 添加服务商 仍在），
-      但聊天侧可发现性为零。
-      方案：聊天模型下拉加「+ 添加远程模型」入口（跳 `/admin/models` 或就地抽屉），
-      远程模型条目换 cloud 图标区分，未配置服务商时显示引导行。
-      验收：未配置服务商时聊天内可一键进入远程模型配置；激活后该模型在下拉中带云图标可切换。
-- [ ] **TD-07 无测试引用的控制器补测**
-      现状：21 个控制器中 `ImageProxyController`、`SpaController` 在测试中零引用。
-      验收：两个控制器有 MockMvc 契约用例（含错误路径）。
+- [x] ✅ 2026-09-17（commit `待填`）**TD-15 聊天页缺远程模型入口（用户 2026-09-17 反馈）**
+      根因：`ModelService.getModels` 只把**已配置的云端模型**并入 `available_models`
+      （`ModelService.java:86-108`），本机 `data/cloud_providers.json` 为 `{ "providers": [] }`，
+      所以下拉里只剩本地模型，且所有条目共用 `fa-cube` 图标、无任何引导。
+      落地：后端 `getModels` 新增 `cloud_model_name`（配置的远程模型名，与用户当前是否在云端模式
+      无关）；前端 store 增加 `cloudProvider` / `cloudModelName`；聊天页桌面下拉与移动端抽屉都加了
+      「添加/管理远程模型」入口（跳 `/admin/models`）、远程条目云图标、未配置时的引导行；
+      `chatModelEntry.test.js` 2 用例覆盖两种状态。
+- [x] ✅ 2026-09-17（commit `待填`）**TD-07 无测试引用的控制器补测**
+      落地：`ImageProxyControllerTest` 7 用例（空 prompt 400、服务缺失降级、默认参数透传、
+      未知文件 404、已知文件返回 PNG + 长缓存头、非法 workflow 400、进度快照兜底）。
+      后端全量 650 → **658 用例全绿**；`npm run test` 前端 47 → **49 用例全绿**。
+      另一处 `SpaController` 经查为死代码，处置需决策 → 转 TD-16。
+- [ ] **TD-16 SpaController 是死代码 + 公网入口两份文档打架（2026-09-17 实测）**
+      证据：① 解压 `backend/web/target/web-1.0-SNAPSHOT.jar`（539 个条目）**无任何
+      `static/index.html`**，pom 无前端打包步骤，backend Dockerfile 只 COPY `target/*.jar`
+      → `SpaController` 的 `forward:/index.html` 必然 404；② `JwtAuthFilter` 白名单里 9 条
+      SPA 路由（`/login /chat /tools /skills /tasks /memory /system /stats`）同样永不命中真实
+      资源，且清单比前端真实路由少得多（缺 `/admin/*`、`/image`、`/knowledge`、`/roles/editor`、
+      `/learning/*`）；③ `LOCAL_INFRA.md` 记「`intelligent.eu.cc` → `http://backend:8080`」，
+      而 `AI_PROJECT_CONTEXT.md` 记「→ ia-frontend:80」；今日实测该域名返回 Cloudflare 530
+      （tunnel 未运行），无法判定线上实际指向。
+      待决策：(a) 公网入口应为 frontend nginx → 删 `SpaController` + 白名单 SPA 条目并订正文档；
+      (b) 确实要后端直出 SPA → 需把前端构建产物打进 jar 或改 tunnel 指向（成本更高）。
+      验收：两份文档对公网入口的表述一致；`SpaController` 要么删除要么真正可用。
 - [ ] **TD-08 eval 质量门常态化**
       现状：`-Deval.min-score` 默认 2（保护线），质量门 7 需手动指定；eval 默认排除，
       第三轮基线均分 8.25 无趋势记录。

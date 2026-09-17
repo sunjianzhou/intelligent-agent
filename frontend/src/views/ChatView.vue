@@ -154,12 +154,21 @@
             :class="{ active: m === currentModel, switching: configSwitchingModel === m }"
             @click="handleConfigSwitch(m)"
           >
-            <i class="fas fa-cube" />
+            <i :class="isCloudModel(m) ? 'fas fa-cloud' : 'fas fa-cube'" />
             <span>{{ m }}</span>
             <i v-if="m === currentModel" class="fas fa-check" style="color:var(--color-primary);margin-left:auto" />
             <i v-if="configSwitchingModel === m" class="fas fa-circle-notch fa-spin" style="margin-left:auto" />
           </div>
           <div v-if="availableModels.length === 0" class="config-dropdown-empty">暂无可用模型</div>
+          <!-- TD-15：远程模型入口（此前只能去模型管理页配置，聊天侧零可见性）-->
+          <div class="config-dropdown-divider" />
+          <button class="config-dropdown-manage" @click="goManageModels">
+            <i class="fas fa-cloud" />
+            <span>{{ hasCloudProvider ? '管理远程模型' : '添加远程模型' }}</span>
+          </button>
+          <div v-if="!hasCloudProvider" class="config-dropdown-hint">
+            尚未配置远程模型（服务商 / API Key）
+          </div>
         </div>
       </div>
     </div>
@@ -232,11 +241,16 @@
         :aria-label="m"
         @click="handleConfigSwitch(m); showRoleModelSheet = false"
       >
-        <i class="fas fa-cube rms-icon" aria-hidden="true" />
+        <i :class="isCloudModel(m) ? 'fas fa-cloud rms-icon' : 'fas fa-cube rms-icon'" aria-hidden="true" />
         <span>{{ m }}</span>
         <i v-if="m === currentModel" class="fas fa-check rms-check" aria-hidden="true" />
       </button>
       <div v-if="availableModels.length === 0" class="rms-empty">暂无可用模型</div>
+      <!-- TD-15：远程模型入口（移动端抽屉）-->
+      <button class="rms-option rms-manage" @click="goManageModels">
+        <i class="fas fa-cloud rms-icon" aria-hidden="true" />
+        <span>{{ hasCloudProvider ? '管理远程模型' : '添加远程模型' }}</span>
+      </button>
     </BottomSheet>
   </div>
 </template>
@@ -285,6 +299,16 @@ const activeToolSteps  = computed(() => store.activeToolSteps)
 const cancelStreaming   = () => store.cancelStreaming()
 const availableModels  = computed(() => store.availableModels)
 const currentModel     = computed(() => store.currentModel)
+// ── TD-15：远程模型识别与入口 ──────────────────────────────
+// cloudModelName / cloudProvider 来自 /api/models（cloud_model_name / cloud_provider），
+// 与用户当前是否处于云端模式无关，所以选本地模型时远程条目依然带云图标。
+const hasCloudProvider = computed(() => !!store.cloudProvider)
+const isCloudModel     = (name) => !!store.cloudModelName && name === store.cloudModelName
+const goManageModels   = () => {
+  configDropdownOpen.value = false
+  showRoleModelSheet.value = false
+  router.push('/admin/models')
+}
 
 // ── 配置条：角色 + 模型 ────────────────────────────────────
 const availableRoles       = ref([])
@@ -1205,12 +1229,37 @@ onUnmounted(() => {
 .config-dropdown-item.active    { color: var(--color-primary); background: var(--color-surface-raised); }
 .config-dropdown-item.switching { opacity: 0.6; cursor: not-allowed; }
 .config-dropdown-item i:first-child { color: var(--color-text-muted); font-size: 0.78rem; }
-.config-dropdown-empty {
-  padding: var(--space-3);
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
-  text-align: center;
-}
+  .config-dropdown-empty {
+    padding: var(--space-3);
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    text-align: center;
+  }
+  /* TD-15：远程模型入口（下拉底部）*/
+  .config-dropdown-divider {
+    height: 1px;
+    margin: var(--space-1) 0;
+    background: var(--color-border);
+  }
+  .config-dropdown-manage {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.82rem;
+    color: var(--color-primary);
+    text-align: left;
+  }
+  .config-dropdown-manage:hover { background: var(--color-surface-raised); }
+  .config-dropdown-hint {
+    padding: 0 var(--space-3) var(--space-2);
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+  }
 
 /* ── 移动端（WANT-012）──────────────────────────── */
 @media (max-width: 768px) {
@@ -1274,10 +1323,15 @@ onUnmounted(() => {
   margin: 6px 0;
 }
 
-.rms-empty {
-  padding: 12px 20px;
-  font-size: 0.85rem;
-  color: var(--color-text-muted);
-  text-align: center;
-}
+  .rms-empty {
+    padding: 12px 20px;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    text-align: center;
+  }
+  /* TD-15：远程模型入口（移动端抽屉底部）*/
+  .rms-manage {
+    border-top: 1px solid var(--color-border);
+    color: var(--color-primary);
+  }
 </style>

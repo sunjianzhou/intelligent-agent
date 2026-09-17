@@ -102,6 +102,9 @@ public class ModelService {
         result.put("ollama_available", !localModels.isEmpty());
         result.put("cloud_mode", userIsCloud);
         result.put("cloud_model", userIsCloud ? cloudModelName : "");
+        // 已配置的云端模型名（与用户当前是否处于云端模式无关）：
+        // 前端据此在下拉里把远程条目用云图标标记，并判断是否需要提示「未配置远程模型」。
+        result.put("cloud_model_name", configuredCloud ? cloudModelName : "");
         result.put("cloud_provider", configuredCloud ? cloud.get("provider") : "");
         result.put("known_cloud_providers", KNOWN_CLOUD_PROVIDERS);
         return result;

@@ -39,6 +39,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const availableModels  = ref([])
   const cloudMode        = ref(false)
   const cloudModel       = ref('')
+  // TD-15：已配置的远程模型（与用户当前是否处于云端模式无关），用于下拉标记与引导
+  const cloudProvider    = ref('')
+  const cloudModelName   = ref('')
   const effectiveModel   = ref('')  // R-02：fallback 链生效后的实际模型（模型徽章显示）
   const responseTimes = ref([])   // 最近20次响应时间
   const currentSessionId = ref(localStorage.getItem('ia_session_id') || _newSessionId())
@@ -542,6 +545,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
       currentModel.value    = data.current_model    || ''
       cloudMode.value       = !!data.cloud_mode
       cloudModel.value      = data.cloud_model      || ''
+      cloudProvider.value   = data.cloud_provider   || ''
+      cloudModelName.value  = data.cloud_model_name || ''
     }
   }
 
@@ -627,6 +632,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     // 状态
     isConnected, wasEverConnected, messages, systemInfo, lastResponseTime,
     error, isMockMode, currentModel, availableModels,
+    cloudProvider, cloudModelName,
     isStreaming, streamingIndex, activeToolSteps, chatEndSignal,
     currentSessionId,
     // 计算属性

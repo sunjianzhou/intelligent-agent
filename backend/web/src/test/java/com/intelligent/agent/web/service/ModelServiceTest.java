@@ -76,4 +76,23 @@ class ModelServiceTest {
 
         assertThat(modelService.resolveModel("u1")).isEqualTo("gemma4-31B");
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void exposesConfiguredCloudModelNameRegardlessOfUserMode() {
+        // 未配置服务商时：cloud_model_name 为空，下拉里不该有远程标记
+        Map<String, Object> before = modelService.getModels("u1");
+        assertThat(before.get("cloud_model_name")).isEqualTo("");
+        assertThat(before.get("cloud_provider")).isEqualTo("");
+
+        modelService.activateCloud("dashscope", "https://example.com/v1", "sk-x", "qwen-max");
+        // 用户显式选了本地模型：cloud_mode 应为 false，但配置的云端模型名仍要暴露给 UI
+        modelService.switchModel("u1", "qwen2.5:7b");
+
+        Map<String, Object> after = modelService.getModels("u1");
+        assertThat(after.get("cloud_model_name")).isEqualTo("qwen-max");
+        assertThat(after.get("cloud_provider")).isEqualTo("dashscope");
+        assertThat((java.util.List<String>) after.get("available_models")).contains("qwen-max");
+        assertThat(after.get("cloud_mode")).isEqualTo(false);
+    }
 }
