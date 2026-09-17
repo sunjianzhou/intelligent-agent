@@ -43,14 +43,14 @@
 
 ### P1 — 质量门禁（把"靠人记得跑"变成"机器会拦"）
 
-- [x] ⏳ 2026-09-17 实现落地（commit `待填`），**待 push 后 CI 首次运行确认**
+- [x] ⏳ 2026-09-17 实现落地（commit `7ae2173`），**待 push 后 CI 首次运行确认**
       **TD-05 E2E 进入 CI 自动门**
       落地：`.github/workflows/ci.yml` 的 `e2e` job 从「仅手动 dispatch」改为 push/PR 自动
       （`needs: backend` + `timeout-minutes: 40`）；Ollama 容器模型目录挂到 `.ci-ollama`
       并走 `actions/cache`，默认模型 `qwen2.5:1.5b`（小模型，CPU 推理快），
       手动 dispatch 可用新增的 `e2e_model` 输入换更大模型；失败时上传 `/tmp/backend.log`。
       待确认：本机无法验证 GitHub runner，需 push 后看首次 run 是否绿。
-- [x] ✅ 2026-09-17（commit `待填`）**TD-06 前端视图级冒烟测试**
+- [x] ✅ 2026-09-17（commit `7ae2173`）**TD-06 前端视图级冒烟测试**
       落地：`frontend/src/__tests__/viewsSmoke.test.js` 覆盖 18 个视图（含 learning 两个），
       环境为 jsdom + @vue/test-utils + fake-indexeddb（`vite.config.js` 新增 `test` 块 +
       `src/__tests__/setup.js` 浏览器 API 兜底），`@/services/api` 全量打桩；

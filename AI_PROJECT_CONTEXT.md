@@ -490,7 +490,8 @@ M3 剩余项：R-09 IM 渠道 HITL 审批 → R-10 成本/用量指标 → R-11 
 
 - **已提交到 GitHub**：所有修改均已推送 master 分支
 - **测试覆盖**：Java 后端全量 650 用例绿（0 失败）；E2E 为 JUnit 黑盒（tests/e2e-java，70 用例）；
-  前端 Vitest 29 用例 + 构建通过；压测/基线工具 `tests/perf-java`（@Tag("perf")，CI 手动 job，默认排除）
+  前端 Vitest 47 用例（含 18 视图挂载冒烟）+ 构建通过；压测/基线工具 `tests/perf-java`
+  （@Tag("perf")，CI 手动 job，默认排除）
 - **R-07 子代理编排**：复杂计划（≥2 步）并行派发只读子代理（`ai.subagent.*` 可配），结果按序合并；
   真机验证（qwen2.5:7b + Ollama）通过：4 步计划 group 1/1/1/0、三子代理同 start 并行执行、
   结果含真实计算与北京时间、trace `sub_agent` span 全 ok；修复本地模型嵌套 JSON 计划展开
