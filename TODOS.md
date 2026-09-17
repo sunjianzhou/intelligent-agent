@@ -14,6 +14,21 @@
 > 前端 vitest 29 用例 / 7 个测试文件；E2E `tests/e2e-java` 19 个类（手动触发）；
 > 内置工具 22 个 bean；密钥面扫描（sk- / AKIA / ghp_ 模式）0 命中，`.env*` 已 ignore。
 
+> **2026-09-17 会话收尾**（当日最后一次更新）：本轮共 9 个 commit，落地 6 项、新记 3 项。
+> - 已完成：TD-01 / TD-02 / TD-03（文档与仓库卫生）、TD-06（前端 18 视图冒烟）、
+>   TD-07（ImageProxyController 契约测试）、TD-08（eval 趋势汇总 + 入库快照）、
+>   TD-15（聊天页远程模型入口）。
+> - 当日结束时基线：后端 **661 用例全绿**、前端 **49 用例全绿** + build 通过。
+> - **等外部条件的 3 项（不阻塞其他工作）**：
+>   ① TD-05 已实现，等 push 后 CI 首次运行确认（绿了才勾选）；
+>   ② TD-16 等 owner 决策「删 SpaController」还是「让后端真能直出 SPA」——未决策前不要动；
+>   ③ TD-00 等 Telegram Bot Token / chat_id 凭证。
+> - **下一批建议顺序**：TD-17 第一步（eval 状态隔离，改动小、让后续评测结论可信）→ TD-04
+>   （TODOS 拆档）→ TD-09（AgentOrchestrator 拆分）→ TD-10（模型能力注册表）；
+>   TD-13/TD-14 可随时插入（互相独立）。
+> - 当日新增/更新的持久产物：`docs/eval-trend.md`（eval 趋势快照）、
+>   `tests/qa/`（几何审计脚本）、`backend/web/src/test/java/.../eval/EvalTrendReporter.java`。
+
 ### P0 — 零风险文档与仓库卫生（无代码行为变化）
 
 - [x] ✅ 2026-09-17（commit `59a303e`）**TD-01 AI_PROJECT_CONTEXT 第七章技术债表与现状对齐**
@@ -82,6 +97,7 @@
       待决策：(a) 公网入口应为 frontend nginx → 删 `SpaController` + 白名单 SPA 条目并订正文档；
       (b) 确实要后端直出 SPA → 需把前端构建产物打进 jar 或改 tunnel 指向（成本更高）。
       验收：两份文档对公网入口的表述一致；`SpaController` 要么删除要么真正可用。
+      状态（2026-09-17 收尾）：**等 owner 决策 (a)/(b)，未决策前不动这块代码**。
 - [x] ✅ 2026-09-17（commit `ffacd6d`）**TD-08 eval 质量门常态化**
       落地：新增 `EvalTrendReporter`（把 `target/eval-results/eval-*.jsonl` 汇总成 markdown
       趋势：历次运行用例数/ok/error/平均分/最低分/低于 7 分用例数 + 最近一次**全量**运行逐用例
@@ -109,6 +125,7 @@
       不适合在交互会话里跑 → 应放 CI（已具备 `run_eval` 手动 job）或夜间。
       方案：先修 ③（评测本身要先可复现），再查 ②（功能正确性问题），最后按 TD-10 收敛工具选择。
       验收：`-Deval.min-score=7` 全绿，或对确认属于 rubric 口径的用例调整判分并在本项说明。
+      状态（2026-09-17 收尾）：下一批第一项；先做 ③ 状态隔离（改动最小、解锁后续结论），再动 ②。
 
 ### P2 — 结构优化（拆分 / 收敛，行为不变）
 
