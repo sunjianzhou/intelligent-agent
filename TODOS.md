@@ -16,18 +16,18 @@
 
 ### P0 — 零风险文档与仓库卫生（无代码行为变化）
 
-- [ ] **TD-01 AI_PROJECT_CONTEXT 第七章技术债表与现状对齐**
+- [x] ✅ 2026-09-17（commit `59a303e`）**TD-01 AI_PROJECT_CONTEXT 第七章技术债表与现状对齐**
       现状：J-03（HttpClient 无连接池）TODOS 记 2026-08-15 已闭环；
       F-04（会话标题依赖异步 `_persist()`）已由 R-12 `ConversationService.renameConversation`
       （用户分片锁内同步 `writeCompact`）解决；F-05（`api.js` 动态/静态 import 混用）
       现 `frontend/src/services/api.js:125` 已是纯静态导出——三条仍挂"未完成"。
       D-02/03/05 属已退役 Python，未标注失效。
       验收：表格只保留真未决项，已解决项带 ✅ + 日期/commit，Python 条目归入历史节。
-- [ ] **TD-02 README 目录树清除 pytest 残留**
+- [x] ✅ 2026-09-17（commit `59a303e`）**TD-02 README 目录树清除 pytest 残留**
       现状：`README.md:542-551` 在 `tests/e2e-java/` 树下列出 10 个已删除的 `test_*.py`
       （该目录实际 0 个 .py，19 个 JUnit 类），新旧两代混排。
       验收：目录树与 `tests/e2e-java/src` 实际一致。
-- [ ] **TD-03 `.qa/` 归属决策与仓库卫生**
+- [x] ✅ 2026-09-17（commit `59a303e`）**TD-03 `.qa/` 归属决策与仓库卫生**
       现状：`.qa/`（38 文件 / 2.0 MB）未跟踪未 ignore；`.gitignore` 既有约定是
       "QA 截图（体积大，不入库）"（`frontend/qa-screenshots/` 同款），但 2026-08-30 节
       把 `.qa/*-mobile*.png` 当修复证据引用。
