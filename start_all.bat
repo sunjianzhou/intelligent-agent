@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 REM ============================================================================
@@ -33,7 +34,7 @@ if not exist "%ROOT%\backend\web\mvnw.cmd" (
     pause & exit /b 1
 )
 if not exist "%ROOT%\backend\web\target\web-1.0-SNAPSHOT.jar" (
-    echo  [INFO] Building backend jar (first run)...
+    echo  [INFO] Building backend jar for the first time...
     pushd "%ROOT%\backend\web"
     call mvnw.cmd -q package -DskipTests
     popd
@@ -57,7 +58,7 @@ echo.
 echo  [3/3] Java CLI client
 echo.
 if not exist "%ROOT%\client\target\client-1.0-SNAPSHOT.jar" (
-    echo  [INFO] Building CLI jar (first run)...
+    echo  [INFO] Building CLI jar for the first time...
     pushd "%ROOT%\client"
     call "%ROOT%\backend\web\mvnw.cmd" -q package -DskipTests
     popd
