@@ -57,7 +57,7 @@
       前端用例 29 → **47 全绿**（4.4s），`npm run build` 通过。
       踩坑记录：`vi.mock` 工厂若用 Proxy 且 `get('then')` 返回函数，模块会被当 thenable，
       `await import()` 永不返回（表现为全部用例 20s 超时）——mock 必须显式列出导出名。
-- [x] ✅ 2026-09-17（commit `待填`）**TD-15 聊天页缺远程模型入口（用户 2026-09-17 反馈）**
+- [x] ✅ 2026-09-17（commit `96d8453`）**TD-15 聊天页缺远程模型入口（用户 2026-09-17 反馈）**
       根因：`ModelService.getModels` 只把**已配置的云端模型**并入 `available_models`
       （`ModelService.java:86-108`），本机 `data/cloud_providers.json` 为 `{ "providers": [] }`，
       所以下拉里只剩本地模型，且所有条目共用 `fa-cube` 图标、无任何引导。
@@ -65,7 +65,7 @@
       无关）；前端 store 增加 `cloudProvider` / `cloudModelName`；聊天页桌面下拉与移动端抽屉都加了
       「添加/管理远程模型」入口（跳 `/admin/models`）、远程条目云图标、未配置时的引导行；
       `chatModelEntry.test.js` 2 用例覆盖两种状态。
-- [x] ✅ 2026-09-17（commit `待填`）**TD-07 无测试引用的控制器补测**
+- [x] ✅ 2026-09-17（commit `96d8453`）**TD-07 无测试引用的控制器补测**
       落地：`ImageProxyControllerTest` 7 用例（空 prompt 400、服务缺失降级、默认参数透传、
       未知文件 404、已知文件返回 PNG + 长缓存头、非法 workflow 400、进度快照兜底）。
       后端全量 650 → **658 用例全绿**；`npm run test` 前端 47 → **49 用例全绿**。
