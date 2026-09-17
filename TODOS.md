@@ -82,7 +82,7 @@
       待决策：(a) 公网入口应为 frontend nginx → 删 `SpaController` + 白名单 SPA 条目并订正文档；
       (b) 确实要后端直出 SPA → 需把前端构建产物打进 jar 或改 tunnel 指向（成本更高）。
       验收：两份文档对公网入口的表述一致；`SpaController` 要么删除要么真正可用。
-- [x] ✅ 2026-09-17（commit `待填`）**TD-08 eval 质量门常态化**
+- [x] ✅ 2026-09-17（commit `ffacd6d`）**TD-08 eval 质量门常态化**
       落地：新增 `EvalTrendReporter`（把 `target/eval-results/eval-*.jsonl` 汇总成 markdown
       趋势：历次运行用例数/ok/error/平均分/最低分/低于 7 分用例数 + 最近一次**全量**运行逐用例
       得分与环比；自动跳过增量调试运行），`EvalSuite` 跑完自动刷新，另有离线契约测试
