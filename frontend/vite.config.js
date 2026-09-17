@@ -9,6 +9,15 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
+  // TD-06：视图挂载冒烟测试需要 DOM 环境（jsdom）+ 浏览器 API 兜底 setup
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/__tests__/setup.js'],
+    include: ['src/**/*.{test,spec}.js'],
+    // 视图挂载需要加载 Element Plus 全量组件，单用例耗时高于纯函数单测
+    testTimeout: 20000,
+    hookTimeout: 20000,
+  },
   server: {
     port: 3000,
     host: '0.0.0.0',

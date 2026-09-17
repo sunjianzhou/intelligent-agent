@@ -10,6 +10,10 @@ on:
         description: "Run E2E suite (needs Ollama + backend, slow)"
         type: boolean
         default: false
+      e2e_model:
+        description: "Ollama model for the E2E job (default qwen2.5:1.5b)"
+        type: string
+        default: "qwen2.5:1.5b"
       run_perf:
         description: "Run perf/baseline suite (needs Ollama + backend, slow)"
         type: boolean
@@ -55,9 +59,17 @@ jobs:
         run: cd frontend && npm run build
 
   e2e:
-    name: E2E (manual · needs Ollama)
+    name: E2E (Ollama ${{ inputs.e2e_model || 'qwen2.5:1.5b' }})
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && inputs.run_e2e
+    needs: backend
+    timeout-minutes: 40
+    # TD-05（2026-09-17）：从「仅手动 dispatch」改为 push/PR 自动跑。
+    # 默认用小模型 qwen2.5:1.5b（约 1GB、CPU 推理快）验证链路；
+    # 手动 dispatch 可用 e2e_model 输入换更大模型做质量向回归。
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_e2e)
     env:
       JWT_SECRET: ci-e2e-jwt-secret-0123456789abcdef
       ADMIN_PASSWORD: admin123
@@ -71,14 +83,22 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      - name: Start Ollama and pull tool-calling model
+      - name: Cache Ollama models
+        uses: actions/cache@v4
+        with:
+          path: .ci-ollama
+          key: ollama-${{ runner.os }}-${{ inputs.e2e_model || 'qwen2.5:1.5b' }}
+      - name: Start Ollama and pull model
         run: |
-          docker run -d --name ollama -p 11434:11434 -v ollama:/root/.ollama ollama/ollama
+          mkdir -p .ci-ollama
+          docker run -d --name ollama -p 11434:11434 \
+            -v "$PWD/.ci-ollama:/root/.ollama" ollama/ollama
           for i in $(seq 1 60); do
             if curl -sf http://localhost:11434/api/tags >/dev/null; then break; fi
             sleep 2
           done
-          docker exec ollama ollama pull qwen2.5:7b
+          docker exec ollama ollama pull "${{ inputs.e2e_model || 'qwen2.5:1.5b' }}"
+          docker exec ollama ollama list
       - name: Start Java backend
         run: |
           cd backend/web
@@ -90,6 +110,16 @@ jobs:
           curl -sf http://localhost:8080/api/health
       - name: Run Java E2E suite (replaces retired Python pytest E2E)
         run: cd backend/web && ./mvnw -f ../../tests/e2e-java/pom.xml test
+      - name: Upload backend log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-log-e2e
+          path: /tmp/backend.log
+          if-no-files-found: ignore
+      - name: Stop Ollama (flush model cache)
+        if: always()
+        run: docker stop ollama || true
 
   perf:
     name: Perf baseline (manual · needs Ollama)
