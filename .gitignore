@@ -38,8 +38,9 @@ frontend/dist/
 .gstack/
 .claude/
 
-# QA 截图（体积大，不入库）
+# QA 截图（体积大，不入库）；可复用脚本已归档到 tests/qa/
 frontend/qa-screenshots/
+.qa/
 
 # 灵魂私密档案（不入版本控制）
 soul/whisper.md

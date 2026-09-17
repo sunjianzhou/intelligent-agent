@@ -11,6 +11,9 @@
 > R-15 工具 SDK/脚手架、R-16 流式中断恢复（工具轮断点缓存）、ComfyUI 可选后续
 > （ControlNet/inpainting 预设、/ws 预览图回传、ImageGenTool 参数补全、模型下载引导）、
 > Telegram 真机验收用例就绪（仅差凭证），详见「八、路线图」与「九、当前运行状态」）
+>
+> 2026-09-17 更新：第七章技术债表与现状对齐（J-03 / F-04 / F-05 标已解决，Python 时代条目
+> 标失效）；现行待办队列见 `TODOS.md` 的「2026-09-17 技术债梳理」一节。
 
 ---
 
@@ -398,10 +401,10 @@ Python CLI 已于 2026-08-08 随 Agent 一起退役。
 | 编号 | 问题 | 优先级 |
 |------|------|--------|
 | D-01 | ✅ Java 用户 ID 透传已修复（2026-06-02） | — |
-| D-02 | ChromaDB `seq_id` schema mismatch（已防御 try/except；迁移脚本见 `agent/tools/migrate_chromadb.py`） | 低 |
-| D-03 | `_TEXT_TOOL_CALLING_PATTERNS` 硬编码，新模型需改源码 | 低 |
+| D-02 | ⛔ 随 Python 退役失效（ChromaDB `seq_id` schema mismatch；向量库已改 Java 文件持久化） | — |
+| D-03 | ⛔ 随 Python 退役失效（Python 侧 `_TEXT_TOOL_CALLING_PATTERNS` 硬编码；**同类问题在 Java 侧复现**，见 TODOS TD-10） | — |
 | D-04 | ✅ L1 缓存 key 已包含 persona 维度 | — |
-| D-05 | `asyncio.ensure_future` 在模块级别调用，依赖 uvicorn 复用事件循环 | 低 |
+| D-05 | ⛔ 随 Python 退役失效（`asyncio.ensure_future` 模块级调用；无 asyncio 运行时） | — |
 | TODO-60 | ✅ 多模态图片持久化到对话历史（2026-06-16） | — |
 | TODO-62 | ✅ diffusers `_progress_state` 加锁，无锁并发问题修复（2026-06-16） | — |
 | TODO-63 | ✅ `knowledge_router` 上传日志去除物理路径（2026-06-16） | — |
@@ -418,7 +421,7 @@ Python CLI 已于 2026-08-08 随 Agent 一起退役。
 |------|------|--------|
 | J-01 | ✅ 用户 ID 透传已实现（2026-06-02） | — |
 | J-02 | `PythonProxyService` 和 `AgentService` 各维护独立 serviceToken，重复逻辑 | ✅ 已随 Python 回滚路径移除（2026-08-11） |
-| J-03 | `CloseableHttpClient.createDefault()` 无连接池配置，高并发下可能连接耗尽 | 低 |
+| J-03 | ✅ 已解决（2026-08-15）：`HttpClientUtil` 显式 `PoolingHttpClientConnectionManager`（max 50 / route 20，TTL 60s）+ `evictExpiredConnections` / `evictIdleConnections(30s)`；`RestTemplate` 已换 HttpClient 5 | — |
 | J-04 | ✅ WS 握手 JWT 验证已实现（`JwtHandshakeInterceptor`） | — |
 | TODO-85 | ✅ 飞书个人日历/任务 OAuth 授权全栈（2026-06-27）：`feishu_oauth.py` + `feishu_oauth_router.py` + `FeishuOAuthController.java` | — |
 
@@ -427,8 +430,8 @@ Python CLI 已于 2026-08-08 随 Agent 一起退役。
 | 编号 | 问题 | 优先级 |
 |------|------|--------|
 | F-02 | 角色文件标题与"角色设定"功能名歧义 | 低 |
-| F-04 | 会话历史标题更新依赖异步 `_persist()`，Sidebar 可能延迟刷新 | 低 |
-| F-05 | `api.js` 中 `switchModel` 动态 import 与静态 import 混用 | 低 |
+| F-04 | ✅ 已解决（R-12，2026-08-27）：`ConversationService.renameConversation` 在用户分片锁内同步 `store.writeCompact` 落盘，标题不再依赖异步持久化 | — |
+| F-05 | ✅ 已解决：`frontend/src/services/api.js:125` `switchModel` 为纯静态导出，无动态 import 混用 | — |
 | TODO-61 | ✅ 前端历史会话加载恢复图片数据（2026-06-16） | — |
 | TODO-67 | ✅ `api.js` 全局请求超时（AbortController + 30s，早期实现） | — |
 | TODO-68 | ✅ `websocket.js` console.log 全部改为 warn/error（早期实现） | — |

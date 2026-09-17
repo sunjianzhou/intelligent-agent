@@ -4,6 +4,115 @@
 
 ---
 
+## 2026-09-17 技术债梳理（优先级队列 · 逐项推进）
+
+> 来源：2026-09-17 全仓技术债扫描（代码度量 / 文档漂移核查 / CI 与测试门禁核查 / 依赖与密钥面扫描）。
+> 用户要求：整理优先级 → 记录待办 → 逐项推进。
+> **本节是当前唯一活跃的待办队列**，其余章节为历史台账；完成一项就地勾选并注明 commit。
+>
+> 基线（2026-09-17 实测）：后端 `mvn test` **650 用例 / 117 个测试类全绿**（0 失败 0 跳过，~50s）；
+> 前端 vitest 29 用例 / 7 个测试文件；E2E `tests/e2e-java` 19 个类（手动触发）；
+> 内置工具 22 个 bean；密钥面扫描（sk- / AKIA / ghp_ 模式）0 命中，`.env*` 已 ignore。
+
+### P0 — 零风险文档与仓库卫生（无代码行为变化）
+
+- [ ] **TD-01 AI_PROJECT_CONTEXT 第七章技术债表与现状对齐**
+      现状：J-03（HttpClient 无连接池）TODOS 记 2026-08-15 已闭环；
+      F-04（会话标题依赖异步 `_persist()`）已由 R-12 `ConversationService.renameConversation`
+      （用户分片锁内同步 `writeCompact`）解决；F-05（`api.js` 动态/静态 import 混用）
+      现 `frontend/src/services/api.js:125` 已是纯静态导出——三条仍挂"未完成"。
+      D-02/03/05 属已退役 Python，未标注失效。
+      验收：表格只保留真未决项，已解决项带 ✅ + 日期/commit，Python 条目归入历史节。
+- [ ] **TD-02 README 目录树清除 pytest 残留**
+      现状：`README.md:542-551` 在 `tests/e2e-java/` 树下列出 10 个已删除的 `test_*.py`
+      （该目录实际 0 个 .py，19 个 JUnit 类），新旧两代混排。
+      验收：目录树与 `tests/e2e-java/src` 实际一致。
+- [ ] **TD-03 `.qa/` 归属决策与仓库卫生**
+      现状：`.qa/`（38 文件 / 2.0 MB）未跟踪未 ignore；`.gitignore` 既有约定是
+      "QA 截图（体积大，不入库）"（`frontend/qa-screenshots/` 同款），但 2026-08-30 节
+      把 `.qa/*-mobile*.png` 当修复证据引用。
+      决策（2026-09-17）：截图按既有约定不入库，`.qa/` 进 `.gitignore`；
+      QA 脚本（`layout-audit.js` / `click-admin.ps1`）归档到 `tests/qa/` 供复用。
+      验收：`git status` 干净；TODOS 中截图引用标注"仅本地"。
+- [ ] **TD-04 TODOS.md 自身结构优化**
+      现状：单文件 2200 行 / 161 KB，未完成项埋在 302 行之后，前面全是已完成台账，
+      本次扫描需先 grep 才能下结论。
+      方案：保留本节作为活跃队列，历史台账按月分节折叠（`<details>`）或迁至
+      `docs/todos-archive/`，文件顶部只留活跃队列 + 索引。
+      验收：打开 `TODOS.md` 前 100 行即可看到全部未完成项。
+
+### P1 — 质量门禁（把"靠人记得跑"变成"机器会拦"）
+
+- [ ] **TD-05 E2E 进入 CI 自动门**
+      现状：`.github/workflows/ci.yml:11-24` 默认只跑后端 `mvn test` + 前端 vitest/build；
+      E2E / perf / eval / im-verify 四个套件全在 `workflow_dispatch` 手动开关后，
+      而 E2E/perf/eval 都需要 Ollama，等于回归只能靠人记得跑。
+      方案：新增 docker compose 起 Ollama + backend 的 job（PR 或 nightly 触发），
+      跑 `tests/e2e-java`；模型下载走缓存，超时上限显式设置。
+      验收：CI 上 E2E 自动跑通并上传 artifact；本地命令与 CI 一致。
+- [ ] **TD-06 前端视图级冒烟测试**
+      现状：18 个视图 + 8 个 store，仅 7 个测试文件 / 29 用例，且集中在工具函数
+      （jwt / tokenEstimate / messageIdSync 等），视图渲染零覆盖。
+      方案：引入 @vue/test-utils 视图挂载冒烟（每视图一个：挂载不报错 + 关键元素存在），
+      优先 ChatView / ImageView / TasksView / MemoryView。
+      验收：覆盖全部 18 个视图的冒烟用例，`npm run test` 在 CI 门内绿。
+- [ ] **TD-07 无测试引用的控制器补测**
+      现状：21 个控制器中 `ImageProxyController`、`SpaController` 在测试中零引用。
+      验收：两个控制器有 MockMvc 契约用例（含错误路径）。
+- [ ] **TD-08 eval 质量门常态化**
+      现状：`-Deval.min-score` 默认 2（保护线），质量门 7 需手动指定；eval 默认排除，
+      第三轮基线均分 8.25 无趋势记录。
+      方案：eval 结果 JSONL 汇总为趋势记录（或 CI artifact），固定周期跑 min-score=7。
+      验收：可见历次分数趋势；质量门可一键复现。
+
+### P2 — 结构优化（拆分 / 收敛，行为不变）
+
+- [ ] **TD-09 `AgentOrchestrator` 拆分（1261 行）**
+      现状：单类承担 ReAct 主循环、工具轮执行、HITL 审批等待、反思、子代理编排、
+      断点重放、任务标记扫描、事件发射；前端 ChatView 已两轮拆分，后端编排器未拆。
+      方案：按协作者抽出（工具轮执行 / 审批等待 / 事件发射 / 子代理调度），主类只留编排骨架。
+      验收：单类 ≤ 500 行；既有 `AgentOrchestrator*Test` 7 个测试类不改断言全绿。
+- [ ] **TD-10 模型能力注册表（消除 4 处硬编码）**
+      现状：模型名关键词表散在 `AgentOrchestrator` / `AgentConfig` / `PromptService` /
+      `LlmVisionSupport`（dolphin / phi2 / orca / llava / gemini / claude-3 等），
+      接新模型要改 4 处（Python 时代 D-03 原样带过来的债）。
+      方案：集中为一份模型能力配置（YAML 或 `ModelCapabilityRegistry`），覆盖
+      text-tool 前缀 / 视觉能力 / num_ctx / unrestricted overlay 等维度。
+      验收：新增模型只改配置不改代码，且有覆盖 4 类能力的测试。
+- [ ] **TD-11 后端大文件瘦身**
+      现状：`ComfyUiClient` 769 / `HeartRecordTool` 595 / `ImageService` 574 /
+      `AnalyticsService` 460 / `ConversationMemoryService` 448。
+      验收：按职责逐个拆分，行为不变、测试数不减。
+- [ ] **TD-12 前端大视图瘦身**
+      现状：`ChatView` 1180（已拆两轮）/ `ImageView` 1020 / `SkillView` 824 /
+      `MemoryView` 767 / `SystemView` 752。
+      验收：按子组件 / 组合式函数拆分，构建与 29 用例绿。
+
+### P3 — 依赖与长期维护
+
+- [ ] **TD-13 jsoup 升级（1.17.2 → 最新）**
+      现状：`WebFetchTool` 用 jsoup 解析不可信 HTML，是全仓唯一吃外部输入的解析库，
+      版本停在 2023-11（已落后两个大版本）。
+      验收：升级后 `WebFetchTool` 既有测试全绿 + 手动抓一个真实白名单页面。
+- [ ] **TD-14 依赖陈旧例行检查**
+      方案：`npm outdated` / `mvn versions:display-dependency-updates` 输出纳入季度执行，
+      或在 CI 加只读 report job（不自动升级）。
+      验收：有可复现命令 + 最近一次检查记录。
+
+### 唯一的功能性遗留（需用户侧动作）
+
+- [ ] **TD-00 Telegram bot 真实送达验收**：代码与用例就绪（`ImDeliveryVerifyTest`，
+      `@Tag("im-verify")`），只缺 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_HEARTBEAT_RECEIVER_ID`；
+      运行 `mvn test -Dgroups=im-verify -DexcludedGroups=`。飞书 / 企微已闭环。
+
+### 不排期（已评估暂缓，如需重启单独提）
+
+- [PROGRESS RECOVERY] 进度恢复：任务树 + 待办注入已替代（2026-08-22 评估）。
+- Prometheus `/metrics`：trace / health / usage + R-13 轻量指标已替代。
+- TODO-12 项 4（L1 响应缓存锁）/ 项 5（Java 侧 token 批量转发）：随 Python 退役失效。
+
+---
+
 ## 2026-08-30 前端移动端布局修复（QA 实测发现，browse 无头浏览器 375px 验证）
 
 > 启动后端 + Ollama + 前端后全页面真实点击巡检：桌面 15 页无水平溢出、无控制台错误；
@@ -21,7 +130,8 @@
 - 验证 ✅：375px 复测——图片页表格可横向滚动且 ModelScope「下载」链接可达；角色页「删除」
   按钮回到屏内；任务页 6 个筛选按钮全部可见。三页均无页面级横向溢出、无控制台错误；
   桌面 1280px 复测无回归；前端 29 用例全绿 + 构建通过（`ImageView.vue` / `RoleEditorView.vue` /
-  `TasksView.vue` 三处纯 CSS 修复）。修复前后截图见 `.qa/*-mobile*.png`。
+  `TasksView.vue` 三处纯 CSS 修复）。修复前后截图为本地 `.qa/*-mobile*.png`（未入库，
+  见 `.gitignore`「QA 截图」）；采集脚本已归档到 `tests/qa/`。
 
 ---
 

@@ -539,16 +539,19 @@ intelligent_agent/
 │   ├── ChatE2ETest.java            3 个聊天维度（云端/本地/dolphin 无限制）
 │   ├── MemoryE2ETest.java          记忆增删改查、语义搜索、导出、提炼
 │   ├── TasksE2ETest.java           调度任务 CRUD + 取消
-│   ├── test_projects.py            项目 CRUD + Spec + 任务列表
-│   ├── test_roles.py               角色列表/激活/停用
-│   ├── test_skills.py              Skill CRUD + toggle
-│   ├── test_cloud.py               云端服务商 CRUD + 激活/停用
-│   ├── test_models.py              模型列表/切换
-│   ├── test_conversations.py       历史会话
-│   ├── test_analytics.py           统计/反馈
-│   ├── test_notifications.py       通知轮询
-│   ├── test_tools.py               工具列表
-│   └── test_config.py              运行时配置读写
+│   ├── ProjectsE2ETest.java        项目 CRUD + Spec + 任务列表
+│   ├── RolesE2ETest.java           角色列表/激活/停用
+│   ├── SkillsE2ETest.java          Skill CRUD + toggle
+│   ├── CloudE2ETest.java           云端服务商 CRUD + 激活/停用
+│   ├── ModelsE2ETest.java          模型列表/切换
+│   ├── ConversationsE2ETest.java   历史会话
+│   ├── AnalyticsE2ETest.java       统计/反馈
+│   ├── NotificationsE2ETest.java   通知轮询
+│   ├── ToolsE2ETest.java           工具列表
+│   ├── ConfigE2ETest.java          运行时配置读写
+│   ├── McpE2ETest.java             MCP 服务器管理
+│   ├── RetractE2ETest.java         消息撤回级联清理
+│   └── TracesE2ETest.java          追踪查询/删除
 │
 ├── soul/                           Soul 层（身份/灵魂/心跳/心证铁卷/主人铁律/私密档案）
 │   ├── SOUL.md / IDENTITY.md       核心身份定义
