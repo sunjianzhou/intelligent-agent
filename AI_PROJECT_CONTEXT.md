@@ -274,23 +274,25 @@ R-07 起支持子代理/多代理编排：`SubAgentExecutor` 按计划并行分�
 | `ChatController` | `/api/chat` | 异步 REST 聊天（CompletableFuture + chatExecutor，满时 503）；`/api/chat/stream` SSE 流式（UTF-8） |
 | `HealthController` | `/api/health`, `/api/models`, `/api/config/*` | 健康检查、模型管理、运行时配置 |
 | `AuthController` | `/api/auth/*` | 登录、token 刷新 |
-| `PersonaProxyController` | `/api/personas/*` | 旧版角色代理（保留兼容） |
+| `PersonaController` | `/api/personas/*` | 旧版角色代理（保留兼容） |
 | `RoleController` | `/api/roles/*` | 新版角色完整 CRUD 代理 |
-| `ConversationsProxyController` | `/api/conversations/*` | 历史会话代理 |
-| `MemoryProxyController` | `/api/memory/*` | 记忆 CRUD 代理 |
-| `TaskProxyController` | `/api/tasks/*` | 任务调度代理 |
-| `ToolProxyController` | `/api/tools/*` | 工具管理代理 |
-| `SkillProxyController` | `/api/skills/*` | 技能管理代理 |
-| `ProjectProxyController` | `/api/project/*` | 项目规格/上下文代理 |
-| `CloudProxyController` | `/api/cloud/*` | 云端服务商 CRUD + 激活切换代理 |
-| `AnalyticsProxyController` | `/api/analytics/*` | 统计分析代理 |
-| `ImageProxyController` | `/api/images/*` | 图片文件代理 |
+| `ConversationsController` | `/api/conversations/*` | 历史会话代理 |
+| `MemoryController` | `/api/memory/*` | 记忆 CRUD 代理 |
+| `TaskController` | `/api/tasks/*` | 任务调度代理 |
+| `ToolController` | `/api/tools/*` | 工具管理代理 |
+| `SkillController` | `/api/skills/*` | 技能管理代理 |
+| `ProjectController` | `/api/project/*` | 项目规格/上下文代理 |
+| `CloudController` | `/api/cloud/*` | 云端服务商 CRUD + 激活切换代理 |
+| `AnalyticsController` | `/api/analytics/*` | 统计分析代理 |
+| `ImageController` | `/api/images/*` | 图片文件代理 |
 | `FeishuOAuthController` | `/feishu/oauth/*` | 飞书 OAuth 三端点透传（authorize / callback / status） |
 | `WeComCallbackController` | `/wecom/callback` | 企业微信 URL 验证（GET）+ 消息接收（POST）；异步处理，立即返回 200 |
 | `ChannelAdapterManager` | —（Spring Bean） | IM Channel 适配器管理：注册 FeishuChannelAdapter + `broadcast()` 并行广播 |
-| `SpaController` | `/**` | Vue Router history mode 兜底 |
 
-所有代理 Controller 均继承 `AbstractProxyController`，统一 `proxy.get/post/put/delete/patch(path, userId)` 调用。`proxyGetRaw()` 方法返回原始 String（供 HTML 响应端点，如 OAuth callback 使用）。
+> **SPA 入口由 frontend 容器提供**（`ia-frontend:80`，nginx `try_files ... /index.html`）。后端 jar 不含前端产物，
+> 原 `SpaController` 的 `forward:/index.html` 必然 404，已于 2026-11-01 删除（TD-16）。
+
+所有代理 Controller 均继承 `AbstractController`，统一 `proxy.get/post/put/delete/patch(path, userId)` 调用。`proxyGetRaw()` 方法返回原始 String（供 HTML 响应端点，如 OAuth callback 使用）。
 
 **企业微信相关类**：
 - `WeComConfig`：读取 `WECOM_*` 环境变量（corpId / agentId / secret / token / aesKey）

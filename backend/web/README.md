@@ -51,16 +51,15 @@ backend/web/src/main/java/.../
 │   ├── HealthController.java              /api/health、/api/models、/api/model/switch、/api/config/*
 │   ├── AuthController.java                /api/auth/login、/api/auth/refresh
 │   ├── RoleController.java                /api/roles/* → 本地角色服务
-│   ├── ConversationsProxyController.java  /api/conversations/* → 本地会话服务（撤回联动 FeishuRecallBridge）
-│   ├── MemoryProxyController.java         /api/memory/* → 本地记忆服务
-│   ├── TaskProxyController.java           /api/tasks/* → 本地调度服务
-│   ├── ToolProxyController.java           /api/tools/* → 本地工具注册表
-│   ├── SkillProxyController.java          /api/skills/* → 本地技能服务
-│   ├── AnalyticsProxyController.java      /api/analytics/* → 本地统计服务
-│   ├── ImageProxyController.java          /api/images/* → 本地 ImageService（ComfyUI）
-│   ├── ProjectProxyController.java        /api/project/* → 本地项目服务（spec CRUD、context 查询）
-│   ├── CloudProxyController.java          /api/cloud/* → 本地云端服务商管理
-│   └── SpaController.java                 兜底路由（Vue Router history mode）
+│   ├── ConversationsController.java  /api/conversations/* → 本地会话服务（撤回联动 FeishuRecallBridge）
+│   ├── MemoryController.java         /api/memory/* → 本地记忆服务
+│   ├── TaskController.java           /api/tasks/* → 本地调度服务
+│   ├── ToolController.java           /api/tools/* → 本地工具注册表
+│   ├── SkillController.java          /api/skills/* → 本地技能服务
+│   ├── AnalyticsController.java      /api/analytics/* → 本地统计服务
+│   ├── ImageController.java          /api/images/* → 本地 ImageService（ComfyUI）
+│   ├── ProjectController.java        /api/project/* → 本地项目服务（spec CRUD、context 查询）
+│   └── CloudController.java          /api/cloud/* → 本地云端服务商管理
 ├── feishu/                          飞书（Lark）IM 集成（长连接 WebSocket，无需公网/HTTPS）
 │   ├── FeishuConfig.java             飞书 app_id/secret/verification token 配置
 │   ├── FeishuWebSocketClient.java    飞书长连接客户端（SmartLifecycle + 重连状态机）

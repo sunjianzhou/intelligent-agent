@@ -38,22 +38,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             "/feishu/callback/interactive", // 飞书卡片回调，由 FeishuCrypto.verifyEventSignature 鉴权
             "/feishu/oauth/callback",     // 飞书 OAuth 回调（用户浏览器重定向，无 JWT）
             "/wecom/callback",            // 企业微信回调（由 WeComCrypto.verifySignature 鉴权）
-            "/ws",
-            // 前端静态资源（生产模式由 Java 直接提供）
-            "/index.html",
-            "/assets/",     // Vite 打包产物（JS/CSS/字体等）
-            "/favicon.ico",
-            "/favicon.svg",
-            // Vue Router 前端路由（SPA 入口，均返回 index.html）
-            // "/" 已移至 doFilterInternal 做精确匹配（equals），避免 startsWith 误匹配所有路径
-            "/login",
-            "/chat",
-            "/tools",
-            "/skills",
-            "/tasks",
-            "/memory",
-            "/system",
-            "/stats"
+            "/ws"
+            // 说明：SPA 静态资源与前端路由由 frontend 容器（nginx）提供，
+            // 后端不打包前端产物，因此这里不再放行 /index.html、/assets/、
+            // /login、/chat 等前端路径（TD-16，2026-11-01）。
     );
 
     @Override
@@ -64,8 +52,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String path = request.getRequestURI();
 
-        // 白名单直接放行（精确匹配"/"不走 startsWith，避免误匹配所有路径）
-        if ("/".equals(path) || WHITE_LIST.stream().anyMatch(path::startsWith)) {
+        // 白名单直接放行（前缀匹配；"/" 不再放行——后端不提供 SPA 入口页）
+        if (WHITE_LIST.stream().anyMatch(path::startsWith)) {
             chain.doFilter(request, response);
             return;
         }
