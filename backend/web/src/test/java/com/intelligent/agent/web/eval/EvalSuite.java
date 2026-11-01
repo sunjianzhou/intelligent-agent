@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.intelligent.agent.web.ai.llm.ChatMessage;
 import com.intelligent.agent.web.ai.llm.ChatTurn;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
+import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
+import com.intelligent.agent.web.ai.memory.MemoryRepository;
 import com.intelligent.agent.web.dto.request.ChatRequest;
 import com.intelligent.agent.web.service.AgentService;
 import lombok.extern.slf4j.Slf4j;
@@ -20,8 +22,10 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -62,6 +66,12 @@ class EvalSuite {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private ConversationMemoryService conversationMemoryService;
+
+    @Autowired
+    private MemoryRepository memoryRepository;
+
     @Value("${ai.llm.ollama.model:qwen2.5:7b}")
     private String defaultModel;
 
@@ -69,6 +79,7 @@ class EvalSuite {
     void runGoldenEval() throws Exception {
         List<EvalCase> cases = loadCases();
         assertThat(cases).isNotEmpty();
+        isolateState(cases);
 
         Path outDir = Path.of("target", "eval-results");
         Files.createDirectories(outDir);
@@ -127,11 +138,35 @@ class EvalSuite {
         }
     }
 
+    /**
+     * TD-17③ 评测状态隔离：用例共享的 userId（默认 {@code eval-user}）在重复运行时会残留
+     * 上一轮的短期/长期记忆，使"记住 / 不该记得"两类断言不可复现。开跑前按本轮用到的
+     * userId 清空记忆；{@code -Deval.isolate=false} 可关闭（需要复现历史污染现象时使用）。
+     */
+    private void isolateState(List<EvalCase> cases) {
+        if (!Boolean.parseBoolean(System.getProperty("eval.isolate", "true"))) {
+            log.info("[eval] 状态隔离已关闭（-Deval.isolate=false）");
+            return;
+        }
+        Set<String> userIds = new LinkedHashSet<>();
+        for (EvalCase c : cases) {
+            userIds.add(effectiveUserId(c));
+        }
+        for (String userId : userIds) {
+            conversationMemoryService.clearShortTerm(userId);
+            memoryRepository.clear(userId);
+        }
+        log.info("[eval] 已清理 {} 个用户作用域的记忆：{}", userIds.size(), userIds);
+    }
+
+    private static String effectiveUserId(EvalCase c) {
+        return c.userId() == null || c.userId().isBlank() ? "eval-user" : c.userId();
+    }
+
     private CaseResult runCase(EvalCase c) {
         long start = System.currentTimeMillis();
         try {
-            String userId = c.userId() == null || c.userId().isBlank()
-                    ? "eval-user" : c.userId();
+            String userId = effectiveUserId(c);
             String model = evalModel();
             String response = "";
             List<String> turns = new ArrayList<>();
