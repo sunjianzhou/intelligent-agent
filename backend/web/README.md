@@ -68,7 +68,7 @@ backend/web/src/main/java/.../
 │   ├── FeishuCardBuilder.java        飞书交互卡片 JSON 构建
 │   ├── FeishuCrypto.java             飞书事件签名验证
 │   ├── FeishuRecallBridge.java       内部 assistant_message_id ↔ 飞书 message_id 映射（内存态，封顶500条），撤回时联动调用 recall()
-│   └── FeishuOAuthController.java    /feishu/oauth/* 代理（callback 无 JWT / authorize+status 有 JWT，proxyGetRaw() 透传 HTML）
+│   └── FeishuOAuthController.java    /feishu/oauth/*（callback 无 JWT / authorize+status 有 JWT，委托 FeishuOAuthService）
 ├── im/                              Channel Adapter 抽象层（飞书/企微/Telegram/Web 通道）
 │   ├── ChannelAdapter.java          Java 侧 ChannelAdapter 接口（sendText/sendCard/sendMessage）
 │   ├── FeishuChannelAdapter.java    飞书适配器实现（委托 FeishuMessageSender）
@@ -77,8 +77,7 @@ backend/web/src/main/java/.../
 │   ├── UserInfo.java / RetryConfig.java / TokenBucket.java       用户信息 + 重试配置 + 令牌桶限流
 │   └── ChannelMetric.java           单 channel 发送指标（成功率/延迟/限流拒绝）
 ├── service/
-│   ├── AgentService.java            本地流式聊天编排 + WS 推送（线程池），done 事件转发 user_message_id/assistant_message_id
-│   └── AgentService.java            本地聊天编排 + WS 事件映射
+│   └── AgentService.java            本地流式聊天编排 + WS 推送（线程池），done 事件转发 user_message_id/assistant_message_id
 ├── filter/
 │   └── JwtAuthFilter.java           JWT 验证 + X-New-Token 滑动续期
 ├── util/

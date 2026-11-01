@@ -279,20 +279,23 @@ R-07 起支持子代理/多代理编排：`SubAgentExecutor` 按计划并行分�
 | `ConversationsController` | `/api/conversations/*` | 历史会话代理 |
 | `MemoryController` | `/api/memory/*` | 记忆 CRUD 代理 |
 | `TaskController` | `/api/tasks/*` | 任务调度代理 |
-| `ToolController` | `/api/tools/*` | 工具管理代理 |
-| `SkillController` | `/api/skills/*` | 技能管理代理 |
-| `ProjectController` | `/api/project/*` | 项目规格/上下文代理 |
-| `CloudController` | `/api/cloud/*` | 云端服务商 CRUD + 激活切换代理 |
-| `AnalyticsController` | `/api/analytics/*` | 统计分析代理 |
-| `ImageController` | `/api/images/*` | 图片文件代理 |
-| `FeishuOAuthController` | `/feishu/oauth/*` | 飞书 OAuth 三端点透传（authorize / callback / status） |
+| `ToolController` | `/api/tools/*` | 内置工具 + MCP 工具注册表列表 |
+| `SkillController` | `/api/skills/*` | 技能 CRUD（本地 `SkillService`） |
+| `ProjectController` | `/api/project/*` | 项目规格 / 上下文（本地 `ProjectService`） |
+| `CloudController` | `/api/cloud/*` | 云端服务商 CRUD + 激活切换（本地 `CloudProviderService`） |
+| `AnalyticsController` | `/api/analytics/*` | 统计分析（本地 `AnalyticsService`） |
+| `ImageController` | `/api/images/*` | 图片文件与生成（本地 `ImageService` / ComfyUI） |
+| `FeishuOAuthController` | `/feishu/oauth/*` | 飞书 OAuth（authorize / callback / status），委托 `FeishuOAuthService` |
 | `WeComCallbackController` | `/wecom/callback` | 企业微信 URL 验证（GET）+ 消息接收（POST）；异步处理，立即返回 200 |
 | `ChannelAdapterManager` | —（Spring Bean） | IM Channel 适配器管理：注册 FeishuChannelAdapter + `broadcast()` 并行广播 |
 
 > **SPA 入口由 frontend 容器提供**（`ia-frontend:80`，nginx `try_files ... /index.html`）。后端 jar 不含前端产物，
 > 原 `SpaController` 的 `forward:/index.html` 必然 404，已于 2026-11-01 删除（TD-16）。
 
-所有代理 Controller 均继承 `AbstractController`，统一 `proxy.get/post/put/delete/patch(path, userId)` 调用。`proxyGetRaw()` 方法返回原始 String（供 HTML 响应端点，如 OAuth callback 使用）。
+**没有 `AbstractController` / `AbstractProxyController` 这层基类，也没有 `proxy.get/post/...`
+方法**（Python 代理时代遗留的文档描述，2026-11-01 核对代码后订正）：Python 服务退役后
+（2026-08-08），各 Controller 都是薄的 `@RestController`，注入本地领域服务并返回
+`ResponseEntity`；`FeishuOAuthController` 同样只是委托 `FeishuOAuthService`，HTML 由服务层返回。
 
 **企业微信相关类**：
 - `WeComConfig`：读取 `WECOM_*` 环境变量（corpId / agentId / secret / token / aesKey）
