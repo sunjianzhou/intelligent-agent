@@ -96,7 +96,7 @@
         <dependency>
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
-            <version>1.17.2</version>
+            <version>1.23.2</version>
         </dependency>
 
         <!-- 内置工具：MySQL 只读查询（TODO-110 Task 1 DatabaseTool，按 DB_* 配置启用） -->
