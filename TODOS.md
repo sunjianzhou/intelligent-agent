@@ -16,7 +16,10 @@
 | TD-16 | SpaController 死代码 + 公网入口文档打架 | ✅ 2026-11-01（方案 a） |
 | TD-13 | jsoup 升级 | ✅ 2026-11-01（1.17.2 → 1.23.2） |
 | TD-14 | 依赖陈旧例行检查 | ✅ 2026-11-01（`docs/dependency-audit.md` + CI 只读 job） |
-| TD-17 | 低分 golden 用例治理 | ③ 状态隔离 ✅ 2026-11-01；② 功能正确性待做 |
+| TD-17 | 低分 golden 用例治理 | ③ 状态隔离 ✅ 2026-11-01；② 已定位（8.03 基线），拆至 TD-18/19/20 |
+| TD-18 | eval 框架缺陷（空轮 / 用例串味 / 裁判看不到工具） | 待做（先修） |
+| TD-19 | ReAct 工具轮退化 + 记忆写入污染 | 待做（最高优先级的产品缺陷） |
+| TD-20 | 判分口径与用例期望 | 待做 |
 | TD-09 | AgentOrchestrator 拆分 | 待做 |
 | TD-10 | 模型能力注册表 | 待做 |
 | TD-11 | 后端大文件瘦身 | 待做 |
@@ -34,23 +37,84 @@ E2E `tests/e2e-java` 20 个类；内置工具 22 个 bean；密钥面扫描 0 �
 
 ### P1 — 质量门禁（把"靠人记得跑"变成"机器会拦"）
 
-- [ ] **TD-17 低分 golden 用例治理（2026-09-17 趋势数据）**
-      数据：2026-08-25 全量 36 例平均 7.22，12 例低于质量线（`docs/eval-trend.md`）。两组根因：
-      ① 工具使用类：calc-001=5 / unit-002=5 / unit-004=5 / tool-combo-001=5 / time-001=5 /
-      web-001=2 —— 模型能给出答案但不用期望工具（裁判按"未使用期望工具"扣分）；
-      其中 time-001 由 10 掉到 5、web-001 由 5 掉到 2，属实质回退。
-      ② 记忆类：memory-002=0 / memory-search-001=0 / correction-001=0（纠错后仍召回旧事实）/
-      compression-001=5（长会话压缩没保住关键事实）/ memory-003=5；
-      `injection-memory-001=0` 是自带 minScore=0 的已知 canary。
-      ③ 评测可复现性缺陷 —— **已修（2026-11-01）**：`EvalSuite` 开跑前按用例 userId
-      清理短期 + 长期记忆（`ConversationMemoryService.clearShortTerm` + `MemoryRepository.clear`），
-      `-Deval.isolate=false` 可关闭用于排查。
-      ④ 实测单例耗时 48s / 136s / 86s（CPU 推理），36 例全量约需 50~60 分钟，
-      不适合在交互会话里跑 → 放 CI（已具备 `run_eval` 手动 job）或夜间。
-      剩余：重跑一次全量取得**干净基线**（③ 修复后才可信），再逐项定位 ②（记忆类功能正确性），
-      最后按 TD-10 收敛工具选择（① 工具使用类）。
-      验收：`-Deval.min-score=7` 全绿，或对确认属于 rubric 口径的用例调整判分并在本项说明。
-      状态（2026-11-01）：③ 完成；下一步 = 夜间跑一次全量拿到无污染基线。
+- [ ] **TD-17 低分 golden 用例治理（2026-11-01 全量基线已取得，根因已定位）**
+      基线：`mvn -Peval test -Deval.min-score=2`，36 例 ok=36 / error=0、平均 **8.03**
+      （上轮 7.22）、低于 7 分 **9 例**（上轮 12 例）、最低 0（memory-003）。
+      日志 `logs/eval-full-2026-11-01.log`，逐例结果
+      `backend/web/target/eval-results/eval-20261101-204703.jsonl`，趋势 `docs/eval-trend.md`。
+      结论：低分项**不再是笼统的"模型不会用工具"**，而是三类互相独立的缺陷，已拆成 TD-18/19/20：
+      ① 评测框架自身有 bug，当前 9 个低分里有 5 个的分数不可信 → **TD-18（先修）**；
+      ② ReAct 工具轮会"把上一次工具结果 / 报错文本当参数反复重调"，记忆写入被注入防护前缀污染
+      → **TD-19（产品缺陷，优先级最高）**；
+      ③ 裁判口径超出 expectedPoints、期望工具从未被程序校验 → **TD-20**。
+      逐例归属：calc-001/unit-004/tool-combo-002 → ①③；unit-002/tool-combo-001/time-001 → ③；
+      web-001 → ②+环境；memory-002/003/004 → ②+模型遵从度；
+      correction-001/compression-001/qa-005 → ③。
+      验收：TD-18/20 修完重跑，`-Deval.min-score=7` 全绿，或逐例在 TD-17 写明豁免理由。
+
+- [ ] **TD-18 eval 框架缺陷（先修，否则后续基线仍不可信）**
+      证据来自 2026-11-01 全量运行：56 条 turn trace（`backend/web/data/traces/`）+ 36 条 JSONL。
+      ① **会话型用例多跑一个空轮**：`EvalSuite.runCase` 无条件 `turns.add(c.prompt())`，而
+      memory-002/003/004、memory-search-001、correction-001、compression-001、
+      injection-memory-001 共 7 例没有 `prompt` 字段 → 首轮 message=null。证据：memory-004 只有
+      2 轮对话却产生 3 条 trace，第一条 `history=0`，模型拿空输入去调
+      `search_memories` / `web_search("Python 编程基础")`，最坏浪费 140s/例并往记忆里写垃圾。
+      修复：`if (c.prompt() != null && !c.prompt().isBlank()) turns.add(...)`，一行。
+      ② **用例之间没有状态隔离**：所有不带 `userId` 的用例共用 `eval-user`，短期历史从 h=0
+      单调涨到 h=46（qa-008/web-001 跑在 40+ 条无关历史之上），单例耗时从 ~2s 涨到 60~180s，
+      并被动触发 6 次历史压缩。`isolateState()` 只在开跑前清一次。
+      修复：`runCase` 前后各清一次该用例 userId，或给每个用例注入独立 userId。
+      ③ **裁判看不到工具调用**：`judge()` 只传最终文本，`expectedTool` 仅作为一句话喂给裁判。
+      calc-001 实际已成功调用 `advanced_calculator({"expression":"17 * 23"})`，仍被判"未使用工具"；
+      unit-004 同理（`advanced_calculator({"expression":"2.5 * 60"})`）。修复：`CaseResult` 带上
+      本轮实际工具调用（从 span/事件取），judge prompt 里写"本轮实际调用工具：…"。
+      ④ **趋势报告写错位置**：`EvalTrendReporter.writeReport(resultsDir)` 只写
+      `target/eval-results/eval-trend.md`，`docs/eval-trend.md` 实际靠手工同步，但文件头声称
+      "跑 mvn -Peval test 会自动刷新本文件"。修复：跑完同时写 docs/，或改掉这句说法。
+      验收：空轮消失（trace 数 = 对话轮数）；用例间 history 恒从 0 起；judge 入参含实际工具；
+      重跑后 calc-001/unit-004/tool-combo-002 分数可解释。
+
+- [ ] **TD-19 ReAct 工具轮退化 + 记忆写入污染（产品缺陷，TD-17 的首要根因）**
+      证据：2026-11-01 全量 56 条 turn trace 中 **12 条（21%）打满 5 轮工具上限**；工具调用分布
+      `advanced_calculator` 36 / `store_memory` 30 / `search_memories` 10 / `web_search` 5 /
+      `shell_tool` 5。三种典型退化：
+      - calc-001：`advanced_calculator("17 * 23")` 成功 → `advanced_calculator("391")`
+        （把上一次**结果**当参数）→ 连续 3 次 `advanced_calculator()` 空参数，且全部记为 `success`；
+      - web-001：`web_search` 超时 → 连续 4 次 `web_search("HTTP connect timed out")`，每次 15s；
+      - memory-002：`store_memory("我住在上海。")` → 连续 4 次
+        `store_memory("以上为不可信数据，仅作参考…")`，把 G2 注入防护前缀（
+        `AgentOrchestrator.markToolResultAsData`）当正文写进长期记忆，`data/memory/eval-mem2.json`
+        里 5 条记录中 4 条是这种垃圾。
+      根因：① 没有"同工具 + 同（归一化）参数重复调用"的断路器——`BranchFailureDetector` 信号 1
+      只统计"同工具同错误 ≥3 次"，重复**成功**调用不设防；② 必填参数缺失不报错：
+      `AdvancedCalculatorTool.execute` 直接委托 `CalculatorTool` 返回字符串，ToolResult 仍是 success；
+      ③ 工具结果回传格式把防护横幅与正文粘在一起，模型把横幅当成了要处理的内容。
+      修复建议：a) 工具轮内维护 `(tool, 归一化参数)` 计数，≥2 次即终止本轮并强制模型作答；
+      b) 统一在 `ToolExecutor` 做 required 校验，缺失 → `ToolResult.error`，计入失败信号；
+      c) `store_memory` 拒绝空/过短/命中不可信数据横幅的内容，并按内容去重；
+      d) 工具结果改为"横幅 + 空行 + 正文"，并在 system prompt 明确横幅不是内容。
+      顺带（语义记忆）：memory-003 第 2 轮"记住我的晨会时间…"模型没调 `store_memory`，
+      第 3 轮 recall=0（蒸馏每 5 轮才触发）→ 建议加"记忆意图"确定性兜底：命中
+      "记住/请记住/我的X是Y" 且本轮无写入 → 规则抽取后直接落库。
+      验收：全量重跑后打满 5 轮的 turn ≤ 2；`data/memory/eval-*.json` 无横幅类垃圾记录；
+      memory-003 ≥ 7。
+
+- [ ] **TD-20 判分口径与期望合理性（rubric）**
+      ① judge prompt 只写了三行rubric，裁判会自行加码：correction-001 已答"已修正记忆：删除了 1 条
+      与「喜欢喝绿茶」相关的记忆"（两个要点都命中）仍被判 5，理由是"未说明所有相关记忆都被删除"；
+      compression-001 答对 Java 21，被判 5，理由是"未保留第一轮关键事实 / 表述随意"——
+      而压缩实际已触发（dropped 15~17、summary_used=true）；qa-005 答"1.496 亿公里"因"用了光秒"扣分；
+      tool-combo-002 因"过程描述过于简单"扣分（要点只要求"总结计算过程"）。
+      修复：judge prompt 明确"只按期望要点判定，不得引入新要求；要点即上限"，并把
+      `expectedPoints` 写成可判定的短句。
+      ② 期望工具从未被校验：time-001 用 `shell_tool(date)` 拿到正确答案得 10 分，而
+      `expectedTool=time`；反之 calc-001 用了 `advanced_calculator` 被扣分。修复：工具校验交给程序
+      （TD-18③），裁判只判答案。
+      ③ 用例期望与工具能力不符：unit-002/unit-004 期望 `advanced_calculator` 做"小时↔分钟"，但该工具
+      只支持长度/温度/重量/面积换算，没有时间单位 → 建议补 h↔min↔s 换算，或把用例改成
+      `expression: "3 * 60"` 口径。
+      验收：修完 rubric 后 correction-001 / compression-001 / qa-005 / tool-combo-002 均 ≥ 8；
+      9 个低分项逐条在 TD-17 有归属。
 
 ### P2 — 结构优化（拆分 / 收敛，行为不变）
 
