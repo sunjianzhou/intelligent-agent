@@ -1,10 +1,10 @@
 package com.intelligent.agent.web.domain;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.intelligent.agent.web.controller.ConversationsProxyController;
-import com.intelligent.agent.web.controller.ProjectProxyController;
+import com.intelligent.agent.web.controller.ConversationsController;
+import com.intelligent.agent.web.controller.ProjectController;
 import com.intelligent.agent.web.controller.RoleController;
-import com.intelligent.agent.web.controller.TaskProxyController;
+import com.intelligent.agent.web.controller.TaskController;
 import com.intelligent.agent.web.domain.conversation.ConversationService;
 import com.intelligent.agent.web.domain.project.ProjectService;
 import com.intelligent.agent.web.domain.role.RoleService;
@@ -52,10 +52,10 @@ class DomainApiContractTest {
         projectService = new ProjectService(dataDir, new VectorMemoryRepository());
         taskService = new TaskService();
         RoleController roleController = new RoleController(roleService);
-        ConversationsProxyController conversationController =
-                new ConversationsProxyController(conversationService, null);
-        ProjectProxyController projectController = new ProjectProxyController(projectService);
-        TaskProxyController taskController = new TaskProxyController(taskService);
+        ConversationsController conversationController =
+                new ConversationsController(conversationService, null);
+        ProjectController projectController = new ProjectController(projectService);
+        TaskController taskController = new TaskController(taskService);
         mockMvc = MockMvcBuilders.standaloneSetup(
                 roleController, conversationController, projectController, taskController).build();
     }

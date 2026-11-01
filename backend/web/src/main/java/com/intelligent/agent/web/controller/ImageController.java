@@ -17,7 +17,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-public class ImageProxyController {
+public class ImageController {
 
     @Autowired(required = false)
     private ImageService imageService;

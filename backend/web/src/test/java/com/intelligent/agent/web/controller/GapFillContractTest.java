@@ -76,9 +76,9 @@ class GapFillContractTest {
         ReflectionTestUtils.setField(configRuntimeService, "dataDir", dataDir.toString());
         ReflectionTestUtils.setField(cloudService, "dataDir", dataDir.toString());
 
-        ToolProxyController toolController =
-                new ToolProxyController(toolExecutor, new McpToolRegistry());
-        MemoryProxyController memoryController = new MemoryProxyController(
+        ToolController toolController =
+                new ToolController(toolExecutor, new McpToolRegistry());
+        MemoryController memoryController = new MemoryController(
                 memoryRepository, conversationMemoryService);
 
         HealthController healthController = new HealthController();
@@ -89,7 +89,7 @@ class GapFillContractTest {
 
         mockMvc = MockMvcBuilders.standaloneSetup(
                 toolController, memoryController, healthController,
-                new CloudProxyController(cloudService)).build();
+                new CloudController(cloudService)).build();
     }
 
     @AfterEach

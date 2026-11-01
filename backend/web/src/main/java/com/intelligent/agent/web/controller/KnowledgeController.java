@@ -19,11 +19,11 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-public class KnowledgeProxyController {
+public class KnowledgeController {
 
     private final KnowledgeService knowledgeService;
 
-    public KnowledgeProxyController(KnowledgeService knowledgeService) {
+    public KnowledgeController(KnowledgeService knowledgeService) {
         this.knowledgeService = knowledgeService;
     }
 

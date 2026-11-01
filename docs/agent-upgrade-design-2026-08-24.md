@@ -175,7 +175,7 @@ LLM 评估 v1、Trace/OTLP、记忆检索优化、编排升级（planning/reflec
 2. 纠错动作写 trace span；记录到操作日志。
 3. 删除采用"软删除/失效"而非物理删除：记忆记录标记 `invalidated=true`（含失效原因与时间），
    检索层过滤失效记录，MemoryView 提供恢复入口——避免误删不可逆。
-4. `MemoryView` 增加行内编辑/置顶/失效/恢复按钮（复用 `MemoryProxyController` CRUD）。
+4. `MemoryView` 增加行内编辑/置顶/失效/恢复按钮（复用 `MemoryController` CRUD）。
 
 **涉及模块**：`ai/agent/AgentOrchestrator`（指令识别）、`frontend/src/views/MemoryView.vue`、
 `frontend/src/components/memory/MemoryCard.vue`。
@@ -299,7 +299,7 @@ CI 无门禁 job。
 **方案**：`ConversationService` 已有持久化，补会话索引 API（list/rename/export/delete）；前端历史面板接入；
 导出 JSON（含消息与图片引用）。
 
-**涉及模块**：`domain/conversation/ConversationService`、`controller/ConversationsProxyController`、
+**涉及模块**：`domain/conversation/ConversationService`、`controller/ConversationsController`、
 `frontend/src/components/chat/ChatHistoryPanel.vue`。
 
 **验收**：会话跨设备恢复、重命名、导出 JSON；E2E 覆盖。

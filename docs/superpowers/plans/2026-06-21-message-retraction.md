@@ -1307,21 +1307,21 @@ git commit -m "feat(api): chat_router 生成 message_id 并透传到 agent.chat(
 
 ---
 
-## Task 7: Java ConversationsProxyController — retract 代理端点
+## Task 7: Java ConversationsController — retract 代理端点
 
 **Files:**
-- Modify: `backend/web/src/main/java/com/intelligent/agent/web/controller/ConversationsProxyController.java`
-- Test: `backend/web/src/test/java/com/intelligent/agent/web/controller/ConversationsProxyControllerTest.java` (new)
+- Modify: `backend/web/src/main/java/com/intelligent/agent/web/controller/ConversationsController.java`
+- Test: `backend/web/src/test/java/com/intelligent/agent/web/controller/ConversationsControllerTest.java` (new)
 
 **Interfaces:**
-- Consumes: `AbstractProxyController.proxyPost(path, body, req)`（已存在）
+- Consumes: `AbstractController.proxyPost(path, body, req)`（已存在）
 - Produces: `POST /api/conversations/{sessionId}/retract`，透明转发到 Python `POST /api/conversations/{sessionId}/retract`。本任务暂不接入飞书联动（Task 9 再加），先保证基础代理可用、可独立测试。
 
-**测试隔离说明：** 项目里没有现成的 `ConversationsProxyControllerTest.java`，参照 `FeishuMessageSenderTest.java` 的风格——这里更简单，直接用 Mockito mock `PythonProxyService`，不需要起 MockWebServer。
+**测试隔离说明：** 项目里没有现成的 `ConversationsControllerTest.java`，参照 `FeishuMessageSenderTest.java` 的风格——这里更简单，直接用 Mockito mock `PythonProxyService`，不需要起 MockWebServer。
 
 - [ ] **Step 1: 写失败测试**
 
-创建 `backend/web/src/test/java/com/intelligent/agent/web/controller/ConversationsProxyControllerTest.java`：
+创建 `backend/web/src/test/java/com/intelligent/agent/web/controller/ConversationsControllerTest.java`：
 
 ```java
 package com.intelligent.agent.web.controller;
@@ -1341,17 +1341,17 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-class ConversationsProxyControllerTest {
+class ConversationsControllerTest {
 
     @Mock PythonProxyService proxy;
     @Mock HttpServletRequest req;
 
-    private ConversationsProxyController controller;
+    private ConversationsController controller;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        controller = new ConversationsProxyController();
+        controller = new ConversationsController();
         controller.proxy = proxy;
         controller.objectMapper = new ObjectMapper();
         when(proxy.extractUserIdFromRequest(req)).thenReturn("u1");
@@ -1391,12 +1391,12 @@ class ConversationsProxyControllerTest {
 
 - [ ] **Step 2: 运行测试，确认失败**
 
-Run: `cd backend/web && mvn test -Dtest=ConversationsProxyControllerTest`
+Run: `cd backend/web && mvn test -Dtest=ConversationsControllerTest`
 Expected: FAIL — 编译错误，`retractMessages` 方法不存在
 
 - [ ] **Step 3: 实现**
 
-`backend/web/src/main/java/com/intelligent/agent/web/controller/ConversationsProxyController.java` 末尾（`branchConversation` 方法之后，闭合 `}` 之前）新增：
+`backend/web/src/main/java/com/intelligent/agent/web/controller/ConversationsController.java` 末尾（`branchConversation` 方法之后，闭合 `}` 之前）新增：
 
 ```java
     @PostMapping("/api/conversations/{sessionId}/retract")
@@ -1409,13 +1409,13 @@ Expected: FAIL — 编译错误，`retractMessages` 方法不存在
 
 - [ ] **Step 4: 运行测试，确认通过**
 
-Run: `cd backend/web && mvn test -Dtest=ConversationsProxyControllerTest`
+Run: `cd backend/web && mvn test -Dtest=ConversationsControllerTest`
 Expected: 2 tests passed
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/web/src/main/java/com/intelligent/agent/web/controller/ConversationsProxyController.java backend/web/src/test/java/com/intelligent/agent/web/controller/ConversationsProxyControllerTest.java
+git add backend/web/src/main/java/com/intelligent/agent/web/controller/ConversationsController.java backend/web/src/test/java/com/intelligent/agent/web/controller/ConversationsControllerTest.java
 git commit -m "feat(web): 新增 POST /api/conversations/{id}/retract Java 代理端点"
 ```
 
@@ -1615,15 +1615,15 @@ git commit -m "feat(feishu): 发送接口返回飞书 message_id，新增 recall
 
 ---
 
-## Task 9: FeishuRecallBridge + 接入 FeishuEventController / ConversationsProxyController
+## Task 9: FeishuRecallBridge + 接入 FeishuEventController / ConversationsController
 
 **Files:**
 - Create: `backend/web/src/main/java/com/intelligent/agent/web/feishu/FeishuRecallBridge.java`
 - Test: `backend/web/src/test/java/com/intelligent/agent/web/feishu/FeishuRecallBridgeTest.java` (new)
 - Modify: `backend/web/src/main/java/com/intelligent/agent/web/feishu/FeishuEventController.java`
 - Modify: `backend/web/src/test/java/com/intelligent/agent/web/feishu/FeishuEventControllerTest.java`
-- Modify: `backend/web/src/main/java/com/intelligent/agent/web/controller/ConversationsProxyController.java`
-- Modify: `backend/web/src/test/java/com/intelligent/agent/web/controller/ConversationsProxyControllerTest.java`
+- Modify: `backend/web/src/main/java/com/intelligent/agent/web/controller/ConversationsController.java`
+- Modify: `backend/web/src/test/java/com/intelligent/agent/web/controller/ConversationsControllerTest.java`
 
 **Interfaces:**
 - Consumes: `FeishuMessageSender.sendInteractive()`/`recall()`（Task 8）、`AgentService.chatFull()`（已存在）
@@ -2054,11 +2054,11 @@ git add backend/web/src/main/java/com/intelligent/agent/web/feishu/FeishuEventCo
 git commit -m "feat(feishu): 发送成功后向 FeishuRecallBridge 注册 id 映射"
 ```
 
-### Part C — 接入 ConversationsProxyController（撤回时触发飞书联动）
+### Part C — 接入 ConversationsController（撤回时触发飞书联动）
 
 - [ ] **Step 11: 更新失败测试**
 
-在 `ConversationsProxyControllerTest.java` 的 `setUp()` 里新增 `@Mock FeishuRecallBridge recallBridge;` 并在 `controller` 构造后赋值 `controller.feishuRecallBridge = recallBridge;`，然后追加新测试：
+在 `ConversationsControllerTest.java` 的 `setUp()` 里新增 `@Mock FeishuRecallBridge recallBridge;` 并在 `controller` 构造后赋值 `controller.feishuRecallBridge = recallBridge;`，然后追加新测试：
 
 ```java
     @Mock FeishuRecallBridge recallBridge;
@@ -2092,12 +2092,12 @@ git commit -m "feat(feishu): 发送成功后向 FeishuRecallBridge 注册 id 映
 
 - [ ] **Step 12: 运行测试，确认失败**
 
-Run: `cd backend/web && mvn test -Dtest=ConversationsProxyControllerTest`
+Run: `cd backend/web && mvn test -Dtest=ConversationsControllerTest`
 Expected: FAIL — 编译错误，`controller.feishuRecallBridge` 字段不存在
 
 - [ ] **Step 13: 实现**
 
-`ConversationsProxyController.java` 顶部新增字段注入（放在 `branchConversation` 方法之前即可，紧邻其他 `@xxxMapping` 方法之上）：
+`ConversationsController.java` 顶部新增字段注入（放在 `branchConversation` 方法之前即可，紧邻其他 `@xxxMapping` 方法之上）：
 
 ```java
     @Autowired
@@ -2137,7 +2137,7 @@ import com.intelligent.agent.web.feishu.FeishuRecallBridge;
 
 - [ ] **Step 14: 运行测试，确认通过**
 
-Run: `cd backend/web && mvn test -Dtest=ConversationsProxyControllerTest`
+Run: `cd backend/web && mvn test -Dtest=ConversationsControllerTest`
 Expected: 3 tests passed
 
 - [ ] **Step 15: 跑全量 Java 测试确认无回归**
@@ -2148,7 +2148,7 @@ Expected: BUILD SUCCESS
 - [ ] **Step 16: Commit**
 
 ```bash
-git add backend/web/src/main/java/com/intelligent/agent/web/controller/ConversationsProxyController.java backend/web/src/test/java/com/intelligent/agent/web/controller/ConversationsProxyControllerTest.java
+git add backend/web/src/main/java/com/intelligent/agent/web/controller/ConversationsController.java backend/web/src/test/java/com/intelligent/agent/web/controller/ConversationsControllerTest.java
 git commit -m "feat(feishu): retract 端点接入 FeishuRecallBridge，撤回时联动飞书官方撤回"
 ```
 

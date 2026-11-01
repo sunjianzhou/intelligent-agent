@@ -2,9 +2,9 @@ package com.intelligent.agent.web.domain;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.intelligent.agent.web.ai.memory.MemoryRepository;
-import com.intelligent.agent.web.controller.AnalyticsProxyController;
-import com.intelligent.agent.web.controller.KnowledgeProxyController;
-import com.intelligent.agent.web.controller.SkillProxyController;
+import com.intelligent.agent.web.controller.AnalyticsController;
+import com.intelligent.agent.web.controller.KnowledgeController;
+import com.intelligent.agent.web.controller.SkillController;
 import com.intelligent.agent.web.controller.TeachingController;
 import com.intelligent.agent.web.domain.analytics.AnalyticsService;
 import com.intelligent.agent.web.domain.knowledge.KnowledgeService;
@@ -51,9 +51,9 @@ class KnowledgeAndSkillContractTest {
         TeachingService teachingService = new TeachingService(dataDir);
 
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new KnowledgeProxyController(knowledgeService),
-                new SkillProxyController(skillService),
-                new AnalyticsProxyController(analyticsService),
+                new KnowledgeController(knowledgeService),
+                new SkillController(skillService),
+                new AnalyticsController(analyticsService),
                 new TeachingController(teachingService))
                 .build();
     }

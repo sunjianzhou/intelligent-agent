@@ -21,19 +21,19 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-public class ConversationsProxyController {
+public class ConversationsController {
 
     private final ConversationService conversationService;
     private final FeishuRecallBridge feishuRecallBridge;
     private final ConversationMemoryService memoryService;
 
-    public ConversationsProxyController(ConversationService conversationService,
+    public ConversationsController(ConversationService conversationService,
                                         FeishuRecallBridge feishuRecallBridge) {
         this(conversationService, feishuRecallBridge, null);
     }
 
     @Autowired
-    public ConversationsProxyController(ConversationService conversationService,
+    public ConversationsController(ConversationService conversationService,
                                         FeishuRecallBridge feishuRecallBridge,
                                         ConversationMemoryService memoryService) {
         this.conversationService = conversationService;

@@ -16,17 +16,17 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/api/tasks")
-public class TaskProxyController {
+public class TaskController {
 
     private final TaskService taskService;
     private final TaskSchedulerService scheduler;
 
-    public TaskProxyController(TaskService taskService) {
+    public TaskController(TaskService taskService) {
         this(taskService, null);
     }
 
     @Autowired
-    public TaskProxyController(TaskService taskService, TaskSchedulerService scheduler) {
+    public TaskController(TaskService taskService, TaskSchedulerService scheduler) {
         this.taskService = taskService;
         this.scheduler = scheduler;
     }

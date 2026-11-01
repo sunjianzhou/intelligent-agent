@@ -19,7 +19,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-class ConversationsProxyControllerTest {
+class ConversationsControllerTest {
 
     @Mock HttpServletRequest req;
     @Mock FeishuRecallBridge recallBridge;
@@ -27,13 +27,13 @@ class ConversationsProxyControllerTest {
     @TempDir
     Path tempDir;
 
-    private ConversationsProxyController controller;
+    private ConversationsController controller;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
         ConversationService conversationService = new ConversationService(tempDir);
-        controller = new ConversationsProxyController(conversationService, recallBridge);
+        controller = new ConversationsController(conversationService, recallBridge);
         when(req.getAttribute("userId")).thenReturn("u1");
     }
 

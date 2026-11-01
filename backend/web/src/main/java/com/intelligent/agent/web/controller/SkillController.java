@@ -13,11 +13,11 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/api/skills")
-public class SkillProxyController {
+public class SkillController {
 
     private final SkillService skillService;
 
-    public SkillProxyController(SkillService skillService) {
+    public SkillController(SkillService skillService) {
         this.skillService = skillService;
     }
 

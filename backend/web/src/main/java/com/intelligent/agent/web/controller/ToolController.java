@@ -19,12 +19,12 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/api/tools")
-public class ToolProxyController {
+public class ToolController {
 
     private final ToolExecutor toolExecutor;
     private final McpToolRegistry mcpToolRegistry;
 
-    public ToolProxyController(ToolExecutor toolExecutor, McpToolRegistry mcpToolRegistry) {
+    public ToolController(ToolExecutor toolExecutor, McpToolRegistry mcpToolRegistry) {
         this.toolExecutor = toolExecutor;
         this.mcpToolRegistry = mcpToolRegistry;
     }

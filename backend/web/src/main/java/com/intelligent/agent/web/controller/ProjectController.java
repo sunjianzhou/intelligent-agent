@@ -16,11 +16,11 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-public class ProjectProxyController {
+public class ProjectController {
 
     private final ProjectService projectService;
 
-    public ProjectProxyController(ProjectService projectService) {
+    public ProjectController(ProjectService projectService) {
         this.projectService = projectService;
     }
 

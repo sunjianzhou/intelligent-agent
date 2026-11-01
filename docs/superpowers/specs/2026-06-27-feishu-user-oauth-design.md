@@ -211,7 +211,7 @@ async def get_valid_token(open_id: str) -> str:
 
 ```java
 @RestController
-public class FeishuOAuthController extends AbstractProxyController {
+public class FeishuOAuthController extends AbstractController {
 
     // 无 JWT 校验：飞书服务器的重定向，没有 JWT
     @GetMapping("/feishu/oauth/callback")

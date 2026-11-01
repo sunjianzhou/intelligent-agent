@@ -27,12 +27,12 @@ import java.util.UUID;
 @Slf4j
 @RestController
 @RequestMapping("/api/memory")
-public class MemoryProxyController {
+public class MemoryController {
 
     private final MemoryRepository memoryRepository;
     private final ConversationMemoryService conversationMemoryService;
 
-    public MemoryProxyController(MemoryRepository memoryRepository,
+    public MemoryController(MemoryRepository memoryRepository,
                                  ConversationMemoryService conversationMemoryService) {
         this.memoryRepository = memoryRepository;
         this.conversationMemoryService = conversationMemoryService;
@@ -116,7 +116,7 @@ public class MemoryProxyController {
         List<Map<String, Object>> summaries = memoryRepository.list(
                         MemorySearchQuery.builder(userId, "", Math.max(1, limit))
                                 .type("summary").build())
-                .stream().map(MemoryProxyController::toMap).toList();
+                .stream().map(MemoryController::toMap).toList();
         return ResponseEntity.ok(Map.of(
                 "summaries", summaries,
                 "count", summaries.size()));
@@ -146,7 +146,7 @@ public class MemoryProxyController {
             contentType = "application/json;charset=UTF-8";
             extension = "json";
             List<Map<String, Object>> items = records.stream()
-                    .map(MemoryProxyController::toMap).toList();
+                    .map(MemoryController::toMap).toList();
             content = new com.fasterxml.jackson.databind.ObjectMapper()
                     .writerWithDefaultPrettyPrinter().writeValueAsString(items);
         }
@@ -245,7 +245,7 @@ public class MemoryProxyController {
             HttpServletRequest req) {
         List<Map<String, Object>> items = memoryRepository
                 .listInvalidated(UserContext.userId(req), Math.max(1, limit))
-                .stream().map(MemoryProxyController::toMap).toList();
+                .stream().map(MemoryController::toMap).toList();
         return ResponseEntity.ok(Map.of("memories", items, "count", items.size()));
     }
 

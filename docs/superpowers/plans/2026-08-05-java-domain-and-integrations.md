@@ -64,7 +64,7 @@
 
 ### Task 3: Replace role, conversation, project, and task proxies
 
-**Files:** Create `domain/role/RoleService.java`, `domain/conversation/ConversationService.java`, `domain/project/ProjectService.java`, `domain/task/TaskService.java`, `DomainApiContractTest.java`; modify `RoleController.java`, `ConversationsProxyController.java`, `ProjectProxyController.java`, and `TaskProxyController.java`.
+**Files:** Create `domain/role/RoleService.java`, `domain/conversation/ConversationService.java`, `domain/project/ProjectService.java`, `domain/task/TaskService.java`, `DomainApiContractTest.java`; modify `RoleController.java`, `ConversationsController.java`, `ProjectController.java`, and `TaskController.java`.
 
 **Produces:** local implementations for the existing API paths and DTO shapes.
 

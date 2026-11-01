@@ -6,7 +6,7 @@
 
 **Architecture:** Python FastAPI 新增 OAuth Token Manager（`feishu_oauth.py`）和 3 个 API 端点（authorize/callback/status）；Java 新增 `FeishuOAuthController` 透传 callback（无 JWT）和其余两个端点（有 JWT）；现有读工具升级为优先 user_access_token、fallback tenant_access_token；新增两个写工具（日历创建、任务创建/完成）。
 
-**Tech Stack:** Python `cryptography.fernet`（加密存储 token）、`threading.Lock`（per-open_id 并发刷新锁，全同步，避免 async/sync 边界问题）、`responses` 库（测试 mock）；Java Spring Boot（`AbstractProxyController`）。
+**Tech Stack:** Python `cryptography.fernet`（加密存储 token）、`threading.Lock`（per-open_id 并发刷新锁，全同步，避免 async/sync 边界问题）、`responses` 库（测试 mock）；Java Spring Boot（`AbstractController`）。
 
 ## Global Constraints
 
@@ -1420,7 +1420,7 @@ git commit -m "feat(feishu-oauth): add calendar_create and task_write tools, reg
 ## Task 6：Java FeishuOAuthController
 
 **Files:**
-- Modify: `backend/web/src/main/java/com/intelligent/agent/web/controller/AbstractProxyController.java`
+- Modify: `backend/web/src/main/java/com/intelligent/agent/web/controller/AbstractController.java`
 - Create: `backend/web/src/main/java/com/intelligent/agent/web/feishu/FeishuOAuthController.java`
 - Test: `backend/web/src/test/java/com/intelligent/agent/web/feishu/FeishuOAuthControllerTest.java`
 
@@ -1431,9 +1431,9 @@ git commit -m "feat(feishu-oauth): add calendar_create and task_write tools, reg
   - `GET /feishu/oauth/status?open_id=xxx` → JSON，有 JWT 校验
   - `GET /feishu/oauth/authorize?open_id=xxx` → JSON，有 JWT 校验
 
-- [ ] **Step 1: 在 `AbstractProxyController` 追加 `proxyGetRaw` 方法**
+- [ ] **Step 1: 在 `AbstractController` 追加 `proxyGetRaw` 方法**
 
-在 `AbstractProxyController.java` 的 `// ── 公共工具 ──` 注释之前追加（DELETE 方法之后）：
+在 `AbstractController.java` 的 `// ── 公共工具 ──` 注释之前追加（DELETE 方法之后）：
 
 ```java
     /**
@@ -1456,7 +1456,7 @@ git commit -m "feat(feishu-oauth): add calendar_create and task_write tools, reg
 ```java
 package com.intelligent.agent.web.feishu;
 
-import com.intelligent.agent.web.controller.AbstractProxyController;
+import com.intelligent.agent.web.controller.AbstractController;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -1476,7 +1476,7 @@ import javax.servlet.http.HttpServletRequest;
 @Slf4j
 @RestController
 @RequestMapping("/feishu/oauth")
-public class FeishuOAuthController extends AbstractProxyController {
+public class FeishuOAuthController extends AbstractController {
 
     /**
      * 无 JWT：飞书服务器将用户浏览器重定向至此，不携带 JWT。
@@ -1578,7 +1578,7 @@ cd backend/web && ./mvnw test -q
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/web/src/main/java/com/intelligent/agent/web/controller/AbstractProxyController.java \
+git add backend/web/src/main/java/com/intelligent/agent/web/controller/AbstractController.java \
         backend/web/src/main/java/com/intelligent/agent/web/feishu/FeishuOAuthController.java \
         backend/web/src/test/java/com/intelligent/agent/web/feishu/FeishuOAuthControllerTest.java
 git commit -m "feat(feishu-oauth): add Java FeishuOAuthController with proxyGetRaw for HTML callback"

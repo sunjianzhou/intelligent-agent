@@ -47,7 +47,7 @@ chat_router.py (生成 user_message_id / assistant_message_id)
 
 撤回请求：
 frontend / client → POST /api/conversations/{session_id}/retract {message_ids:[...]}
-  (Java ConversationsProxyController.retract → proxyPost 透传)
+  (Java ConversationsController.retract → proxyPost 透传)
   → conversations_router.py:
        1) JSON messages[] 按 id 过滤掉对应条目，保存
        2) agent.memory.short_term.delete_by_ids(message_ids) 级联清理内存记忆
@@ -138,7 +138,7 @@ async def retract_messages(session_id: str, request: Request):
 
 ### 4.4 Java 代理
 
-`backend/web/.../ConversationsProxyController.java` 新增：
+`backend/web/.../ConversationsController.java` 新增：
 
 ```java
 @Autowired
@@ -316,7 +316,7 @@ export const retractMessages = (sessionId, messageIds) =>
 | `agent/memory/distiller.py` | `store()` 调用补充 `source_message_ids` metadata |
 | `agent/memory/long_term.py` | `retrieve()`/`search()` 新增 `excluded_from_retrieval` 硬过滤 |
 | `agent/api/conversations_router.py` | `append_messages()` 自动赋 id；新增 `POST .../retract` 端点（含批量上限、requested/deleted 回执）；新增 `_suppress_distilled_memories()` |
-| `backend/web/.../ConversationsProxyController.java` | 新增 `retract` 代理方法，调用 `FeishuRecallBridge` |
+| `backend/web/.../ConversationsController.java` | 新增 `retract` 代理方法，调用 `FeishuRecallBridge` |
 | `backend/web/.../FeishuMessageSender.java` | `doSend()` 返回飞书 `message_id` |
 | `backend/web/.../FeishuRecallBridge.java`（新文件） | id 映射表维护 + 飞书撤回 API 调用 |
 | `backend/web/.../FeishuEventController.java` | 发送成功后记录 id 映射 |

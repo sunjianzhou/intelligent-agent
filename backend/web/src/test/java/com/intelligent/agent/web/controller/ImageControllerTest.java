@@ -18,21 +18,21 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
- * ImageProxyController 契约测试（TD-07）。
+ * ImageController 契约测试（TD-07）。
  * <p>覆盖此前零测试引用的图片端点：参数校验、服务缺失降级、二进制代理与错误路径。
  * imageService 为 {@code @Autowired(required=false)} 字段，未注入时必须降级而不是 NPE。
  */
-class ImageProxyControllerTest {
+class ImageControllerTest {
 
     @TempDir
     Path tempDir;
 
-    private ImageProxyController controller;
+    private ImageController controller;
     private ImageService imageService;
 
     @BeforeEach
     void setUp() {
-        controller = new ImageProxyController();
+        controller = new ImageController();
         imageService = mock(ImageService.class);
     }
 

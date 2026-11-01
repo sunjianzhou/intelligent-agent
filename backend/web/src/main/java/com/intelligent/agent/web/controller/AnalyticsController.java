@@ -13,11 +13,11 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/api/analytics")
-public class AnalyticsProxyController {
+public class AnalyticsController {
 
     private final AnalyticsService analyticsService;
 
-    public AnalyticsProxyController(AnalyticsService analyticsService) {
+    public AnalyticsController(AnalyticsService analyticsService) {
         this.analyticsService = analyticsService;
     }
 

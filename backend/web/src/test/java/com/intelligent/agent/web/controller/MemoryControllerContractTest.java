@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 记忆端点契约（2026-08-15 补充）：summaries / export / distill / batch-import
  * 四个端点此前随 Python 代理移除而缺失，前端调用 405；补齐后的契约回归。
  */
-class MemoryProxyControllerContractTest {
+class MemoryControllerContractTest {
 
     private VectorMemoryRepository repository;
     private MockMvc mockMvc;
@@ -41,8 +41,8 @@ class MemoryProxyControllerContractTest {
         MemoryDistillationService distiller = new MemoryDistillationService(5, 10);
         ConversationMemoryService memoryService =
                 new ConversationMemoryService(repository, cache, distiller);
-        MemoryProxyController controller =
-                new MemoryProxyController(repository, memoryService);
+        MemoryController controller =
+                new MemoryController(repository, memoryService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 

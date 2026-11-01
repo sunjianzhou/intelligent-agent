@@ -13,11 +13,11 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/api/cloud")
-public class CloudProxyController {
+public class CloudController {
 
     private final CloudService cloudService;
 
-    public CloudProxyController(CloudService cloudService) {
+    public CloudController(CloudService cloudService) {
         this.cloudService = cloudService;
     }
 
