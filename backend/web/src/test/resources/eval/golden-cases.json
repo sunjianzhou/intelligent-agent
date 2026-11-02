@@ -76,7 +76,7 @@
     "category": "tool",
     "prompt": "现在几点？请告诉我当前日期和时间。",
     "useTools": true,
-    "expectedTool": "time",
+    "expectedTool": "time_tool",
     "expectedPoints": ["回答中包含当前具体时间", "包含日期信息"]
   },
   {
@@ -84,7 +84,7 @@
     "category": "tool",
     "prompt": "今年是哪一年？请用工具确认。",
     "useTools": true,
-    "expectedTool": "time",
+    "expectedTool": "time_tool",
     "expectedPoints": ["回答包含具体年份"]
   },
   {
@@ -108,7 +108,7 @@
     "category": "tool",
     "prompt": "先查一下当前时间，然后告诉我 2 小时后大约是几点。",
     "useTools": true,
-    "expectedTool": "time",
+    "expectedTool": "time_tool",
     "expectedPoints": ["使用 time 工具", "给出 2 小时后的推算时间"]
   },
   {

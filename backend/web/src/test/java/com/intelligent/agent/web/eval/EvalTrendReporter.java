@@ -44,7 +44,8 @@ public final class EvalTrendReporter {
         sb.append("生成时间：").append(LocalDateTime.now().format(SHOW_TS)).append("\n\n");
         sb.append("> 数据来源：`").append(resultsDir.toAbsolutePath())
                 .append("` 下的 `eval-*.jsonl`；由 `EvalTrendReporter` 汇总，"
-                        + "跑 `mvn -Peval test` 会自动刷新本文件。\n\n");
+                        + "跑 `mvn -Peval test` 会自动刷新本文件，"
+                        + "并同步刷新仓库内的 `docs/eval-trend.md`（TD-18④）。\n\n");
 
         if (runs.isEmpty()) {
             sb.append("_暂无 eval 结果文件。_\n");
