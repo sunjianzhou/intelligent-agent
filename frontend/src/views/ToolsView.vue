@@ -49,17 +49,15 @@
     </div>
 
     <!-- 空状态 -->
-    <div v-else-if="!loading" class="empty-state">
-      <i class="fas fa-tools empty-icon" />
-      <p class="empty-title">暂无可用工具</p>
-      <p class="empty-sub">请检查后端服务是否正常运行</p>
-    </div>
+    <EmptyState
+        v-else-if="!loading"
+        icon="fas fa-tools"
+        title="暂无可用工具"
+        sub="请检查后端服务是否正常运行"
+      />
 
     <!-- 加载中 -->
-    <div v-if="loading" class="loading-state">
-      <i class="fas fa-circle-notch fa-spin" />
-      <span>加载中...</span>
-    </div>
+    <SkeletonList v-if="loading" :rows="6" variant="cards" />
 
     <!-- API Key 和推理参数已移至「MCP 配置」页面 -->
     <div class="tools-footer-hint">
@@ -74,6 +72,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { getTools } from '@/services/api'
+import EmptyState from '@/components/common/EmptyState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
+import SkeletonList from '@/components/common/SkeletonList.vue'
 
 const tools            = ref([])
 const loading          = ref(false)
@@ -81,18 +82,18 @@ const selectedCategory = ref('all')
 
 // ── 分类配置 ──────────────────────────────────────────────
 const CATEGORY_CONFIG = {
-  math:      { icon: 'fas fa-calculator',   color: '#4CAF50' },
-  utility:   { icon: 'fas fa-clock',        color: '#2196F3' },
-  file:      { icon: 'fas fa-folder-open',  color: '#FF9800' },
-  web:       { icon: 'fas fa-globe',        color: '#9C27B0' },
-  system:    { icon: 'fas fa-server',       color: '#00BCD4' },
-  memory:    { icon: 'fas fa-brain',        color: '#E91E63' },
-  scheduler: { icon: 'fas fa-calendar-alt', color: '#FF5722' },
-  general:   { icon: 'fas fa-wrench',       color: '#607D8B' },
+  math:      { icon: 'fas fa-calculator',   color: 'var(--color-success)' },
+  utility:   { icon: 'fas fa-clock',        color: 'var(--color-primary)' },
+  file:      { icon: 'fas fa-folder-open',  color: 'var(--color-warn)' },
+  web:       { icon: 'fas fa-globe',        color: 'var(--color-violet)' },
+  system:    { icon: 'fas fa-server',       color: 'var(--color-info)' },
+  memory:    { icon: 'fas fa-brain',        color: 'var(--color-danger)' },
+  scheduler: { icon: 'fas fa-calendar-alt', color: 'var(--color-warn)' },
+  general:   { icon: 'fas fa-wrench',       color: 'var(--color-text-secondary)' },
 }
 
 const categoryIcon  = (cat) => CATEGORY_CONFIG[cat]?.icon  || 'fas fa-wrench'
-const categoryColor = (cat) => CATEGORY_CONFIG[cat]?.color || '#607D8B'
+const categoryColor = (cat) => CATEGORY_CONFIG[cat]?.color || 'var(--color-text-secondary)'
 
 // ── 计算属性 ──────────────────────────────────────────────
 const categories = computed(() => {
@@ -125,12 +126,12 @@ onMounted(loadTools)
 <style scoped>
 .tools-view {
   height: 100%;
-  padding: 20px;
+  padding: var(--space-4-5);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  background: #f8f9fa;
+  gap: var(--space-3-5);
+  background: var(--color-surface-sunken);
 }
 
 /* ── 工具栏 ─────────────────────────────────────────────── */
@@ -139,70 +140,71 @@ onMounted(loadTools)
   align-items: center;
   justify-content: space-between;
 }
-.page-desc { font-size: 0.88rem; color: #888; }
+.page-desc { font-size: var(--text-sm); color: var(--color-text-secondary); }
 .refresh-btn {
-  display: flex; align-items: center; gap: 6px;
-  padding: 7px 14px; border-radius: 8px;
-  border: 1px solid #e0e3e8; background: white;
-  font-size: 0.88rem; color: #555; cursor: pointer;
-  transition: all 0.2s;
+  display: flex; align-items: center; gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-3-5); border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border); background: var(--color-surface);
+  font-size: var(--text-sm); color: var(--color-text); cursor: pointer;
+  transition: var(--transition-interactive);
 }
-.refresh-btn:hover { border-color: #667eea; color: #667eea; }
+.refresh-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .refresh-btn.spinning i { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── 分类标签 ────────────────────────────────────────────── */
 .category-tabs {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 .cat-btn {
-  display: flex; align-items: center; gap: 5px;
-  padding: 6px 12px; border-radius: 20px;
-  border: 1px solid #e0e3e8; background: white;
-  font-size: 0.85rem; color: #666; cursor: pointer;
-  transition: all 0.2s;
+  display: flex; align-items: center; gap: var(--space-1);
+  padding: var(--space-1-5) var(--space-3); border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border); background: var(--color-surface);
+  font-size: var(--text-sm); color: var(--color-text-secondary); cursor: pointer;
+  transition: var(--transition-interactive);
 }
-.cat-btn:hover  { border-color: #667eea; color: #667eea; }
-.cat-btn.active { background: #667eea; border-color: #667eea; color: white; }
+.cat-btn:hover  { border-color: var(--color-primary); color: var(--color-primary); }
+.cat-btn.active { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-text-on-primary); }
 .cat-count {
-  background: rgba(0,0,0,0.1);
-  padding: 1px 6px; border-radius: 10px;
-  font-size: 0.78rem;
+  background: var(--overlay-dark-subtle);
+  padding: var(--space-px) var(--space-1-5); border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
 }
-.cat-btn.active .cat-count { background: rgba(255,255,255,0.25); }
+.cat-btn.active .cat-count { background: var(--color-surface-on-dark-strong); }
 
 /* ── 工具网格 ────────────────────────────────────────────── */
 .tools-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 14px;
+  gap: var(--space-3-5);
 }
 
 /* ── 工具卡片 ────────────────────────────────────────────── */
 .tool-card {
-  background: white;
-  border: 1px solid #e8eaed;
-  border-radius: 12px;
-  padding: 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
   display: flex;
   align-items: flex-start;
-  gap: 14px;
-  transition: all 0.2s;
+  gap: var(--space-3-5);
+  transition: var(--transition-interactive);
   min-height: 118px; /* 与两行描述 + 头部一致的视觉高度，避免行内卡片参差 */
-}
+
+  box-shadow: var(--shadow-card);}
 .tool-card:hover {
-  border-color: #c5caf5;
-  box-shadow: 0 4px 12px rgba(102,126,234,0.1);
+  border-color: var(--color-primary-soft);
+  box-shadow: var(--shadow-glow-primary);
   transform: translateY(-1px);
 }
 
 .tool-icon {
   width: 44px; height: 44px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   display: flex; align-items: center; justify-content: center;
-  font-size: 1.2rem; color: white;
+  font-size: var(--text-xl); color: white;
   flex-shrink: 0;
 }
 
@@ -211,24 +213,24 @@ onMounted(loadTools)
 .tool-header {
   display: flex; align-items: center;
   justify-content: space-between;
-  gap: 8px; margin-bottom: 6px;
+  gap: var(--space-2); margin-bottom: var(--space-1-5);
 }
 .tool-name {
-  font-size: 0.95rem; font-weight: 500;
-  color: #333; margin: 0;
+  font-size: var(--text-base); font-weight: var(--weight-medium);
+  color: var(--color-text); margin: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 .tool-status {
-  font-size: 0.75rem; padding: 2px 8px;
-  border-radius: 10px; font-weight: 500; flex-shrink: 0;
+  font-size: var(--text-xs); padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-sm); font-weight: var(--weight-medium); flex-shrink: 0;
 }
-.tool-status.enabled  { background: #e8f5e9; color: #2e7d32; }
-.tool-status.disabled { background: #fce4e4; color: #c62828; }
+.tool-status.enabled  { background: var(--color-success-soft); color: var(--color-success); }
+.tool-status.disabled { background: var(--color-danger-soft); color: var(--color-danger); }
 
 .tool-description {
-  font-size: 0.83rem; color: #666;
-  line-height: 1.5; margin: 0 0 8px;
+  font-size: var(--text-sm-2); color: var(--color-text-secondary);
+  line-height: var(--leading-normal); margin: 0 0 var(--space-2);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -236,92 +238,78 @@ onMounted(loadTools)
 }
 
 .tool-category-badge {
-  font-size: 0.75rem; padding: 2px 8px;
-  background: #f0f2ff; color: #667eea;
-  border-radius: 4px;
+  font-size: var(--text-xs); padding: var(--space-0-5) var(--space-2);
+  background: var(--color-surface-raised); color: var(--color-primary);
+  border-radius: var(--radius-xs);
 }
 
 /* ── 空状态 ───────────────────────────────────────────────── */
-.empty-state {
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 8px; padding: 60px 20px;
-  background: white; border-radius: 12px;
-  border: 1px solid #e8eaed;
-}
-.empty-icon  { font-size: 2.5rem; color: #ddd; }
-.empty-title { font-size: 1rem; font-weight: 500; color: #666; margin: 0; }
-.empty-sub   { font-size: 0.85rem; color: #aaa; margin: 0; }
 
 /* ── 加载中 ───────────────────────────────────────────────── */
-.loading-state {
-  display: flex; align-items: center;
-  justify-content: center; gap: 10px;
-  padding: 40px; color: #888; font-size: 0.9rem;
-}
 
 /* ── 配置面板 ─────────────────────────────────────────────── */
 .config-card {
-  background: white; border-radius: 12px;
-  border: 0.5px solid #e8eaed; padding: 18px;
-}
+  background: var(--color-surface); border-radius: var(--radius-md);
+  border: 0.5px solid var(--color-border); padding: var(--space-4);
+
+  box-shadow: var(--shadow-card);}
 .config-title {
-  font-size: 0.95rem; font-weight: 500; color: #333;
-  display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+  font-size: var(--text-base); font-weight: var(--weight-medium); color: var(--color-text);
+  display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1);
 }
-.config-title i { color: #667eea; }
-.config-hint { font-size: 0.8rem; color: #aaa; margin-bottom: 14px; }
-.config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.config-item { display: flex; flex-direction: column; gap: 5px; }
-.cfg-label { font-size: 0.85rem; color: #555; font-weight: 500; }
-.cfg-input-row { display: flex; gap: 6px; align-items: center; }
+.config-title i { color: var(--color-primary); }
+.config-hint { font-size: var(--text-sm-2); color: var(--color-text-muted); margin-bottom: var(--space-3-5); }
+.config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3-5); }
+.config-item { display: flex; flex-direction: column; gap: var(--space-1); }
+.cfg-label { font-size: var(--text-sm); color: var(--color-text); font-weight: var(--weight-medium); }
+.cfg-input-row { display: flex; gap: var(--space-1-5); align-items: center; }
 .cfg-input {
-  flex: 1; padding: 8px 12px; border: 1px solid #e0e3e8;
-  border-radius: 8px; font-size: 0.85rem; outline: none;
-  transition: border-color 0.2s;
+  flex: 1; padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm); font-size: var(--text-sm); outline: none;
+  transition: border-color var(--duration-base);
 }
-.cfg-input:focus { border-color: #667eea; }
+.cfg-input:focus { border-color: var(--color-primary); }
 .cfg-eye {
-  padding: 8px 10px; border-radius: 8px;
-  border: 1px solid #e0e3e8; background: white;
-  color: #888; cursor: pointer;
+  padding: var(--space-2) var(--space-2-5); border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border); background: var(--color-surface);
+  color: var(--color-text-secondary); cursor: pointer;
 }
-.cfg-desc { font-size: 0.75rem; color: #aaa; }
-.config-footer { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.cfg-desc { font-size: var(--text-xs); color: var(--color-text-muted); }
+.config-footer { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-3-5); }
 .cfg-save-btn {
-  display: flex; align-items: center; gap: 6px;
-  padding: 8px 18px; border-radius: 8px;
-  border: none; background: #667eea; color: white;
-  font-size: 0.88rem; cursor: pointer; transition: background 0.2s;
+  display: flex; align-items: center; gap: var(--space-1-5);
+  padding: var(--space-2) var(--space-4); border-radius: var(--radius-sm);
+  border: none; background: var(--color-primary); color: var(--color-text-on-primary);
+  font-size: var(--text-sm); cursor: pointer; transition: background var(--duration-base);
 }
-.cfg-save-btn:hover:not(:disabled) { background: #5a6fd6; }
+.cfg-save-btn:hover:not(:disabled) { background: var(--color-primary-hover); }
 .cfg-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.cfg-tip { font-size: 0.78rem; color: #aaa; }
+.cfg-tip { font-size: var(--text-xs); color: var(--color-text-muted); }
 
 /* ── 参数调节 ─────────────────────────────────────────────── */
-.param-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
-.param-item { display: flex; flex-direction: column; gap: 6px; }
-.param-item label { font-size: 0.85rem; color: #555; font-weight: 500; display: flex; align-items: center; gap: 8px; }
-.param-val { background: #f0f2ff; color: #667eea; padding: 1px 8px; border-radius: 8px; font-size: 0.78rem; }
-.param-slider { width: 100%; accent-color: #667eea; }
-.param-range { display: flex; justify-content: space-between; font-size: 0.72rem; color: #bbb; }
+.param-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-4); }
+.param-item { display: flex; flex-direction: column; gap: var(--space-1-5); }
+.param-item label { font-size: var(--text-sm); color: var(--color-text); font-weight: var(--weight-medium); display: flex; align-items: center; gap: var(--space-2); }
+.param-val { background: var(--color-surface-raised); color: var(--color-primary); padding: var(--space-px) var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-xs); }
+.param-slider { width: 100%; accent-color: var(--color-primary); }
+.param-range { display: flex; justify-content: space-between; font-size: var(--text-xs); color: var(--color-text-muted); }
 
 /* ── MCP 跳转提示 ─────────────────────────────────────────── */
 .tools-footer-hint {
-  font-size: 0.84rem;
-  color: #aaa;
-  padding: 14px 16px;
-  background: white;
-  border: 1px dashed #e0e3e8;
-  border-radius: 10px;
+  font-size: var(--text-sm-2);
+  color: var(--color-text-muted);
+  padding: var(--space-3-5) var(--space-4);
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
-.tools-footer-hint i { color: #667eea; }
+.tools-footer-hint i { color: var(--color-primary); }
 .mcp-link {
-  color: #667eea;
-  font-weight: 500;
+  color: var(--color-primary);
+  font-weight: var(--weight-medium);
   text-decoration: none;
 }
 .mcp-link:hover { text-decoration: underline; }

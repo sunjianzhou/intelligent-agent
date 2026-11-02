@@ -47,11 +47,11 @@ const messageCount = computed(() => websocketStore.messages.length)
 .status-item {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   color: var(--color-text-secondary);
 }
 
-.status-icon { font-size: 0.7rem; }
+.status-icon { font-size: var(--text-2xs); }
 .status-label { color: var(--color-text-muted); }
-.status-value { color: var(--color-text); font-weight: 500; }
+.status-value { color: var(--color-text); font-weight: var(--weight-medium); }
 </style>

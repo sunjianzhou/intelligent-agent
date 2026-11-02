@@ -36,14 +36,13 @@
         <i class="fas fa-sync-alt" />
       </button>
     </div>
-    <div v-if="filesLoading" class="loading-state">
-      <i class="fas fa-circle-notch fa-spin" /><span>加载中…</span>
-    </div>
-    <div v-else-if="!knowledgeFiles.length" class="empty-state">
-      <i class="fas fa-folder-open empty-icon" />
-      <p class="empty-title">暂无入库文件</p>
-      <p class="empty-sub">上传文档后可在对话中语义检索</p>
-    </div>
+    <SkeletonList v-if="filesLoading" :rows="3" />
+    <EmptyState
+        v-else-if="!knowledgeFiles.length"
+        icon="fas fa-folder-open"
+        title="暂无入库文件"
+        sub="上传文档后可在对话中语义检索"
+      />
     <div v-else class="file-list">
       <div v-for="f in knowledgeFiles" :key="f.file_id" class="file-card">
         <div class="file-card-top">
@@ -69,6 +68,9 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { listKnowledgeFiles, deleteKnowledgeFile, uploadKnowledgeFile } from '@/services/api'
 import { formatDateTime as formatTime } from '@/utils/date'
+import EmptyState from '@/components/common/EmptyState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
+import SkeletonList from '@/components/common/SkeletonList.vue'
 
 const knowledgeFiles  = ref([])
 const filesLoading    = ref(false)
@@ -148,94 +150,70 @@ onMounted(loadKnowledgeFiles)
 /* ── 文件入库面板 ─────────────────────────────────────────── */
 .files-panel { display: flex; flex-direction: column; gap: var(--space-4); }
 .upload-zone {
-  border: 2px dashed #c9d1d9; border-radius: var(--radius-md);
-  padding: 40px 20px; text-align: center;
+  border: 2px dashed var(--color-border-strong); border-radius: var(--radius-md);
+  padding: var(--space-7) var(--space-4-5); text-align: center;
   background: var(--color-bg); cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
+  transition: border-color var(--duration-base), background var(--duration-base);
 }
 .upload-zone:hover, .upload-zone.drag-over {
-  border-color: #1976d2; background: #e8f0fd;
+  border-color: var(--color-primary); background: var(--color-primary-soft);
 }
-.upload-icon { font-size: 2rem; color: #90a4ae; margin-bottom: var(--space-2); }
-.upload-title { font-size: 1rem; font-weight: 500; color: var(--color-text-secondary); margin: 0 0 var(--space-1); }
-.upload-sub   { font-size: 0.82rem; color: var(--color-text-muted); margin: 0; }
+.upload-icon { font-size: 2rem; color: var(--color-text-muted); margin-bottom: var(--space-2); }
+.upload-title { font-size: var(--text-md); font-weight: var(--weight-medium); color: var(--color-text-secondary); margin: 0 0 var(--space-1); }
+.upload-sub   { font-size: var(--text-sm-2); color: var(--color-text-muted); margin: 0; }
 .pending-file {
   background: var(--color-surface); border: 1px solid var(--color-border);
-  border-radius: var(--radius-md); padding: 14px var(--space-4);
-  display: flex; flex-direction: column; gap: 10px;
+  border-radius: var(--radius-md); padding: var(--space-3-5) var(--space-4);
+  display: flex; flex-direction: column; gap: var(--space-2-5);
 }
 .pending-info { display: flex; align-items: center; gap: var(--space-2); }
-.pending-name { font-weight: 500; color: var(--color-text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pending-size { font-size: 0.78rem; color: var(--color-text-muted); white-space: nowrap; }
+.pending-name { font-weight: var(--weight-medium); color: var(--color-text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pending-size { font-size: var(--text-xs); color: var(--color-text-muted); white-space: nowrap; }
 .desc-input {
   border: 1px solid var(--color-border); border-radius: var(--radius-sm);
-  padding: 7px 10px; font-size: 0.85rem; outline: none;
-  transition: border-color 0.2s;
+  padding: var(--space-1-5) var(--space-2-5); font-size: var(--text-sm); outline: none;
+  transition: border-color var(--duration-base);
 }
-.desc-input:focus { border-color: #1976d2; }
+.desc-input:focus { border-color: var(--color-primary); }
 .pending-actions { display: flex; gap: var(--space-2); }
 .upload-confirm-btn {
-  padding: 7px 18px; border-radius: var(--radius-sm); border: none;
-  background: #1976d2; color: white; font-size: 0.85rem;
-  cursor: pointer; transition: background 0.2s;
+  padding: var(--space-1-5) var(--space-4); border-radius: var(--radius-sm); border: none;
+  background: var(--color-primary); color: var(--color-text-on-primary); font-size: var(--text-sm);
+  cursor: pointer; transition: background var(--duration-base);
 }
-.upload-confirm-btn:hover:not(:disabled) { background: #1565c0; }
+.upload-confirm-btn:hover:not(:disabled) { background: var(--color-primary-hover); }
 .upload-confirm-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .upload-cancel-btn {
-  padding: 7px 14px; border-radius: var(--radius-sm); border: 1px solid var(--color-border);
-  background: var(--color-surface); color: var(--color-text-secondary); font-size: 0.85rem; cursor: pointer;
+  padding: var(--space-1-5) var(--space-3-5); border-radius: var(--radius-sm); border: 1px solid var(--color-border);
+  background: var(--color-surface); color: var(--color-text-secondary); font-size: var(--text-sm); cursor: pointer;
 }
 .upload-cancel-btn:hover { background: var(--color-bg); }
 .file-list-header {
   display: flex; align-items: center; justify-content: space-between;
 }
-.file-list-title { font-size: 0.9rem; font-weight: 600; color: #444; }
-.file-list { display: flex; flex-direction: column; gap: 10px; }
+.file-list-title { font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--color-text); }
+.file-list { display: flex; flex-direction: column; gap: var(--space-2-5); }
 .file-card {
   background: var(--color-surface); border: 1px solid var(--color-border);
-  border-radius: var(--radius-md); padding: var(--space-3) 14px;
-}
+  border-radius: var(--radius-md); padding: var(--space-3) var(--space-3-5);
+
+  box-shadow: var(--shadow-card);}
 .file-card-top {
   display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1);
 }
-.file-icon { color: #90a4ae; }
-.file-name { flex: 1; font-weight: 500; color: var(--color-text); font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-desc { font-size: 0.8rem; color: #777; margin-bottom: 6px; }
-.file-meta { display: flex; gap: var(--space-3); font-size: 0.75rem; color: var(--color-text-muted); }
+.file-icon { color: var(--color-text-muted); }
+.file-name { flex: 1; font-weight: var(--weight-medium); color: var(--color-text); font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-desc { font-size: var(--text-sm-2); color: var(--color-text-secondary); margin-bottom: var(--space-1-5); }
+.file-meta { display: flex; gap: var(--space-3); font-size: var(--text-xs); color: var(--color-text-muted); }
 
 /* 复用主视图的空态/加载/刷新样式 */
-.empty-state {
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: var(--space-2); padding: 60px 20px;
-  background: var(--color-surface); border-radius: var(--radius-md);
-  border: 0.5px solid var(--color-border);
-}
-.empty-icon  { font-size: 2.5rem; color: #ddd; }
-.empty-title { font-size: 1rem; font-weight: 500; color: var(--color-text-secondary); margin: 0; }
-.empty-sub   { font-size: 0.85rem; color: var(--color-text-muted); margin: 0; }
-.loading-state {
-  display: flex; align-items: center;
-  justify-content: center; gap: 10px;
-  padding: 40px; color: var(--color-text-muted); font-size: 0.9rem;
-}
 .refresh-btn {
-  padding: 8px 10px; border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-2-5); border-radius: var(--radius-sm);
   border: 1px solid var(--color-border); background: var(--color-surface);
-  color: var(--color-text-secondary); cursor: pointer; transition: all 0.2s;
-  display: flex; align-items: center; gap: 5px;
+  color: var(--color-text-secondary); cursor: pointer; transition: var(--transition-interactive);
+  display: flex; align-items: center; gap: var(--space-1);
 }
 .refresh-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .refresh-btn.spinning i { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* 暗色主题适配 */
-[data-theme="dark"] .upload-zone { background: #1a1f2e; border-color: #3a4060; }
-[data-theme="dark"] .upload-zone:hover, [data-theme="dark"] .upload-zone.drag-over { background: #1e2a45; border-color: #4f6ef7; }
-[data-theme="dark"] .upload-icon { color: #6b7280; }
-[data-theme="dark"] .pending-file, [data-theme="dark"] .file-card { background: #1a1f2e; border-color: #2d3451; }
-[data-theme="dark"] .pending-name, [data-theme="dark"] .file-name { color: #c9d1d9; }
-[data-theme="dark"] .desc-input { background: #0d1117; border-color: #2d3451; color: #c9d1d9; }
-[data-theme="dark"] .upload-cancel-btn { background: #1a1f2e; color: #c9d1d9; border-color: #2d3451; }
-[data-theme="dark"] .file-list-title { color: #c9d1d9; }
 </style>

@@ -11,7 +11,7 @@
           <el-progress
             :percentage="Math.round(answeredCount / plan.questions.length * 100)"
             :show-text="false"
-            style="width: 200px; margin-left: 12px"
+            style="width: 200px; margin-left: var(--space-3)"
           />
         </div>
       </div>
@@ -42,7 +42,7 @@
               v-for="(text, key) in q.options"
               :key="key"
               :label="key"
-              style="display: block; margin: 4px 0"
+              style="display: block; margin: var(--space-1) 0"
             >
               {{ key }}. {{ text }}
             </el-radio>
@@ -70,7 +70,7 @@
           type="primary"
           :disabled="answeredCount === 0"
           @click="submit"
-          style="margin-top: 16px"
+          style="margin-top: var(--space-4)"
         >
           提交答案
         </el-button>
@@ -89,7 +89,7 @@
       >
         <p>
           <b>{{ r.question_id }}</b>
-          <el-tag :type="r.correct ? 'success' : 'danger'" size="small" style="margin-left: 8px">
+          <el-tag :type="r.correct ? 'success' : 'danger'" size="small" style="margin-left: var(--space-2)">
             {{ r.correct ? '✓ 正确' : '✗ 错误' }}
           </el-tag>
         </p>
@@ -97,7 +97,7 @@
         <p class="explanation">📖 {{ r.explanation }}</p>
       </div>
 
-      <div class="export-actions" style="margin-top: 16px">
+      <div class="export-actions" style="margin-top: var(--space-4)">
         <el-button @click="copyMarkdown">复制全部解析</el-button>
         <el-button @click="downloadMarkdown">导出 .md</el-button>
         <el-button type="primary" @click="reset">再练一次</el-button>
@@ -190,14 +190,14 @@ function reset() {
 </script>
 
 <style scoped>
-.submit-view { max-width: 800px; margin: 0 auto; padding: 24px; }
-.plan-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.progress-bar { display: flex; align-items: center; font-size: 14px; color: #666; }
-.question-card { background: #f9f9f9; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-.question-text { font-size: 15px; margin-bottom: 8px; }
-.result-card { border-left: 4px solid #ccc; padding: 12px; margin-bottom: 10px; border-radius: 4px; }
-.result-card.correct { border-color: #67c23a; background: #f0f9eb; }
-.result-card.wrong { border-color: #f56c6c; background: #fef0f0; }
-.explanation { color: #555; font-size: 13px; margin-top: 6px; }
-.weekend-commands li { margin: 6px 0; }
+.submit-view { max-width: 800px; margin: 0 auto; padding: var(--space-5); }
+.plan-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4); }
+.progress-bar { display: flex; align-items: center; font-size: var(--text-sm); color: var(--color-text-secondary); }
+.question-card { background: var(--color-surface-sunken); border-radius: var(--radius-sm); padding: var(--space-4); margin-bottom: var(--space-3); }
+.question-text { font-size: 15px; margin-bottom: var(--space-2); }
+.result-card { border-left: 4px solid var(--color-text-muted); padding: var(--space-3); margin-bottom: var(--space-2-5); border-radius: var(--radius-xs); }
+.result-card.correct { border-color: var(--color-success); background: var(--color-success-soft); }
+.result-card.wrong { border-color: var(--color-danger); background: var(--color-danger-soft); }
+.explanation { color: var(--color-text); font-size: var(--text-sm-2); margin-top: var(--space-1-5); }
+.weekend-commands li { margin: var(--space-1-5) 0; }
 </style>

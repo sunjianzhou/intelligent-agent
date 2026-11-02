@@ -68,7 +68,7 @@ const handleTab = (tab) => {
     padding-bottom: env(safe-area-inset-bottom);
     background: var(--color-surface);
     border-top: 1px solid var(--color-border);
-    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06);
+    box-shadow: var(--shadow-card);
   }
 }
 
@@ -78,25 +78,25 @@ const handleTab = (tab) => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: var(--space-1);
   background: none;
   border: none;
   border-top: 2px solid transparent;
   padding: 0;
   cursor: pointer;
   color: var(--color-text-muted);
-  transition: color 0.15s, border-color 0.15s;
+  transition: color var(--duration-fast), border-color var(--duration-fast);
   -webkit-tap-highlight-color: transparent;
 }
 
 .tab-btn i {
-  font-size: 18px;
+  font-size: var(--text-lg);
 }
 
 .tab-label {
   font-size: 10px;
-  font-weight: 500;
-  line-height: 1;
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-none);
 }
 
 .tab-btn.active {

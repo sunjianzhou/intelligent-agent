@@ -20,7 +20,7 @@
           effect="dark"
           size="small"
         >
-          <i class="fas fa-circle" style="font-size:8px;margin-right:4px" />
+        <i class="fas fa-circle" style="font-size:var(--text-2xs);margin-right:var(--space-1)" />
           已激活
         </el-tag>
 
@@ -61,7 +61,7 @@
             <span>填写<b>名片</b>后，再到「<b>核心身份</b> / <b>行为风格</b>」配置 AI 性格与回答方式。</span>
           </div>
         </el-alert>
-        <el-form :model="form.roleCard" label-width="90px" style="margin-top:12px">
+        <el-form :model="form.roleCard" label-width="90px" style="margin-top:var(--space-3)">
           <el-form-item label="角色名称" required>
             <el-input v-model="form.roleCard.name" placeholder="如：技术顾问 / 写作助手 / 健身教练" />
           </el-form-item>
@@ -70,7 +70,7 @@
               <el-avatar :size="72" :src="form.roleCard.avatarUrl || undefined" shape="circle">
                 {{ form.roleCard.name?.[0] || '?' }}
               </el-avatar>
-              <el-button size="small" style="margin-left:12px" @click="triggerAvatarUpload">
+              <el-button size="small" style="margin-left:var(--space-3)" @click="triggerAvatarUpload">
                 上传头像
               </el-button>
               <input
@@ -123,7 +123,7 @@
                 v-if="form.coreIdentity.redlines.length"
                 type="error"
                 :closable="false"
-                style="margin-bottom:8px;padding:6px 12px"
+                style="margin-bottom:var(--space-2);padding:var(--space-1-5) var(--space-3)"
               >
                 底线优先级凌驾于所有其他规则之上，任何情况下不得违反
               </el-alert>
@@ -168,7 +168,7 @@
             />
           </el-form-item>
           <el-form-item label="沟通风格">
-            <div style="display:flex;gap:8px">
+            <div style="display:flex;gap:var(--space-2)">
               <el-select v-model="form.userProfile.preferences.tone" style="width:140px">
                 <el-option label="随意 casual" value="casual" />
                 <el-option label="正式 formal" value="formal" />
@@ -189,7 +189,7 @@
 
       <!-- ── Tab 4：角色记忆（只读展示 + 检索规则） ── -->
       <el-tab-pane label="角色记忆" name="memory">
-        <el-alert type="warning" :closable="false" style="margin-bottom:16px">
+        <el-alert type="warning" :closable="false" style="margin-bottom:var(--space-4)">
           短期记忆存于 Java 后端进程内（⚠️ 服务重启后清空，保留最近 100 条 / 24 小时）；
           长期记忆持久化为按用户的 JSON 文件。
         </el-alert>
@@ -211,7 +211,7 @@
             <el-tag
               size="small"
               :type="c.status === 'active' ? 'success' : 'info'"
-              style="margin-left:8px"
+              style="margin-left:var(--space-2)"
             >{{ c.status }}</el-tag>
           </el-timeline-item>
         </el-timeline>
@@ -261,18 +261,18 @@
         </el-card>
 
         <el-divider>知识库来源</el-divider>
-        <div v-if="form.knowledgeJournal.knowledgeSources?.length" style="margin-bottom:12px">
+        <div v-if="form.knowledgeJournal.knowledgeSources?.length" style="margin-bottom:var(--space-3)">
           <el-tag
             v-for="src in form.knowledgeJournal.knowledgeSources"
             :key="src"
-            style="margin:4px"
+            style="margin:var(--space-1)"
             closable
             @close="removeKnowledgeSource(src)"
           >{{ src }}</el-tag>
         </div>
         <el-text v-else type="info" size="small">暂无知识库来源</el-text>
 
-        <div style="margin-top:16px">
+        <div style="margin-top:var(--space-4)">
           <el-upload
             :auto-upload="false"
             :on-change="onKnowledgeFileChange"
@@ -281,7 +281,7 @@
           >
             <el-button size="small" type="primary" plain>上传知识文档</el-button>
           </el-upload>
-          <el-text size="small" type="info" style="display:block;margin-top:4px">
+          <el-text size="small" type="info" style="display:block;margin-top:var(--space-1)">
             支持 .txt / .md / .pdf，实际向量化由后端处理
           </el-text>
         </div>
@@ -576,27 +576,27 @@ const previewHtml = computed(() => {
 
 /* ── El Plus 主题适配：融入应用整体风格 ─────────────────────── */
 :deep(.el-tabs__header) {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-4-5);
 }
 :deep(.el-tabs__item) {
   color: var(--color-text-secondary);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 :deep(.el-tabs__item.is-active) {
   color: var(--color-primary);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 :deep(.el-tabs__active-bar) {
   background-color: var(--color-primary);
 }
 :deep(.el-form-item__label) {
   color: var(--color-text-secondary);
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
 }
 :deep(.el-input__wrapper),
 :deep(.el-textarea__inner) {
   border-radius: var(--radius-sm);
-  box-shadow: 0 0 0 1px var(--color-border) inset;
+  box-shadow: var(--shadow-inset-border);
 }
 :deep(.el-input__wrapper:hover),
 :deep(.el-textarea__inner:hover) {
@@ -609,6 +609,8 @@ const previewHtml = computed(() => {
 :deep(.el-button--primary) {
   background: var(--color-primary);
   border-color: var(--color-primary);
+  /* 深色主题下主色是浅蓝，白字不可读（实测 2.46:1） */
+  color: var(--color-text-on-primary);
 }
 :deep(.el-button--primary:hover) {
   background: var(--color-primary-hover);
@@ -627,10 +629,11 @@ const previewHtml = computed(() => {
 :deep(.el-button--danger) {
   background: var(--color-danger);
   border-color: var(--color-danger);
+  color: var(--color-text-on-primary);
 }
 :deep(.el-button--danger:hover) {
-  background: #dc2626;
-  border-color: #dc2626;
+  background: var(--color-danger);
+  border-color: var(--color-danger);
 }
 :deep(.el-select .el-input__wrapper) {
   border-radius: var(--radius-sm);
@@ -655,8 +658,8 @@ const previewHtml = computed(() => {
 .card-guide-body {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  font-size: 0.82rem;
+  gap: var(--space-1);
+  font-size: var(--text-sm-2);
   color: var(--color-text-secondary);
   margin-top: var(--space-1);
 }
@@ -673,7 +676,7 @@ const previewHtml = computed(() => {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1-5);
 }
 .list-row .el-input {
   flex: 1;
@@ -686,7 +689,7 @@ const previewHtml = computed(() => {
 }
 
 .field-hint {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   margin-top: var(--space-1);
   display: flex;
@@ -694,25 +697,25 @@ const previewHtml = computed(() => {
   gap: var(--space-1);
 }
 .field-hint kbd {
-  background: var(--color-border);
-  border: 1px solid #d0d3da;
-  border-radius: 3px;
-  padding: 0 4px;
-  font-size: 0.7rem;
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xs);
+  padding: 0 var(--space-1);
+  font-size: var(--text-2xs);
   color: var(--color-text-secondary);
 }
 
 .badge-blue {
   flex-shrink: 0;
-  font-size: 11px;
-  color: #fff;
-  background: #409eff;
-  border-radius: 4px;
-  padding: 2px 6px;
+  font-size: var(--text-2xs);
+  color: var(--color-text-on-primary);
+  background: var(--color-primary);
+  border-radius: var(--radius-xs);
+  padding: var(--space-0-5) var(--space-1-5);
 }
 
 .journal-card {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-2-5);
 }
 
 :deep(.tag-input-wrap) {
@@ -722,30 +725,30 @@ const previewHtml = computed(() => {
 }
 
 .preview-hint {
-  font-size: 0.8rem;
+  font-size: var(--text-sm-2);
   color: var(--color-text-muted);
-  margin-bottom: 14px;
+  margin-bottom: var(--space-3-5);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 .md-preview {
   background: var(--color-bg);
-  border: 1px solid #eef0f4;
+  border: 1px solid var(--color-surface-sunken);
   border-radius: var(--radius-md);
-  padding: 20px 24px;
-  font-size: 0.92rem;
-  line-height: 1.7;
+  padding: var(--space-4-5) var(--space-5);
+  font-size: var(--text-base);
+  line-height: var(--leading-prose);
   color: var(--color-text);
   min-height: 200px;
 }
-.md-preview :deep(h1) { font-size: 1.3rem; font-weight: 600; margin: 0 0 10px; color: var(--color-text); }
-.md-preview :deep(h2) { font-size: 1.05rem; font-weight: 600; margin: var(--space-4) 0 var(--space-2); color: var(--color-text); border-bottom: 1px solid var(--color-border); padding-bottom: var(--space-1); }
-.md-preview :deep(h3) { font-size: 0.95rem; font-weight: 600; margin: 12px 0 6px; }
-.md-preview :deep(blockquote) { border-left: 3px solid var(--color-primary); padding: 4px 12px; margin: 8px 0; color: var(--color-text-secondary); background: #f8f8ff; border-radius: 0 6px 6px 0; }
-.md-preview :deep(ul), .md-preview :deep(ol) { padding-left: 20px; margin: 6px 0; }
-.md-preview :deep(li) { margin-bottom: 3px; }
-.md-preview :deep(hr) { border: none; border-top: 1px solid var(--color-border); margin: 14px 0; }
-.md-preview :deep(strong) { color: #444; }
-.md-preview :deep(p) { margin: 0 0 8px; }
+.md-preview :deep(h1) { font-size: var(--text-xl); font-weight: var(--weight-semibold); margin: 0 0 var(--space-2-5); color: var(--color-text); }
+.md-preview :deep(h2) { font-size: var(--text-lg); font-weight: var(--weight-semibold); margin: var(--space-4) 0 var(--space-2); color: var(--color-text); border-bottom: 1px solid var(--color-border); padding-bottom: var(--space-1); }
+.md-preview :deep(h3) { font-size: var(--text-base); font-weight: var(--weight-semibold); margin: var(--space-3) 0 var(--space-1-5); }
+.md-preview :deep(blockquote) { border-left: 3px solid var(--color-primary); padding: var(--space-1) var(--space-3); margin: var(--space-2) 0; color: var(--color-text-secondary); background: var(--color-primary-soft); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.md-preview :deep(ul), .md-preview :deep(ol) { padding-left: var(--space-4-5); margin: var(--space-1-5) 0; }
+.md-preview :deep(li) { margin-bottom: var(--space-1); }
+.md-preview :deep(hr) { border: none; border-top: 1px solid var(--color-border); margin: var(--space-3-5) 0; }
+.md-preview :deep(strong) { color: var(--color-text); }
+.md-preview :deep(p) { margin: 0 0 var(--space-2); }
 </style>

@@ -44,26 +44,26 @@ const statusLabel = computed(() => {
 
 <style scoped>
 .task-node {
-  border-left: 2px solid #f0f0f0;
-  margin-left: 14px;
+  border-left: 2px solid var(--color-border);
+  margin-left: var(--space-3-5);
 }
 .task-node:first-child { margin-left: 0; border-left: none; }
 
 .node-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-3-5);
   cursor: pointer;
-  border-radius: 6px;
-  transition: background 0.12s;
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast);
 }
-.node-row:hover { background: #f8f9fa; }
+.node-row:hover { background: var(--color-surface-sunken); }
 
 .expand-toggle {
   width: 14px;
-  font-size: 0.7rem;
-  color: #aaa;
+  font-size: var(--text-2xs);
+  color: var(--color-text-muted);
   flex-shrink: 0;
 }
 .expand-placeholder { width: 14px; flex-shrink: 0; }
@@ -74,39 +74,39 @@ const statusLabel = computed(() => {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.status-dot.pending     { background: #bbb; }
-.status-dot.in_progress { background: #667eea; }
-.status-dot.done        { background: #4fc3a1; }
-.status-dot.blocked     { background: #e53935; }
+.status-dot.pending     { background: var(--color-text-muted); }
+.status-dot.in_progress { background: var(--color-primary); }
+.status-dot.done        { background: var(--color-accent); }
+.status-dot.blocked     { background: var(--color-danger); }
 
 .task-name {
   flex: 1;
-  font-size: 0.85rem;
-  color: #333;
-  line-height: 1.4;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  line-height: var(--leading-snug);
 }
 
 .task-badge {
-  font-size: 0.68rem;
-  padding: 1px 7px;
-  border-radius: 10px;
-  font-weight: 500;
+  font-size: var(--text-2xs);
+  padding: var(--space-px) var(--space-1-5);
+  border-radius: var(--radius-sm);
+  font-weight: var(--weight-medium);
   flex-shrink: 0;
 }
-.task-badge.pending     { background: #f5f5f5; color: #888; }
-.task-badge.in_progress { background: #eef0ff; color: #667eea; }
-.task-badge.done        { background: #e8f8f3; color: #2e7d32; }
-.task-badge.blocked     { background: #fce4e4; color: #c62828; }
+.task-badge.pending     { background: var(--color-surface-sunken); color: var(--color-text-secondary); }
+.task-badge.in_progress { background: var(--color-primary-soft); color: var(--color-primary); }
+.task-badge.done        { background: var(--color-success-soft); color: var(--color-success); }
+.task-badge.blocked     { background: var(--color-danger-soft); color: var(--color-danger); }
 
 .task-desc {
-  padding: 0 14px 4px 34px;
-  font-size: 0.76rem;
-  color: #999;
-  line-height: 1.4;
+  padding: 0 var(--space-3-5) var(--space-1) 34px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: var(--leading-snug);
 }
 
 .subtasks {
-  border-left: 2px solid #f0f4ff;
+  border-left: 2px solid var(--color-surface-raised);
   margin-left: 22px;
 }
 </style>

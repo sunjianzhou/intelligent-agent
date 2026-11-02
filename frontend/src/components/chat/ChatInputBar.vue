@@ -49,9 +49,9 @@
       <button v-if="isStreaming || isThinking" class="stop-btn stop-btn-pulse" title="点击停止生成" @click="emit('cancel-stream')">
         <i class="fas fa-stop" />
       </button>
-      <button v-else class="send-btn" :disabled="!canSend" @click="trySend">
-        <i class="fas fa-paper-plane"></i>
-      </button>
+        <button v-else class="send-btn" :disabled="!canSend" aria-label="发送消息" title="发送消息" @click="trySend">
+          <i class="fas fa-paper-plane"></i>
+        </button>
     </div>
     <div class="input-meta">
       <span v-if="!isConnected" class="hint warn">
@@ -76,7 +76,7 @@
               :style="{ color: tokenColor }"
               :class="{ 'token-warn': tokenWarning }"
               :title="`估算 token 用量: ${estimatedTokens}/${ctxLimit}`">
-          <i class="fas fa-database" style="font-size:0.7rem" />
+          <i class="fas fa-database" style="font-size:var(--text-2xs)" />
           {{ estimatedTokens }}/{{ ctxLimit }}
         </span>
 
@@ -126,7 +126,7 @@ const props = defineProps({
   messagesCount:    { type: Number,  default: 0 },
   estimatedTokens:  { type: Number,  default: 0 },
   ctxLimit:         { type: Number,  default: 8192 },
-  tokenColor:       { type: String,  default: '#aaa' },
+  tokenColor:       { type: String,  default: 'var(--color-text-muted)' },
   tokenWarning:     { type: Boolean, default: false },
   projectTitle:     { type: String,  default: '' },
 })
@@ -258,23 +258,23 @@ onUnmounted(() => {
 .input-wrap {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
+  gap: var(--space-2-5);
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  padding: var(--space-2) 10px;
-  transition: border-color 0.2s;
+  padding: var(--space-2) var(--space-2-5);
+  transition: border-color var(--duration-base);
 }
-.input-wrap:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(59,130,246,0.18); }
-.input-wrap-thinking    { border-color: var(--color-primary); background: #f0f6ff; }
-.input-wrap-disconnected{ border-color: #f0a0a0; background: #fff8f8; }
+.input-wrap:focus-within { border-color: var(--color-primary); box-shadow: var(--shadow-focus); }
+.input-wrap-thinking    { border-color: var(--color-primary); background: var(--color-primary-soft); }
+.input-wrap-disconnected{ border-color: var(--color-danger-border); background: var(--color-danger-soft); }
 .chat-input {
   flex: 1;
   border: none;
   background: transparent;
   resize: none;
-  font-size: 0.93rem;
-  line-height: 1.5;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
   color: var(--color-text);
   outline: none;
   max-height: 160px;
@@ -284,14 +284,14 @@ onUnmounted(() => {
 .chat-input::placeholder     { color: var(--color-text-muted); }
 .chat-input:disabled         { opacity: 0.7; cursor: not-allowed; }
 .input-wrap-thinking .chat-input::placeholder { color: var(--color-primary); font-style: italic; }
-.input-wrap-disconnected .chat-input::placeholder { color: #e57373; }
+.input-wrap-disconnected .chat-input::placeholder { color: var(--color-danger); }
 
 /* ── 图片附件 ─────────────────────────────────────────────── */
 .attached-img-row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 6px var(--space-1) 2px;
+  padding: var(--space-1-5) var(--space-1) var(--space-0-5);
 }
 .attached-thumb {
   max-height: 80px;
@@ -305,13 +305,13 @@ onUnmounted(() => {
   border: none;
   color: var(--color-text-muted);
   cursor: pointer;
-  font-size: 0.8rem;
-  padding: 3px 5px;
-  border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
-  line-height: 1;
+  font-size: var(--text-sm-2);
+  padding: var(--space-1) var(--space-1);
+  border-radius: var(--radius-xs);
+  transition: color var(--duration-fast), background var(--duration-fast);
+  line-height: var(--leading-none);
 }
-.attached-remove:hover { color: #e53935; background: #fce4e4; }
+.attached-remove:hover { color: var(--color-danger); background: var(--color-danger-soft); }
 .attach-btn {
   width: 32px;
   height: 32px;
@@ -323,9 +323,9 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   flex-shrink: 0;
-  transition: all 0.15s;
+  transition: var(--transition-interactive);
 }
 .attach-btn:hover  { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-surface-raised); }
 .attach-btn.attach-active { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-surface-raised); }
@@ -335,8 +335,8 @@ onUnmounted(() => {
   animation: pulse-red 1.4s infinite;
 }
 @keyframes pulse-red {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(229,57,53,0.4); }
-  50%       { box-shadow: 0 0 0 6px rgba(229,57,53,0); }
+  0%, 100% { box-shadow: 0 0 0 0 var(--color-danger-soft); }
+  50%       { box-shadow: 0 0 0 6px transparent; }
 }
 .send-btn {
   width: 36px;
@@ -344,43 +344,43 @@ onUnmounted(() => {
   border-radius: var(--radius-sm);
   border: none;
   background: var(--color-primary);
-  color: white;
+  color: var(--color-text-on-primary);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.9rem;
-  transition: background 0.2s, transform 0.1s;
+  font-size: var(--text-sm);
+  transition: background var(--duration-base), transform var(--duration-fast);
   flex-shrink: 0;
 }
 .send-btn:hover:not(:disabled)  { background: var(--color-primary-hover); }
 .send-btn:active:not(:disabled) { transform: scale(0.95); }
-.send-btn:disabled              { background: #ccc; cursor: not-allowed; }
+.send-btn:disabled              { background: var(--color-text-muted); cursor: not-allowed; }
 .stop-btn {
   width: 36px; height: 36px; border-radius: var(--radius-sm);
-  border: none; background: #e53935; color: white;
-  cursor: pointer; font-size: 0.85rem;
+  border: none; background: var(--color-danger); color: white;
+  cursor: pointer; font-size: var(--text-sm);
   display: flex; align-items: center; justify-content: center;
-  transition: background 0.2s;
+  transition: background var(--duration-base);
   flex-shrink: 0;
 }
 .stop-btn:hover { background: var(--color-danger); }
 
 /* ── 底部提示 ─────────────────────────────────────────────── */
-.input-meta { margin-top: 6px; padding: 0 var(--space-1); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.hint       { font-size: 0.78rem; color: var(--color-text-muted); display: flex; align-items: center; gap: 5px; min-width: 0; }
-.hint.warn  { color: #e67e22; }
-.hint i     { font-size: 0.75rem; }
-.hint-tip   { font-size: 0.72rem; color: var(--color-text-muted); }
-.project-badge { background: rgba(59,130,246,0.12); color: var(--color-primary); border-radius: 4px; padding: 1px 6px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
-.project-badge:hover { background: #d0eaf9; }
+.input-meta { margin-top: var(--space-1-5); padding: 0 var(--space-1); display: flex; align-items: center; justify-content: space-between; gap: var(--space-2-5); }
+.hint       { font-size: var(--text-xs); color: var(--color-text-muted); display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.hint.warn  { color: var(--color-warn); }
+.hint i     { font-size: var(--text-xs); }
+.hint-tip   { font-size: var(--text-xs); color: var(--color-text-muted); }
+.project-badge { background: var(--color-primary-soft); color: var(--color-primary); border-radius: var(--radius-xs); padding: var(--space-px) var(--space-1-5); font-size: var(--text-xs); display: inline-flex; align-items: center; gap: var(--space-1); cursor: pointer; }
+.project-badge:hover { background: var(--color-info-soft); }
 .input-meta-right { display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0; }
-.token-indicator { font-size: 0.72rem; display: flex; align-items: center; gap: var(--space-1); }
+.token-indicator { font-size: var(--text-xs); display: flex; align-items: center; gap: var(--space-1); }
 .token-warn      { animation: blink 1.5s ease-in-out infinite; }
 @keyframes blink { 50% { opacity: 0.6; } }
 
 /* ── 会话操作工具条（历史/导出/清空，input-meta 右下角水平排列） ── */
-.input-toolbar { display: flex; align-items: center; gap: 6px; }
+.input-toolbar { display: flex; align-items: center; gap: var(--space-1-5); }
 .toolbar-btn {
   width: 30px; height: 30px;
   border-radius: var(--radius-sm);
@@ -389,13 +389,13 @@ onUnmounted(() => {
   color: var(--color-text-muted);
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  font-size: 0.74rem;
-  transition: all 0.2s;
+  font-size: var(--text-xs);
+  transition: var(--transition-interactive);
 }
 .toolbar-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
-.toolbar-btn.active { background: var(--color-primary); color: white; border-color: var(--color-primary); }
-.toolbar-btn-danger { border-color: #ffd0cd; color: #e53935; }
-.toolbar-btn-danger:hover { border-color: #e53935; background: #fff5f5; }
+.toolbar-btn.active { background: var(--color-primary); color: var(--color-text-on-primary); border-color: var(--color-primary); }
+.toolbar-btn-danger { border-color: var(--color-danger-border); color: var(--color-danger); }
+.toolbar-btn-danger:hover { border-color: var(--color-danger); background: var(--color-danger-soft); }
 .toolbar-export-wrap { position: relative; }
 
 /* ── 导出菜单（从右下角工具条的导出按钮展开） ── */
@@ -406,20 +406,20 @@ onUnmounted(() => {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-raised);
   overflow: hidden;
   z-index: 100;
   min-width: 130px;
 }
 .export-menu button {
   display: flex; align-items: center; gap: var(--space-2);
-  width: 100%; padding: 10px 14px;
+  width: 100%; padding: var(--space-2-5) var(--space-3-5);
   border: none; background: none;
-  font-size: 0.88rem; color: #444;
+  font-size: var(--text-sm); color: var(--color-text);
   cursor: pointer; text-align: left;
-  transition: background 0.15s;
+  transition: background var(--duration-fast);
 }
-.export-menu button:hover { background: #f5f5f5; }
+.export-menu button:hover { background: var(--color-surface-sunken); }
 .export-menu button i { color: var(--color-primary); width: 14px; }
 
 /* 移动端徽章（仅在移动端通过父元素显示） */
@@ -427,28 +427,28 @@ onUnmounted(() => {
 .mobile-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 20px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2-5);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text-secondary);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   cursor: pointer;
   max-width: min(140px, 35vw);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   -webkit-tap-highlight-color: transparent;
-  transition: border-color 0.15s;
+  transition: border-color var(--duration-fast);
 }
 .mobile-chip:hover { border-color: var(--color-primary); }
 .mobile-chip-role {
-  background: #eef2ff;
-  border-color: #c7d2fe;
-  color: #4f46e5;
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary-border);
+  color: var(--color-primary);
 }
-.mobile-chip-role i { color: #6366f1; font-size: 0.72rem; }
+.mobile-chip-role i { color: var(--color-primary); font-size: var(--text-xs); }
 .mobile-chip span {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -456,12 +456,12 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
-  .chat-input        { font-size: 16px !important; } /* 防止 iOS 自动缩放 */
+  .chat-input        { font-size: var(--text-md) !important; } /* 防止 iOS 自动缩放 */
   .input-area        { padding: var(--space-2) !important; }
   .mobile-config-chips {
     display: flex;
-    gap: 8px;
-    padding: 6px 0 4px;
+    gap: var(--space-2);
+    padding: var(--space-1-5) 0 var(--space-1);
   }
 
   /*

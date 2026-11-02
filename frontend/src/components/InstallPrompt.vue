@@ -57,35 +57,35 @@ onUnmounted(() => window.removeEventListener('beforeinstallprompt', onPrompt))
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  background: #1a1a2e;
+  gap: var(--space-4);
+  background: var(--surface-media);
   color: white;
-  padding: 14px 20px;
-  border-radius: 14px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  padding: var(--space-3-5) var(--space-4-5);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-overlay);
   z-index: 9999;
   min-width: 320px;
   max-width: 480px;
 }
-.install-info { display: flex; align-items: center; gap: 12px; }
-.install-icon { font-size: 1.4rem; color: #667eea; }
-.install-title { font-size: 0.9rem; font-weight: 600; }
-.install-sub   { font-size: 0.75rem; color: #aaa; margin-top: 2px; }
-.install-actions { display: flex; align-items: center; gap: 8px; }
+.install-info { display: flex; align-items: center; gap: var(--space-3); }
+.install-icon { font-size: var(--text-xl); color: var(--color-primary); }
+.install-title { font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.install-sub   { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-0-5); }
+.install-actions { display: flex; align-items: center; gap: var(--space-2); }
 .install-btn {
-  padding: 7px 16px; border-radius: 8px;
-  background: #667eea; color: white; border: none;
-  font-size: 0.85rem; font-weight: 500; cursor: pointer;
-  transition: background 0.2s;
+  padding: var(--space-1-5) var(--space-4); border-radius: var(--radius-sm);
+  background: var(--color-primary); color: var(--color-text-on-primary); border: none;
+  font-size: var(--text-sm); font-weight: var(--weight-medium); cursor: pointer;
+  transition: background var(--duration-base);
 }
-.install-btn:hover { background: #5a6fd6; }
+.install-btn:hover { background: var(--color-primary-hover); }
 .dismiss-btn {
-  background: none; border: none; color: #888;
-  cursor: pointer; font-size: 0.9rem; padding: 6px;
-  border-radius: 6px; transition: color 0.2s;
+  background: none; border: none; color: var(--color-text-secondary);
+  cursor: pointer; font-size: var(--text-sm); padding: var(--space-1-5);
+  border-radius: var(--radius-sm); transition: color var(--duration-base);
 }
 .dismiss-btn:hover { color: white; }
 
-.slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s ease; }
+.slide-up-enter-active, .slide-up-leave-active { transition: var(--transition-interactive); }
 .slide-up-enter-from, .slide-up-leave-to { transform: translateX(-50%) translateY(80px); opacity: 0; }
 </style>

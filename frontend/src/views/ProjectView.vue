@@ -116,41 +116,41 @@ async function createProject() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-3) 14px;
+  padding: var(--space-3) var(--space-3-5);
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
 .panel-title {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #4a5568;
+  font-size: var(--text-sm-2);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-wide);
 }
 
 .icon-btn {
   width: 24px;
   height: 24px;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
   background: none;
   color: var(--color-text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.78rem;
-  transition: all 0.15s;
+  font-size: var(--text-xs);
+  transition: var(--transition-interactive);
 }
 .add-btn:hover { background: var(--color-accent); color: white; }
 .del-btn { opacity: 0; }
-.del-btn:hover { background: #fce4e4; color: #e53935; opacity: 1 !important; }
+.del-btn:hover { background: var(--color-danger-soft); color: var(--color-danger); opacity: 1 !important; }
 
 .project-list {
   flex: 1;
   overflow-y: auto;
-  padding: 6px 0;
+  padding: var(--space-1-5) 0;
 }
 
 .project-item {
@@ -159,15 +159,15 @@ async function createProject() {
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   cursor: pointer;
-  transition: background 0.12s;
+  transition: background var(--duration-fast);
   border-radius: 0;
 }
 .project-item:hover { background: var(--color-bg); }
 .project-item:hover .del-btn { opacity: 1; }
-.project-item.active { background: #eef0ff; }
+.project-item.active { background: var(--color-primary-soft); }
 
 .project-icon {
-  font-size: 0.82rem;
+  font-size: var(--text-sm-2);
   color: var(--color-text-muted);
   flex-shrink: 0;
 }
@@ -175,17 +175,17 @@ async function createProject() {
 
 .project-name {
   flex: 1;
-  font-size: 0.83rem;
-  color: #444;
+  font-size: var(--text-sm-2);
+  color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.project-item.active .project-name { color: var(--color-primary); font-weight: 500; }
+.project-item.active .project-name { color: var(--color-primary); font-weight: var(--weight-medium); }
 
 .list-empty {
-  padding: 20px 14px;
-  font-size: 0.78rem;
+  padding: var(--space-4-5) var(--space-3-5);
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   text-align: center;
 }
@@ -194,7 +194,7 @@ async function createProject() {
 .create-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0,0,0,0.3);
+  background: var(--color-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -204,13 +204,13 @@ async function createProject() {
 .create-box {
   background: var(--color-surface);
   border-radius: var(--radius-md);
-  padding: 18px;
+  padding: var(--space-4);
   width: 170px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  box-shadow: var(--shadow-raised);
 }
 
 .create-label {
-  font-size: 0.82rem;
+  font-size: var(--text-sm-2);
   color: var(--color-text-secondary);
   margin-bottom: var(--space-2);
 }
@@ -219,10 +219,10 @@ async function createProject() {
   width: 100%;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  font-size: 0.85rem;
+  padding: var(--space-1-5) var(--space-2-5);
+  font-size: var(--text-sm);
   outline: none;
-  margin-bottom: 10px;
+  margin-bottom: var(--space-2-5);
 }
 .create-input:focus { border-color: var(--color-primary); }
 
@@ -236,19 +236,19 @@ async function createProject() {
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  padding: var(--space-1) 10px;
-  font-size: 0.78rem;
+  padding: var(--space-1) var(--space-2-5);
+  font-size: var(--text-xs);
   color: var(--color-text-secondary);
   cursor: pointer;
 }
 
 .confirm-btn {
   background: var(--color-primary);
-  color: white;
+  color: var(--color-text-on-primary);
   border: none;
   border-radius: var(--radius-sm);
-  padding: 4px var(--space-3);
-  font-size: 0.78rem;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 .confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; }

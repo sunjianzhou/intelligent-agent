@@ -102,10 +102,10 @@ const formatHistoryDate = (iso) => {
 
 <style scoped>
 .history-backdrop {
-  display: inline-flex; align-items: center; gap: 2px;
-  font-size: 0.7rem; color: #6c6fff; background: #ededff;
-  border-radius: 3px; padding: 0 var(--space-1); margin-right: var(--space-1); vertical-align: middle;
-  font-weight: 600; line-height: 1.5;
+  display: inline-flex; align-items: center; gap: var(--space-0-5);
+  font-size: var(--text-2xs); color: var(--color-primary); background: var(--color-primary-soft);
+  border-radius: var(--radius-xs); padding: 0 var(--space-1); margin-right: var(--space-1); vertical-align: middle;
+  font-weight: var(--weight-semibold); line-height: var(--leading-normal);
 }
 .history-panel {
   position: absolute;
@@ -113,7 +113,7 @@ const formatHistoryDate = (iso) => {
   width: 280px;
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
-  box-shadow: 2px 0 16px rgba(0,0,0,0.12);
+  box-shadow: var(--shadow-raised);
   z-index: 20;
   display: flex;
   flex-direction: column;
@@ -121,92 +121,91 @@ const formatHistoryDate = (iso) => {
 }
 .history-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px var(--space-4);
+  padding: var(--space-3-5) var(--space-4);
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 .history-title {
-  font-size: 0.92rem; font-weight: 600; color: var(--color-text);
-  display: flex; align-items: center; gap: 7px;
+  font-size: var(--text-base); font-weight: var(--weight-semibold); color: var(--color-text);
+  display: flex; align-items: center; gap: var(--space-1-5);
 }
 .history-title i { color: var(--color-primary); }
 .history-close {
   background: none; border: none; color: var(--color-text-muted);
-  cursor: pointer; padding: var(--space-1) 6px; border-radius: 4px; font-size: 0.9rem;
-  transition: background 0.15s, color 0.15s;
+  cursor: pointer; padding: var(--space-1) var(--space-1-5); border-radius: var(--radius-xs); font-size: var(--text-sm);
+  transition: background var(--duration-fast), color var(--duration-fast);
 }
-.history-close:hover { background: #f5f5f5; color: var(--color-text); }
+.history-close:hover { background: var(--color-surface-sunken); color: var(--color-text); }
 .new-chat-btn {
-  margin: 10px 14px;
-  padding: var(--space-2) 14px;
-  background: var(--color-primary); color: white;
+  margin: var(--space-2-5) var(--space-3-5);
+  padding: var(--space-2) var(--space-3-5);
+  background: var(--color-primary); color: var(--color-text-on-primary);
   border: none; border-radius: var(--radius-sm);
-  font-size: 0.88rem; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  transition: background 0.15s;
+  font-size: var(--text-sm); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: var(--space-1-5);
+  transition: background var(--duration-fast);
   flex-shrink: 0;
 }
 .new-chat-btn:hover { background: var(--color-primary-hover); }
 .history-list {
-  flex: 1; overflow-y: auto; padding: var(--space-1) 10px 10px;
+  flex: 1; overflow-y: auto; padding: var(--space-1) var(--space-2-5) var(--space-2-5);
 }
 .history-list::-webkit-scrollbar       { width: 3px; }
-.history-list::-webkit-scrollbar-thumb { background: #e0e0e0; border-radius: 2px; }
+.history-list::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: var(--radius-xs); }
 .history-empty, .history-loading {
-  text-align: center; color: var(--color-text-muted); font-size: 0.85rem; padding: var(--space-6) 0;
+  text-align: center; color: var(--color-text-muted); font-size: var(--text-sm); padding: var(--space-6) 0;
 }
 .history-item {
-  padding: 10px 10px;
+  padding: var(--space-2-5) var(--space-2-5);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background 0.15s;
-  margin-bottom: 2px;
+  transition: background var(--duration-fast);
+  margin-bottom: var(--space-0-5);
   border: 1px solid transparent;
 }
-.history-item:hover { background: #f5f7ff; border-color: #e8ecff; }
+.history-item:hover { background: var(--color-primary-soft); border-color: var(--color-primary-soft); }
 .history-item-top {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: var(--space-1);
 }
-.history-item-date { font-size: 0.74rem; color: var(--color-text-muted); }
+.history-item-date { font-size: var(--text-xs); color: var(--color-text-muted); }
 .history-item-del {
-  background: none; border: none; color: #ddd;
-  cursor: pointer; padding: 2px 5px; font-size: 0.72rem; border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
-  line-height: 1;
+  background: none; border: none; color: var(--color-text-muted);
+  cursor: pointer; padding: var(--space-0-5) var(--space-1); font-size: var(--text-xs); border-radius: var(--radius-xs);
+  transition: color var(--duration-fast), background var(--duration-fast);
+  line-height: var(--leading-none);
 }
-.history-item-del:hover { color: #e53935; background: #fce4e4; }
-.history-item-actions { display: inline-flex; gap: 2px; }
+.history-item-del:hover { color: var(--color-danger); background: var(--color-danger-soft); }
+.history-item-actions { display: inline-flex; gap: var(--space-0-5); }
 .history-item-act {
-  background: none; border: none; color: #bbb;
-  cursor: pointer; padding: 2px 5px; font-size: 0.72rem; border-radius: 4px;
-  transition: color 0.15s, background 0.15s; line-height: 1;
+  background: none; border: none; color: var(--color-text-muted);
+  cursor: pointer; padding: var(--space-0-5) var(--space-1); font-size: var(--text-xs); border-radius: var(--radius-xs);
+  transition: color var(--duration-fast), background var(--duration-fast); line-height: var(--leading-none);
 }
-.history-item-act:hover { color: var(--color-primary); background: #eef1ff; }
-.rename-box { display: flex; gap: 4px; margin: 2px 0; }
+.history-item-act:hover { color: var(--color-primary); background: var(--color-primary-soft); }
+.rename-box { display: flex; gap: var(--space-1); margin: var(--space-0-5) 0; }
 .rename-input {
-  flex: 1; min-width: 0; border: 1px solid var(--color-border); border-radius: 4px;
-  padding: 3px 6px; font-size: 0.8rem; outline: none; background: var(--color-surface);
+  flex: 1; min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-xs);
+  padding: var(--space-1) var(--space-1-5); font-size: var(--text-sm-2); outline: none; background: var(--color-surface);
 }
 .rename-input:focus { border-color: var(--color-primary); }
 .rename-save {
-  background: var(--color-primary); color: #fff; border: none; border-radius: 4px;
-  padding: 0 7px; cursor: pointer; font-size: 0.72rem;
+  background: var(--color-primary); color: var(--color-text-on-primary); border: none; border-radius: var(--radius-xs);
+  padding: 0 var(--space-1-5); cursor: pointer; font-size: var(--text-xs);
 }
 .history-item-preview {
-  font-size: 0.84rem; color: var(--color-text-secondary);
+  font-size: var(--text-sm-2); color: var(--color-text-secondary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  margin-bottom: 3px;
+  margin-bottom: var(--space-1);
 }
-.history-item-count { font-size: 0.74rem; color: var(--color-text-muted); }
+.history-item-count { font-size: var(--text-xs); color: var(--color-text-muted); }
 .branch-badge {
-  display: inline-flex; align-items: center; gap: 2px;
-  font-size: 0.7rem; color: #6c6fff; background: #ededff;
-  border-radius: 3px; padding: 0 var(--space-1); margin-right: var(--space-1); vertical-align: middle;
-  font-weight: 600; line-height: 1.5;
+  display: inline-flex; align-items: center; gap: var(--space-0-5);
+  font-size: var(--text-2xs); color: var(--color-primary); background: var(--color-primary-soft);
+  border-radius: var(--radius-xs); padding: 0 var(--space-1); margin-right: var(--space-1); vertical-align: middle;
+  font-weight: var(--weight-semibold); line-height: var(--leading-normal);
 }
-[data-theme="dark"] .branch-badge { color: #a5b4fc; background: #2a2a5a; }
-.history-slide-enter-active, .history-slide-leave-active { transition: transform 0.25s ease; }
+.history-slide-enter-active, .history-slide-leave-active { transition: transform var(--duration-base) var(--ease-standard); }
 .history-slide-enter-from, .history-slide-leave-to { transform: translateX(-100%); }
 @media (max-width: 768px) {
   .history-panel { width: min(240px, 85vw); }

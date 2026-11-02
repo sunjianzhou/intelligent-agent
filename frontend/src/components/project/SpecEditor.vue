@@ -111,9 +111,9 @@ async function saveSpec() {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: white;
-  border-radius: 8px;
-  border: 1px solid #e8eaed;
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
   overflow: hidden;
 }
 
@@ -121,56 +121,56 @@ async function saveSpec() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid #f0f0f0;
+  padding: var(--space-2-5) var(--space-3-5);
+  border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
 .spec-title {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: #4a5568;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
 }
 
 .spec-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
 }
 
 .action-btn {
-  background: #f8f9fa;
-  border: 1px solid #e0e3e8;
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 0.78rem;
-  color: #666;
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2-5);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: var(--transition-interactive);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .action-btn:hover, .action-btn.active {
-  background: #667eea;
-  color: white;
-  border-color: #667eea;
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+  border-color: var(--color-primary);
 }
 
 .save-btn {
-  background: #4fc3a1;
+  background: var(--color-accent);
   color: white;
   border: none;
-  border-radius: 6px;
-  padding: 4px 12px;
-  font-size: 0.78rem;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 4px;
-  transition: background 0.15s;
+  gap: var(--space-1);
+  transition: background var(--duration-fast);
 }
-.save-btn:hover:not(:disabled) { background: #38a98a; }
+.save-btn:hover:not(:disabled) { background: var(--color-accent); }
 .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .editor-wrap {
@@ -184,33 +184,33 @@ async function saveSpec() {
   border: none;
   outline: none;
   resize: none;
-  padding: 14px;
-  font-size: 0.88rem;
-  line-height: 1.7;
+  padding: var(--space-3-5);
+  font-size: var(--text-sm);
+  line-height: var(--leading-prose);
   font-family: 'Fira Code', Consolas, monospace;
-  color: #333;
-  background: #fafafa;
+  color: var(--color-text);
+  background: var(--color-surface-sunken);
 }
-.spec-textarea::placeholder { color: #bbb; }
+.spec-textarea::placeholder { color: var(--color-text-muted); }
 
 .spec-hint {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  background: #eff6ff;
-  border-top: 1px solid #bfdbfe;
-  font-size: 0.8rem;
-  color: #1e40af;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-3-5);
+  background: var(--color-surface-raised);
+  border-top: 1px solid var(--color-primary-border);
+  font-size: var(--text-sm-2);
+  color: var(--color-primary);
   flex-shrink: 0;
 }
-.hint-icon { color: #3b82f6; }
-.hint-items strong { color: #1d4ed8; }
+.hint-icon { color: var(--color-primary); }
+.hint-items strong { color: var(--color-primary); }
 
 .preview-wrap {
   flex: 1;
   overflow-y: auto;
-  padding: 14px;
+  padding: var(--space-3-5);
 }
 
 .preview-empty {
@@ -219,36 +219,36 @@ async function saveSpec() {
   align-items: center;
   justify-content: center;
   height: 100%;
-  gap: 10px;
-  color: #ccc;
-  font-size: 0.88rem;
+  gap: var(--space-2-5);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
 }
 .preview-empty i { font-size: 2rem; }
 
-.md-content :deep(p)            { margin: 0 0 8px; }
-.md-content :deep(pre)          { background: #f6f8fa; border-radius: 6px; padding: 10px; overflow-x: auto; }
+.md-content :deep(p)            { margin: 0 0 var(--space-2); }
+.md-content :deep(pre)          { background: var(--color-surface-sunken); border-radius: var(--radius-sm); padding: var(--space-2-5); overflow-x: auto; }
 .md-content :deep(code)         { font-family: 'Fira Code', monospace; font-size: 0.88em; }
-.md-content :deep(p > code)     { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }
-.md-content :deep(ul), .md-content :deep(ol) { padding-left: 18px; margin: 4px 0; }
-.md-content :deep(blockquote)   { border-left: 3px solid #667eea; margin: 6px 0; padding: 3px 10px; color: #666; }
-.md-content :deep(h1), .md-content :deep(h2), .md-content :deep(h3) { margin: 10px 0 6px; }
+.md-content :deep(p > code)     { background: var(--color-surface-sunken); padding: var(--space-px) var(--space-1); border-radius: var(--radius-xs); }
+.md-content :deep(ul), .md-content :deep(ol) { padding-left: var(--space-4); margin: var(--space-1) 0; }
+.md-content :deep(blockquote)   { border-left: 3px solid var(--color-primary); margin: var(--space-1-5) 0; padding: var(--space-1) var(--space-2-5); color: var(--color-text-secondary); }
+.md-content :deep(h1), .md-content :deep(h2), .md-content :deep(h3) { margin: var(--space-2-5) 0 var(--space-1-5); }
 
 .spec-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 14px;
-  border-top: 1px solid #f0f0f0;
+  padding: var(--space-1-5) var(--space-3-5);
+  border-top: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
 .spec-meta {
-  font-size: 0.72rem;
-  color: #bbb;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
 }
 
 .unsaved-dot {
-  color: #f57c00;
-  font-size: 0.65rem;
+  color: var(--color-warn);
+  font-size: var(--text-2xs);
 }
 </style>

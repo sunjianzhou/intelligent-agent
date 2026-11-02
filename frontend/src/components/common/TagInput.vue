@@ -5,14 +5,14 @@
       :key="i"
       closable
       size="small"
-      style="margin:2px"
+      style="margin:var(--space-0-5)"
       @close="remove(i)"
     >{{ t }}</el-tag>
     <el-input
       v-model="inputVal"
       size="small"
       :placeholder="placeholder"
-      style="width:150px;margin:2px"
+      style="width:150px;margin:var(--space-0-5)"
       @keydown.enter.prevent="onEnter"
     />
   </div>

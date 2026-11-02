@@ -74,7 +74,7 @@ watch(isConnected, (connected) => {
   background: var(--color-surface);
   border-top: 2px solid var(--color-primary);
   border-bottom: 1px solid var(--color-border);
-  padding: 0 20px;
+  padding: 0 var(--space-4-5);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -82,28 +82,28 @@ watch(isConnected, (connected) => {
 }
 
 .header-left .page-title {
-  font-size: var(--text-lg);
+  font-size: var(--text-xl);
   color: var(--color-text);
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  gap: var(--space-2-5);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
 }
 .header-left .page-title i { color: var(--color-primary); }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--space-3-5);
 }
 
 /* ── 连接状态 ────────────────────────────────────────── */
 .connection-status {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.88rem;
+  gap: var(--space-1-5);
+  font-size: var(--text-sm);
 }
 .status-dot {
   width: 8px;
@@ -125,14 +125,14 @@ watch(isConnected, (connected) => {
 .theme-btn {
   width: 38px; height: 38px; border-radius: var(--radius-sm);
   border: 1px solid var(--color-border); background: var(--color-surface);
-  color: var(--color-text-secondary); cursor: pointer; font-size: 0.95rem;
+  color: var(--color-text-secondary); cursor: pointer; font-size: var(--text-base);
   display: flex; align-items: center; justify-content: center;
-  transition: all 0.2s;
+  transition: var(--transition-interactive);
 }
 .theme-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 
 @media (max-width: 768px) {
-  .header { padding: 0 12px; }
-  .page-title { font-size: 1rem; }
+  .header { padding: 0 var(--space-3); }
+  .page-title { font-size: var(--text-md); }
 }
 </style>

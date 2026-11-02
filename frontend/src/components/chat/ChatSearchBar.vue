@@ -41,26 +41,26 @@ watch(() => props.show, (v) => {
 
 <style scoped>
 .chat-search-bar {
-  display: flex; align-items: center; gap: 6px;
-  padding: 6px var(--space-3); background: var(--color-surface);
+  display: flex; align-items: center; gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-3); background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
-.search-bar-icon { color: var(--color-text-muted); font-size: 0.85rem; }
+.search-bar-icon { color: var(--color-text-muted); font-size: var(--text-sm); }
 .search-bar-input {
   flex: 1; border: none; outline: none;
-  font-size: 0.88rem; color: var(--color-text);
+  font-size: var(--text-sm); color: var(--color-text);
 }
-.search-count { font-size: 0.78rem; color: var(--color-text-muted); white-space: nowrap; }
+.search-count { font-size: var(--text-xs); color: var(--color-text-muted); white-space: nowrap; }
 .search-nav-btn, .search-close-btn {
   background: none; border: none; color: var(--color-text-muted);
-  cursor: pointer; padding: var(--space-1) 6px; border-radius: 4px; font-size: 0.8rem;
+  cursor: pointer; padding: var(--space-1) var(--space-1-5); border-radius: var(--radius-xs); font-size: var(--text-sm-2);
 }
-.search-nav-btn:hover, .search-close-btn:hover { background: #f0f0f0; color: var(--color-text); }
+.search-nav-btn:hover, .search-close-btn:hover { background: var(--color-surface-sunken); color: var(--color-text); }
 .search-nav-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.search-slide-enter-active, .search-slide-leave-active { transition: all 0.2s; }
+.search-slide-enter-active, .search-slide-leave-active { transition: var(--transition-interactive); }
 .search-slide-enter-from, .search-slide-leave-to { opacity: 0; transform: translateY(-8px); }
 @media (max-width: 768px) {
-  .search-bar-input { font-size: 16px !important; }
+  .search-bar-input { font-size: var(--text-md) !important; }
 }
 </style>

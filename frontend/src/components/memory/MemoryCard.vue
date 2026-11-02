@@ -17,7 +17,7 @@
               :title="`重要性: ${mem.importance}（点击修改）`"
               style="cursor:pointer"
               @click.stop="emit('edit-importance', mem)">
-          ★ {{ mem.importance }} <i class="fas fa-pen" style="font-size:0.65rem;margin-left:2px" />
+          ★ {{ mem.importance }} <i class="fas fa-pen" style="font-size:var(--text-2xs);margin-left:var(--space-0-5)" />
         </span>
         <template v-if="activeType === 'long_term' || isSearchMode">
           <button v-if="!mem.invalidated" class="act-btn pin-btn" title="置顶（重要度 1.0）"
@@ -70,10 +70,11 @@ const emit = defineEmits(['edit-importance', 'delete-one', 'pin-one', 'invalidat
   background: var(--color-surface);
   border: 0.5px solid var(--color-border);
   border-radius: var(--radius-md);
-  padding: 14px var(--space-4);
-  transition: all 0.2s;
-}
-.memory-card:hover   { border-color: #c5caf5; }
+  padding: var(--space-3-5) var(--space-4);
+  transition: var(--transition-interactive);
+
+  box-shadow: var(--shadow-card);}
+.memory-card:hover   { border-color: var(--color-primary-soft); }
 .memory-card.deleting { opacity: 0.4; pointer-events: none; }
 .memory-card.invalidated { opacity: 0.72; border-style: dashed; }
 
@@ -82,57 +83,57 @@ const emit = defineEmits(['edit-importance', 'delete-one', 'pin-one', 'invalidat
   justify-content: space-between;
   margin-bottom: var(--space-2);
 }
-.memory-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+.memory-meta { display: flex; gap: var(--space-1-5); flex-wrap: wrap; }
 .badge {
-  font-size: 11px; padding: 2px var(--space-2);
-  border-radius: var(--radius-sm); font-weight: 500;
+  font-size: var(--text-2xs); padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-sm); font-weight: var(--weight-medium);
 }
 .cat-badge  { background: var(--color-surface-raised); color: var(--color-primary); }
-.role-badge { background: #e8f5e9; color: #2e7d32; }
-.sim-badge  { background: #fff8e1; color: #f57f17; }
-.inv-badge  { background: #f3e5f5; color: #7b1fa2; }
+.role-badge { background: var(--color-success-soft); color: var(--color-success); }
+.sim-badge  { background: var(--color-warn-soft); color: var(--color-warn); }
+.inv-badge  { background: var(--color-violet-soft); color: var(--color-primary); }
 
 .memory-actions {
   display: flex; align-items: center; gap: var(--space-2);
 }
 .importance-badge {
-  font-size: 0.75rem; padding: 2px var(--space-2); border-radius: var(--radius-md);
-  font-weight: 500; cursor: default;
+  font-size: var(--text-xs); padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-md);
+  font-weight: var(--weight-medium); cursor: default;
 }
-.imp-high { background: #fff8e1; color: var(--color-warn); }
-.imp-mid  { background: #e8f5e9; color: #2e7d32; }
+.imp-high { background: var(--color-warn-soft); color: var(--color-warn); }
+.imp-mid  { background: var(--color-success-soft); color: var(--color-success); }
 .imp-low  { background: var(--color-bg); color: var(--color-text-muted); }
 .del-btn {
   background: none; border: none;
   color: var(--color-text-muted); cursor: pointer;
-  font-size: 0.82rem; padding: var(--space-1);
-  border-radius: 4px; transition: color 0.2s;
+  font-size: var(--text-sm-2); padding: var(--space-1);
+  border-radius: var(--radius-xs); transition: color var(--duration-base);
 }
 .del-btn:hover:not(:disabled) { color: var(--color-danger); }
 .del-btn:disabled { cursor: not-allowed; }
 .act-btn {
   background: none; border: none;
   color: var(--color-text-muted); cursor: pointer;
-  font-size: 0.82rem; padding: var(--space-1);
-  border-radius: 4px; transition: color 0.2s;
+  font-size: var(--text-sm-2); padding: var(--space-1);
+  border-radius: var(--radius-xs); transition: color var(--duration-base);
 }
 .act-btn:hover { color: var(--color-primary); }
 .pin-btn:hover    { color: var(--color-warn); }
-.inv-btn:hover    { color: #7b1fa2; }
-.restore-btn:hover { color: #2e7d32; }
+.inv-btn:hover    { color: var(--color-primary); }
+.restore-btn:hover { color: var(--color-success); }
 
 .memory-content {
-  font-size: 0.88rem; color: var(--color-text);
-  line-height: 1.6; margin-bottom: var(--space-2);
+  font-size: var(--text-sm); color: var(--color-text);
+  line-height: var(--leading-relaxed); margin-bottom: var(--space-2);
   word-break: break-word;
 }
 .memory-footer {
   display: flex; align-items: center; gap: var(--space-3);
 }
-.mem-time   { font-size: 0.75rem; color: var(--color-text-muted); }
-.mem-access { font-size: 0.75rem; color: var(--color-text-muted); }
+.mem-time   { font-size: var(--text-xs); color: var(--color-text-muted); }
+.mem-access { font-size: var(--text-xs); color: var(--color-text-muted); }
 .inv-reason {
-  font-size: 0.75rem; color: #7b1fa2;
+  font-size: var(--text-xs); color: var(--color-primary);
   margin-bottom: var(--space-2); font-style: italic;
 }
 </style>

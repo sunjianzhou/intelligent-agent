@@ -135,10 +135,10 @@ body {
 }
 
 .mock-mode-indicator {
-  background: rgba(245, 159, 0, 0.15);
+  background: var(--color-warn-soft);
   color: var(--color-warn);
   padding: var(--space-2) var(--space-5);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -155,7 +155,7 @@ body {
 /* 页面切换动画 */
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity var(--duration-base) var(--ease-standard);
 }
 
 .fade-enter-from,
@@ -170,15 +170,15 @@ body {
 
   /* 各视图页：减少内边距，适合小屏 */
   .tools-view, .memory-view, .tasks-view,
-  .stats-view, .system-view { padding: 12px !important; gap: 10px !important; }
+  .stats-view, .system-view { padding: var(--space-3) !important; gap: var(--space-2-5) !important; }
 
   /* 表格/卡片行：强制单列 */
   .card-row, .chart-row, .detail-row,
   .stats-row, .overview-row { grid-template-columns: 1fr 1fr !important; }
 
   /* 卡片字体缩小 */
-  .stat-num { font-size: 18px !important; }
-  .ov-val   { font-size: 1.4rem !important; }
+  .stat-num { font-size: var(--text-lg) !important; }
+  .ov-val   { font-size: var(--text-xl) !important; }
 
   /* 工具卡片网格 */
   .tools-grid { grid-template-columns: 1fr !important; }
@@ -187,7 +187,7 @@ body {
   .modal-box { width: 95vw !important; max-height: 90vh !important; }
 
   /* 工具/记忆工具栏：竖排 */
-  .toolbar { flex-wrap: wrap !important; gap: 8px !important; }
+  .toolbar { flex-wrap: wrap !important; gap: var(--space-2) !important; }
 
   /* 内存导入按钮在工具栏中不换行 */
   .import-btn, .refresh-btn { flex-shrink: 0; }
@@ -195,166 +195,6 @@ body {
   /* 配置面板：单列 */
   .config-grid, .param-grid { grid-template-columns: 1fr !important; }
 }
-
-/* ── 暗色主题（WANT-011）────────────────────────────── */
-/* 通用卡片/背景覆盖 */
-[data-theme="dark"] .chat-view            { background: #1e1f23 !important; }
-[data-theme="dark"] .tools-view,
-[data-theme="dark"] .memory-view,
-[data-theme="dark"] .tasks-view,
-[data-theme="dark"] .stats-view,
-[data-theme="dark"] .system-view,
-[data-theme="dark"] .mcp-view,
-[data-theme="dark"] .model-view,
-[data-theme="dark"] .role-editor          { background: #25262b !important; }
-
-/* 白色卡片 → 深色卡片 */
-[data-theme="dark"] .stat-card,
-[data-theme="dark"] .status-card,
-[data-theme="dark"] .chart-card,
-[data-theme="dark"] .detail-card,
-[data-theme="dark"] .tool-card,
-[data-theme="dark"] .memory-card,
-[data-theme="dark"] .task-card,
-[data-theme="dark"] .ov-card,
-[data-theme="dark"] .config-card,
-[data-theme="dark"] .model-card,
-[data-theme="dark"] .current-card         { background: #2c2d32 !important; border-color: #373a40 !important; }
-
-/* 文字 — 次级标题与正文 */
-[data-theme="dark"] .section-title,
-[data-theme="dark"] .config-title,
-[data-theme="dark"] .card-name,
-[data-theme="dark"] .current-name,
-[data-theme="dark"] .rc-section-label,
-[data-theme="dark"] .rc-group-title       { color: #d0d1d5 !important; }
-
-[data-theme="dark"] .card-sub,
-[data-theme="dark"] .current-provider,
-[data-theme="dark"] .card-model,
-[data-theme="dark"] .rc-range,
-[data-theme="dark"] .rc-field label,
-[data-theme="dark"] .param-item label,
-[data-theme="dark"] .cfg-label,
-[data-theme="dark"] .cfg-desc,
-[data-theme="dark"] .cfg-tip,
-[data-theme="dark"] .config-hint,
-[data-theme="dark"] .tools-footer-hint    { color: #909296 !important; }
-
-/* 表单控件 */
-[data-theme="dark"] .form-input,
-[data-theme="dark"] .rc-num,
-[data-theme="dark"] select.config-select  { background: #373a40 !important; border-color: #4a4d55 !important; color: #c1c2c5 !important; }
-
-/* 按钮 — 次级 */
-[data-theme="dark"] .add-btn,
-[data-theme="dark"] .switch-local-btn,
-[data-theme="dark"] .btn-activate:not(.btn-active),
-[data-theme="dark"] .btn-icon,
-[data-theme="dark"] .btn-cancel,
-[data-theme="dark"] .rc-save-btn          { background: #373a40 !important; border-color: #4a4d55 !important; color: #c1c2c5 !important; }
-
-/* 标签/Badge */
-[data-theme="dark"] .tag-llm             { background: #1e2040 !important; color: #818cf8 !important; }
-[data-theme="dark"] .tag-chat            { background: #172554 !important; color: #60a5fa !important; }
-[data-theme="dark"] .tag-img             { background: #2e1065 !important; color: #d8b4fe !important; }
-[data-theme="dark"] .tag-voice           { background: #431407 !important; color: #fb923c !important; }
-[data-theme="dark"] .active-badge        { background: #1e2040 !important; color: #818cf8 !important; }
-
-/* 悬浮按钮（ChatView） */
-[data-theme="dark"] .export-float-btn,
-[data-theme="dark"] .clear-float-btn,
-[data-theme="dark"] .history-float-btn:not(.active)  { background: #2c2d32 !important; border-color: #4a4d55 !important; color: #c1c2c5 !important; }
-
-/* 历史面板 */
-[data-theme="dark"] .history-panel       { background: #2c2d32 !important; border-color: #4a4d55 !important; }
-[data-theme="dark"] .history-title       { color: #909296 !important; }
-[data-theme="dark"] .history-item-preview { color: #c1c2c5 !important; }
-[data-theme="dark"] .history-item:hover  { background: #373a40 !important; }
-
-/* 配置栏（ChatView 底部） */
-[data-theme="dark"] .config-bar          { background: #25262b !important; border-color: #373a40 !important; }
-[data-theme="dark"] .config-select,
-[data-theme="dark"] .config-model-btn    { background: #373a40 !important; color: #c1c2c5 !important; }
-[data-theme="dark"] .config-model-dropdown { background: #2c2d32 !important; border-color: #4a4d55 !important; }
-[data-theme="dark"] .config-dropdown-item { color: #c1c2c5 !important; }
-[data-theme="dark"] .config-dropdown-item:hover { background: #373a40 !important; }
-
-/* 角色编辑器 */
-[data-theme="dark"] .md-preview          { background: #2c2d32 !important; border-color: #373a40 !important; color: #c1c2c5 !important; }
-[data-theme="dark"] .field-hint          { color: #6b6c75 !important; }
-[data-theme="dark"] .field-hint kbd      { background: #373a40 !important; border-color: #4a4d55 !important; color: #c1c2c5 !important; }
-
-/* 文字颜色 */
-[data-theme="dark"] .stat-num,
-[data-theme="dark"] .task-name,
-[data-theme="dark"] .tool-name,
-[data-theme="dark"] .memory-content,
-[data-theme="dark"] .detail-title,
-[data-theme="dark"] .chart-title,
-[data-theme="dark"] .page-desc,
-[data-theme="dark"] .ov-val              { color: #c1c2c5 !important; }
-
-[data-theme="dark"] .stat-label,
-[data-theme="dark"] .tool-description,
-[data-theme="dark"] .card-label,
-[data-theme="dark"] .card-sub,
-[data-theme="dark"] .empty-title,
-[data-theme="dark"] .mem-time,
-[data-theme="dark"] .ov-label            { color: #909296 !important; }
-
-/* 输入框/搜索框暗化 */
-[data-theme="dark"] .search-input,
-[data-theme="dark"] .cfg-input,
-[data-theme="dark"] .form-row input,
-[data-theme="dark"] .form-row select,
-[data-theme="dark"] .filter-select,
-[data-theme="dark"] .chat-input          { background: #373a40 !important; border-color: #4a4d55 !important; color: #c1c2c5 !important; }
-
-[data-theme="dark"] .input-wrap          { background: #2c2d32 !important; border-color: #4a4d55 !important; }
-[data-theme="dark"] .input-wrap-thinking { background: #1e2040 !important; border-color: #667eea !important; }
-
-/* 按钮暗化 */
-[data-theme="dark"] .refresh-btn,
-[data-theme="dark"] .filter-btn,
-[data-theme="dark"] .type-btn,
-[data-theme="dark"] .cat-btn,
-[data-theme="dark"] .import-btn,
-[data-theme="dark"] .quick-btn,
-[data-theme="dark"] .cfg-eye             { background: #2c2d32 !important; border-color: #4a4d55 !important; color: #c1c2c5 !important; }
-
-/* 消息气泡 */
-[data-theme="dark"] .bubble.user         { background: #3b3d8b !important; }
-[data-theme="dark"] .bubble.assistant    { background: #2c2d32 !important; color: #c1c2c5 !important; }
-[data-theme="dark"] .bubble.system       { background: #2d2a1a !important; color: #d4a72c !important; border-color: #5a4a00 !important; }
-[data-theme="dark"] .bubble.system.notif { background: linear-gradient(135deg, #2d2a1a, #2a2618) !important; border-color: #7a5c00 !important; border-left-color: #c17600 !important; }
-[data-theme="dark"] .notif-task-link     { color: #c17600 !important; border-top-color: rgba(193,118,0,0.25) !important; }
-[data-theme="dark"] .ctx-warn-banner     { background: linear-gradient(90deg, #2d1f0a 0%, #2d1616 100%) !important; border-color: #6b3a00 !important; color: #e8a272 !important; }
-[data-theme="dark"] .message-list        { background: #1e1f23 !important; }
-
-/* 弹窗 */
-[data-theme="dark"] .modal-box           { background: #2c2d32 !important; }
-[data-theme="dark"] .modal-header,
-[data-theme="dark"] .modal-footer        { border-color: #373a40 !important; }
-[data-theme="dark"] .modal-title         { color: #c1c2c5 !important; }
-
-/* 记录/列表行 */
-[data-theme="dark"] .record-item         { background: #2c2d32 !important; }
-[data-theme="dark"] .record-item:hover   { background: #373a40 !important; }
-[data-theme="dark"] .record-response     { color: #909296 !important; }
-
-/* 工具调用卡片 */
-[data-theme="dark"] .tool-running-card   { background: #25273d !important; border-color: #667eea !important; }
-[data-theme="dark"] .tool-calls-card     { background: #25273d !important; }
-
-/* 搜索栏 */
-[data-theme="dark"] .chat-search-bar     { background: #2c2d32 !important; border-color: #4a4d55 !important; }
-[data-theme="dark"] .search-bar-input    { color: #c1c2c5 !important; }
-
-/* 磁盘/进程条背景 */
-[data-theme="dark"] .disk-bar-wrap,
-[data-theme="dark"] .process-bar-wrap,
-[data-theme="dark"] .rank-bar-wrap       { background: #373a40 !important; }
 
 /* 移动端：为 Tab Bar + Home Indicator 留出底部空间 */
 @media (max-width: 768px) {

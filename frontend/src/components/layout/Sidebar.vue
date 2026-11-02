@@ -146,19 +146,19 @@ const isActive = computed(() => (name) => route.name === name)
   text-align: center;
   margin-bottom: var(--space-4);
   padding-bottom: var(--space-4);
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid var(--color-surface-on-dark);
   flex-shrink: 0;
 }
 .logo h1 {
-  font-size: 1.3rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-3);
 }
-.logo i { color: var(--color-accent); }
+.logo i { color: var(--color-chrome-accent); }
 
 /* ── 导航分区 ─────────────────────────────────────────── */
 .nav-section {
@@ -167,41 +167,41 @@ const isActive = computed(() => (name) => route.name === name)
 }
 .nav-section-label {
   font-size: var(--text-xs);
-  color: rgba(255,255,255,0.35);
+  color: var(--color-text-on-dark-faint);
   text-transform: uppercase;
-  letter-spacing: 0.07em;
-  padding: 6px 10px 3px;
+  letter-spacing: var(--tracking-wider);
+  padding: var(--space-1-5) var(--space-2-5) var(--space-1);
 }
 .nav-item {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 9px 12px;
+  padding: var(--space-2) var(--space-3);
   color: var(--color-sidebar-text);
   text-decoration: none;
   border-radius: var(--radius-sm);
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
   border-left: 2px solid transparent;
-  transition: all 0.2s;
+  transition: var(--transition-interactive);
   font-size: var(--text-base);
 }
-.nav-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
+.nav-item:hover { background: var(--color-surface-on-dark-subtle); color: var(--color-chrome-text-strong); }
 .nav-item.active {
-  background: rgba(255,255,255,0.1);
-  color: #fff;
-  border-left-color: var(--color-accent);
+  background: var(--color-surface-on-dark);
+  color: var(--color-chrome-text-strong);
+  border-left-color: var(--color-chrome-accent);
 }
 .nav-item i {
   width: 18px;
   text-align: center;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
   flex-shrink: 0;
 }
-.nav-item.active i { color: var(--color-accent); }
+.nav-item.active i { color: var(--color-chrome-accent); }
 
 /* 分区间分隔线 */
 .nav-section + .nav-section {
-  border-top: 1px solid rgba(255,255,255,0.06);
+  border-top: 1px solid var(--color-surface-on-dark-subtle);
   padding-top: var(--space-2);
   margin-top: var(--space-1);
 }
@@ -211,13 +211,15 @@ const isActive = computed(() => (name) => route.name === name)
   width: 100%;
   display: flex; align-items: center; justify-content: space-between;
   background: none; border: none; cursor: pointer;
-  padding: 6px 10px 3px;
+  padding: var(--space-1) var(--space-2-5) var(--space-1);
+  /* 不写 font-size 会回退到浏览器默认按钮字号（13.33px），与 15px 导航项不成节奏 */
+  font-size: var(--text-xs);
 }
 .nav-section-toggle .nav-section-label { padding: 0; }
 .toggle-caret {
-  font-size: 0.65rem;
-  color: rgba(255,255,255,0.35);
-  transition: transform 0.2s;
+  font-size: var(--text-2xs);
+  color: var(--color-text-on-dark-faint);
+  transition: transform var(--duration-base);
 }
 .toggle-caret.expanded { transform: rotate(90deg); }
 .admin-group-items { display: flex; flex-direction: column; }
@@ -228,102 +230,102 @@ const isActive = computed(() => (name) => route.name === name)
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  margin-top: 8px;
-  border-top: 1px solid rgba(255,255,255,0.08);
-  padding-top: 10px;
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--color-surface-on-dark-subtle);
+  padding-top: var(--space-2-5);
   min-height: 60px;
 }
 .history-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 4px 6px;
+  padding: 0 var(--space-1) var(--space-1-5);
   flex-shrink: 0;
 }
 .history-title {
-  font-size: 0.68rem;
-  color: rgba(255,255,255,0.35);
+  font-size: var(--text-2xs);
+  color: var(--color-text-on-dark-faint);
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: var(--tracking-wider);
 }
 .new-chat-btn {
-  background: rgba(255,255,255,0.08);
-  border: none; color: rgba(255,255,255,0.6);
+  background: var(--color-surface-on-dark-subtle);
+  border: none; color: var(--color-text-on-dark-soft);
   width: 28px; height: 28px; border-radius: var(--radius-sm);
-  cursor: pointer; font-size: 0.75rem;
+  cursor: pointer; font-size: var(--text-xs);
   display: flex; align-items: center; justify-content: center;
-  transition: all 0.2s;
+  transition: var(--transition-interactive);
 }
-.new-chat-btn:hover { background: #4fc3a1; color: white; }
+.new-chat-btn:hover { background: var(--color-chrome-accent-soft); color: var(--color-chrome-accent); }
 
 .history-list {
   flex: 1;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.1) transparent;
+  scrollbar-color: var(--color-surface-on-dark) transparent;
 }
 .history-item {
   display: flex;
   align-items: center;
-  padding: 6px 8px;
-  border-radius: 6px;
+  padding: var(--space-1-5) var(--space-2);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  gap: 5px;
-  transition: background 0.15s;
-  margin-bottom: 2px;
+  gap: var(--space-1);
+  transition: background var(--duration-fast);
+  margin-bottom: var(--space-0-5);
 }
-.history-item:hover { background: rgba(255,255,255,0.07); }
-.history-item.active { background: rgba(79,195,161,0.18); }
+.history-item:hover { background: var(--color-surface-on-dark-subtle); }
+.history-item.active { background: var(--color-chrome-accent-soft); }
 .history-text {
   flex: 1;
-  font-size: 0.78rem;
-  color: rgba(255,255,255,0.6);
+  font-size: var(--text-xs);
+  color: var(--color-text-on-dark-soft);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.history-item.active .history-text { color: #4fc3a1; }
+.history-item.active .history-text { color: var(--color-chrome-accent); }
 .del-session-btn {
   background: none; border: none;
-  color: rgba(255,255,255,0.2);
-  cursor: pointer; font-size: 0.7rem;
-  padding: 6px 8px; border-radius: 4px;
-  opacity: 0; transition: opacity 0.15s, color 0.15s;
+  color: var(--color-surface-on-dark-strong);
+  cursor: pointer; font-size: var(--text-2xs);
+  padding: var(--space-1-5) var(--space-2); border-radius: var(--radius-xs);
+  opacity: 0; transition: opacity var(--duration-fast), color var(--duration-fast);
 }
 .history-item:hover .del-session-btn { opacity: 1; }
-.del-session-btn:hover { color: #ff6b6b; }
+.del-session-btn:hover { color: var(--color-chrome-danger); }
 .history-empty {
-  font-size: 0.76rem;
-  color: rgba(255,255,255,0.22);
-  padding: 6px 8px;
+  font-size: var(--text-xs);
+  color: var(--color-text-on-dark-faint);
+  padding: var(--space-1-5) var(--space-2);
   text-align: center;
 }
 
 /* ── 用户信息 ─────────────────────────────────────────── */
 .user-info {
-  padding: 14px 0 0;
-  border-top: 1px solid rgba(255,255,255,0.1);
+  padding: var(--space-3-5) 0 0;
+  border-top: 1px solid var(--color-surface-on-dark);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2-5);
   flex-shrink: 0;
 }
 .user-avatar {
   width: 34px; height: 34px;
-  background: rgba(255,255,255,0.1);
+  background: var(--color-surface-on-dark);
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 1rem;
+  font-size: var(--text-md);
 }
 .user-details { display: flex; flex-direction: column; }
-.user-name { font-weight: 500; font-size: 0.88rem; }
-.user-status { font-size: 0.74rem; color: #4fc3a1; opacity: 0.8; }
+.user-name { font-weight: var(--weight-medium); font-size: var(--text-sm); }
+.user-status { font-size: var(--text-xs); color: var(--color-chrome-accent); opacity: 0.8; }
 .logout-btn {
   margin-left: auto; background: none; border: none;
-  color: rgba(255,255,255,0.5); cursor: pointer; font-size: 0.95rem;
-  padding: 4px 6px; border-radius: 4px; transition: color 0.2s;
+  color: var(--color-text-on-dark-faint); cursor: pointer; font-size: var(--text-base);
+  padding: var(--space-1) var(--space-1-5); border-radius: var(--radius-xs); transition: color var(--duration-base);
 }
-.logout-btn:hover { color: #ff6b6b; }
+.logout-btn:hover { color: var(--color-chrome-danger); }
 
 @media (max-width: 768px) {
   .sidebar { display: none; }

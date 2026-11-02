@@ -104,26 +104,26 @@ const handleLogout = () => {
 
 <style scoped>
 .mp-group-title {
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 10px 20px 4px;
+  letter-spacing: var(--tracking-wide);
+  padding: var(--space-2-5) var(--space-4-5) var(--space-1);
 }
 
 .mp-item {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 20px;
+  gap: var(--space-3-5);
+  padding: var(--space-3-5) var(--space-4-5);
   background: none;
   border: none;
   color: var(--color-text);
-  font-size: 1rem;
+  font-size: var(--text-md);
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s;
+  transition: background var(--duration-fast);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -136,7 +136,7 @@ const handleLogout = () => {
   width: 22px;
   text-align: center;
   color: var(--color-primary);
-  font-size: 1rem;
+  font-size: var(--text-md);
   flex-shrink: 0;
 }
 
@@ -145,13 +145,13 @@ const handleLogout = () => {
 
 .mp-chevron {
   margin-left: auto;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
 
 .mp-divider {
   height: 1px;
   background: var(--color-border);
-  margin: 4px 0;
+  margin: var(--space-1) 0;
 }
 </style>

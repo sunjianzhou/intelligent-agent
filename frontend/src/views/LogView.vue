@@ -21,16 +21,14 @@
     </div>
 
     <!-- 加载中 -->
-    <div v-if="loading" class="empty-state">
-      <i class="fas fa-spinner fa-spin" style="font-size:2rem;color:#667eea" />
-      <div>加载中…</div>
-    </div>
+    <LoadingState v-if="loading" />
 
     <!-- 空状态 -->
-    <div v-else-if="filteredLogs.length === 0" class="empty-state">
-      <i class="fas fa-clipboard-list" style="font-size:2.5rem;color:#dde;display:block;margin-bottom:10px" />
-      <div style="color:#bbb;font-size:0.9rem">暂无日志记录</div>
-    </div>
+    <EmptyState
+      v-else-if="filteredLogs.length === 0"
+      icon="fas fa-clipboard-list"
+      title="暂无日志记录"
+    />
 
     <!-- 日志时间线 -->
     <div v-else class="timeline">
@@ -64,6 +62,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { listConversations, getConversation, getTasksList } from '@/services/api'
+import EmptyState from '@/components/common/EmptyState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
 
 const FILTERS = [
   { key: 'all',   label: '全部',   icon: 'fas fa-list' },
@@ -204,87 +204,75 @@ onMounted(load)
 
 <style scoped>
 .log-view {
-  padding: 20px; height: 100%; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 14px; background: #f8f9fa;
+  padding: var(--space-4-5); height: 100%; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--space-3-5); background: var(--color-surface-sunken);
 }
-.toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
-.toolbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.page-desc { font-size: 0.88rem; color: #888; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); }
+.toolbar-right { display: flex; align-items: center; gap: var(--space-2-5); flex-wrap: wrap; }
+.page-desc { font-size: var(--text-sm); color: var(--color-text-secondary); }
 
-.filter-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.filter-pills { display: flex; gap: var(--space-1-5); flex-wrap: wrap; }
 .filter-pill {
-  padding: 4px 12px; border-radius: 20px; border: 1px solid #e0e3e8;
-  background: white; font-size: 0.8rem; cursor: pointer; color: #666;
-  display: flex; align-items: center; gap: 5px; transition: all 0.15s;
+  padding: var(--space-1) var(--space-3); border-radius: var(--radius-lg); border: 1px solid var(--color-border);
+  background: var(--color-surface); font-size: var(--text-sm-2); cursor: pointer; color: var(--color-text-secondary);
+  display: flex; align-items: center; gap: var(--space-1); transition: var(--transition-interactive);
 }
-.filter-pill:hover { border-color: #667eea; color: #667eea; }
+.filter-pill:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .filter-pill.active { border-color: transparent; color: white; }
-.filter-pill.pill-user.active   { background: #2563eb; }
-.filter-pill.pill-ai.active     { background: #16a34a; }
-.filter-pill.pill-tool.active   { background: #7c3aed; }
-.filter-pill.pill-task.active   { background: #ea580c; }
-.filter-pill.pill-error.active  { background: #dc2626; }
-.filter-pill.pill-all.active    { background: #667eea; }
+.filter-pill.pill-user.active   { background: var(--color-primary); }
+.filter-pill.pill-ai.active     { background: var(--color-success); }
+.filter-pill.pill-tool.active   { background: var(--color-primary); }
+.filter-pill.pill-task.active   { background: var(--color-warn); }
+.filter-pill.pill-error.active  { background: var(--color-danger); }
+.filter-pill.pill-all.active    { background: var(--color-primary); }
 
 .refresh-btn {
-  display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 8px;
-  border: 1px solid #e0e3e8; background: white; font-size: 0.85rem; color: #555; cursor: pointer;
+  display: flex; align-items: center; gap: var(--space-1-5); padding: var(--space-1-5) var(--space-3-5); border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border); background: var(--color-surface); font-size: var(--text-sm); color: var(--color-text); cursor: pointer;
 }
-.refresh-btn:hover { border-color: #667eea; color: #667eea; }
+.refresh-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .refresh-btn.spinning i { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.empty-state {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 60px 20px; gap: 10px;
-}
 
 .timeline { display: flex; flex-direction: column; gap: 0; }
 .log-entry {
-  display: flex; gap: 14px; padding: 12px 4px;
-  border-bottom: 1px solid #f0f0f0; position: relative;
+  display: flex; gap: var(--space-3-5); padding: var(--space-3) var(--space-1);
+  border-bottom: 1px solid var(--color-border); position: relative;
 }
 .log-entry:last-child { border-bottom: none; }
 
 .entry-dot {
   width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  font-size: 0.8rem; color: white; margin-top: 2px;
+  font-size: var(--text-sm-2); color: white; margin-top: var(--space-0-5);
 }
-.dot-user  { background: #2563eb; }
-.dot-ai    { background: #16a34a; }
-.dot-tool  { background: #7c3aed; }
-.dot-task  { background: #ea580c; }
-.dot-error { background: #dc2626; }
+.dot-user  { background: var(--color-primary); }
+.dot-ai    { background: var(--color-success); }
+.dot-tool  { background: var(--color-primary); }
+.dot-task  { background: var(--color-warn); }
+.dot-error { background: var(--color-danger); }
 
 .entry-body { flex: 1; min-width: 0; }
 .entry-header {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px;
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-1);
 }
 .entry-type-badge {
-  font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+  font-size: var(--text-xs); font-weight: var(--weight-semibold); padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-sm);
 }
-.badge-user  { background: #eff6ff; color: #2563eb; }
-.badge-ai    { background: #f0fdf4; color: #16a34a; }
-.badge-tool  { background: #faf5ff; color: #7c3aed; }
-.badge-task  { background: #fff7ed; color: #ea580c; }
-.badge-error { background: #fef2f2; color: #dc2626; }
+.badge-user  { background: var(--color-surface-raised); color: var(--color-primary); }
+.badge-ai    { background: var(--color-success-soft); color: var(--color-success); }
+.badge-tool  { background: var(--color-violet-soft); color: var(--color-primary); }
+.badge-task  { background: var(--color-warn-soft); color: var(--color-warn); }
+.badge-error { background: var(--color-danger-soft); color: var(--color-danger); }
 
-.entry-source { font-size: 0.75rem; color: #aaa; }
-.entry-time   { font-size: 0.75rem; color: #bbb; margin-left: auto; }
+.entry-source { font-size: var(--text-xs); color: var(--color-text-muted); }
+.entry-time   { font-size: var(--text-xs); color: var(--color-text-muted); margin-left: auto; }
 .entry-content {
-  font-size: 0.88rem; color: #333; line-height: 1.5;
+  font-size: var(--text-sm); color: var(--color-text); line-height: var(--leading-normal);
   word-break: break-word; white-space: pre-wrap;
 }
-.entry-meta { font-size: 0.76rem; color: #999; margin-top: 4px; word-break: break-word; }
+.entry-meta { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1); word-break: break-word; }
 
-.log-footer { font-size: 0.78rem; color: #bbb; text-align: center; padding: 8px 0; }
-
-[data-theme="dark"] .log-view { background: #1e1f24; }
-[data-theme="dark"] .filter-pill { background: #2c2d32; border-color: #3a3b42; color: #a0a1ab; }
-[data-theme="dark"] .refresh-btn { background: #2c2d32; border-color: #3a3b42; color: #a0a1ab; }
-[data-theme="dark"] .log-entry { border-color: #2c2d32; }
-[data-theme="dark"] .entry-content { color: #c1c2c5; }
-[data-theme="dark"] .entry-source { color: #6c6d77; }
-[data-theme="dark"] .entry-time { color: #6c6d77; }
+.log-footer { font-size: var(--text-xs); color: var(--color-text-muted); text-align: center; padding: var(--space-2) 0; }
 </style>

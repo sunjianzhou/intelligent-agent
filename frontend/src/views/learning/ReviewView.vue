@@ -9,7 +9,7 @@
           <el-option label="LLM" value="llm" />
           <el-option label="Agent" value="agent" />
         </el-select>
-        <el-checkbox v-model="includeResolved" @change="load" style="margin-left: 12px">
+        <el-checkbox v-model="includeResolved" @change="load" style="margin-left: var(--space-3)">
           显示已掌握
         </el-checkbox>
       </div>
@@ -34,7 +34,7 @@
           v-if="r.wrong_count >= 3"
           type="danger"
           size="small"
-          style="margin-left: 8px"
+          style="margin-left: var(--space-2)"
         >
           高频错题 × {{ r.wrong_count }}
         </el-tag>
@@ -42,11 +42,11 @@
           v-else-if="r.wrong_count > 1"
           type="warning"
           size="small"
-          style="margin-left: 8px"
+          style="margin-left: var(--space-2)"
         >
           错 {{ r.wrong_count }} 次
         </el-tag>
-        <el-tag v-if="r.resolved" type="success" size="small" style="margin-left: 8px">
+        <el-tag v-if="r.resolved" type="success" size="small" style="margin-left: var(--space-2)">
           ✓ 已掌握
         </el-tag>
       </div>
@@ -116,13 +116,13 @@ onMounted(load)
 </script>
 
 <style scoped>
-.review-view { max-width: 800px; margin: 0 auto; padding: 24px; }
-.toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.review-view { max-width: 800px; margin: 0 auto; padding: var(--space-5); }
+.toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4); }
 .filters { display: flex; align-items: center; }
-.wrong-card { background: #fff8f8; border: 1px solid #fbc4c4; border-radius: 8px; padding: 14px; margin-bottom: 12px; }
-.wrong-card.resolved { background: #f0f9eb; border-color: #b3e19d; }
-.card-header { display: flex; align-items: center; margin-bottom: 8px; }
-.qid { font-weight: bold; font-size: 14px; }
-.time { font-size: 12px; color: #999; margin: 4px 0 8px; }
-.empty { text-align: center; padding: 48px; color: #999; font-size: 16px; }
+.wrong-card { background: var(--color-danger-soft); border: 1px solid var(--color-danger-border); border-radius: var(--radius-sm); padding: var(--space-3-5); margin-bottom: var(--space-3); }
+.wrong-card.resolved { background: var(--color-success-soft); border-color: var(--color-success-border); }
+.card-header { display: flex; align-items: center; margin-bottom: var(--space-2); }
+.qid { font-weight: var(--weight-bold); font-size: var(--text-sm); }
+.time { font-size: var(--text-xs); color: var(--color-text-muted); margin: var(--space-1) 0 var(--space-2); }
+.empty { text-align: center; padding: var(--space-8); color: var(--color-text-muted); font-size: var(--text-md); }
 </style>

@@ -105,11 +105,12 @@
 
     <!-- 摘要时间线 -->
     <div v-if="activeType === 'summaries' && !loading" class="summaries-wrap">
-      <div v-if="summaries.length === 0" class="empty-state">
-        <i class="fas fa-scroll empty-icon" />
-        <p class="empty-title">暂无阶段摘要</p>
-        <p class="empty-sub">每 {{ summaryInterval }} 轮对话后自动生成摘要</p>
-      </div>
+      <EmptyState
+          v-if="summaries.length === 0"
+          icon="fas fa-scroll"
+          title="暂无阶段摘要"
+          :sub="`每 ${summaryInterval} 轮对话后自动生成摘要`"
+        />
       <div v-else class="timeline">
         <div v-for="(s, idx) in summaries" :key="s.id" class="tl-item">
           <div class="tl-dot" />
@@ -157,17 +158,15 @@
     </div>
 
     <!-- 空状态 -->
-    <div v-else-if="activeType !== 'summaries' && activeType !== 'files' && !loading" class="empty-state">
-      <i class="fas fa-brain empty-icon" />
-      <p class="empty-title">{{ isSearchMode ? '未找到相关记忆' : '暂无记忆数据' }}</p>
-      <p class="empty-sub">{{ isSearchMode ? '换个关键词试试' : '开始对话后记忆将自动积累' }}</p>
-    </div>
+    <EmptyState
+        v-else-if="activeType !== 'summaries' && activeType !== 'files' && !loading"
+        icon="fas fa-brain"
+        :title="isSearchMode ? '未找到相关记忆' : '暂无记忆数据'"
+        :sub="isSearchMode ? '换个关键词试试' : '开始对话后记忆将自动积累'"
+      />
 
     <!-- 加载 -->
-    <div v-if="loading" class="loading-state">
-      <i class="fas fa-circle-notch fa-spin" />
-      <span>加载中...</span>
-    </div>
+    <SkeletonList v-if="loading" :rows="4" />
 
     <!-- 文件入库面板 -->
     <MemoryFilesPanel v-if="activeType === 'files'" />
@@ -183,6 +182,9 @@ import { exportAllSessions, importSessions } from '@/services/localDB'
 import { formatDateTime as formatTime } from '@/utils/date'
 import MemoryCard from '@/components/memory/MemoryCard.vue'
 import MemoryFilesPanel from '@/components/memory/MemoryFilesPanel.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
+import SkeletonList from '@/components/common/SkeletonList.vue'
 
 const loading       = ref(false)
 const distilling    = ref(false)
@@ -589,11 +591,11 @@ onUnmounted(() => {
 <style scoped>
 .memory-view {
   height: 100%;
-  padding: 20px;
+  padding: var(--space-4-5);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-3-5);
   background: var(--color-bg);
 }
 
@@ -601,58 +603,59 @@ onUnmounted(() => {
 .stats-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 .clear-all-btn {
   height: 34px;
-  padding: 0 14px;
-  border: 1px solid #fca5a5;
+  padding: 0 var(--space-3-5);
+  border: 1px solid var(--color-danger-border);
   border-radius: var(--radius-sm);
-  background: #fff5f5;
-  color: #dc2626;
-  font-size: 0.82rem;
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-size: var(--text-sm-2);
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   white-space: nowrap;
-  transition: all 0.2s;
+  transition: var(--transition-interactive);
   flex-shrink: 0;
 }
-.clear-all-btn:hover { background: #fee2e2; border-color: #f87171; }
+.clear-all-btn:hover { background: var(--color-danger-soft); border-color: var(--color-danger); }
 .toolbar-right {
   display: flex; align-items: center; gap: var(--space-2);
   flex-shrink: 0;
 }
 .inv-toggle-btn {
-  height: 34px; padding: 0 12px;
+  height: 34px; padding: 0 var(--space-3);
   border: 1px solid var(--color-border); border-radius: var(--radius-sm);
   background: var(--color-surface); color: var(--color-text-secondary);
-  font-size: 0.82rem; cursor: pointer;
-  display: flex; align-items: center; gap: 6px;
-  transition: all 0.2s;
+  font-size: var(--text-sm-2); cursor: pointer;
+  display: flex; align-items: center; gap: var(--space-1-5);
+  transition: var(--transition-interactive);
 }
-.inv-toggle-btn:hover { border-color: #7b1fa2; color: #7b1fa2; }
-.inv-toggle-btn.active { background: #f3e5f5; border-color: #7b1fa2; color: #7b1fa2; }
+.inv-toggle-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.inv-toggle-btn.active { background: var(--color-violet-soft); border-color: var(--color-primary); color: var(--color-primary); }
 .stat-card {
   background: var(--color-surface);
   border: 0.5px solid var(--color-border);
   border-radius: var(--radius-md);
-  padding: 14px;
+  padding: var(--space-3-5);
   text-align: center;
   cursor: default;
-}
+
+  box-shadow: var(--shadow-card);}
 .stat-card.accent-primary { border-top: 3px solid var(--color-primary); }
 .stat-card.accent-success { border-top: 3px solid var(--color-accent); }
 .stat-card.accent-warn    { border-top: 3px solid var(--color-warn); }
-.stat-num  { font-size: 22px; font-weight: 500; color: var(--color-text); }
-.stat-label { font-size: 12px; color: var(--color-text-muted); margin-top: var(--space-1); }
+.stat-num  { font-size: var(--text-xl); font-weight: var(--weight-medium); color: var(--color-text); }
+.stat-label { font-size: var(--text-sm-2); color: var(--color-text-muted); margin-top: var(--space-1); }
 
 /* ── 工具栏 ─────────────────────────────────────────────── */
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 .toolbar-row1 { flex-wrap: nowrap; }
 .toolbar-row2 {
@@ -674,123 +677,113 @@ onUnmounted(() => {
   position: absolute;
   left: 10px;
   color: var(--color-text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 .search-input {
   width: 100%;
-  padding: 8px 32px 8px 32px;
+  padding: var(--space-2) var(--space-6) var(--space-2) var(--space-6);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
   outline: none;
   background: var(--color-surface);
-  transition: border-color 0.2s;
+  transition: border-color var(--duration-base);
 }
 .search-input:focus { border-color: var(--color-primary); }
 .clear-btn {
   position: absolute; right: 8px;
   background: none; border: none;
-  color: var(--color-text-muted); cursor: pointer; font-size: 0.8rem;
+  color: var(--color-text-muted); cursor: pointer; font-size: var(--text-sm-2);
 }
-.type-tabs { display: flex; gap: 6px; }
+.type-tabs { display: flex; gap: var(--space-1-5); }
 .type-btn {
-  padding: 7px 14px; border-radius: var(--radius-sm);
+  padding: var(--space-1-5) var(--space-3-5); border-radius: var(--radius-sm);
   border: 1px solid var(--color-border); background: var(--color-surface);
-  font-size: 0.85rem; color: var(--color-text-secondary); cursor: pointer;
-  transition: all 0.2s; white-space: nowrap;
+  font-size: var(--text-sm); color: var(--color-text-secondary); cursor: pointer;
+  transition: var(--transition-interactive); white-space: nowrap;
 }
 .type-btn:hover  { border-color: var(--color-primary); color: var(--color-primary); }
-.type-btn.active { background: var(--color-primary); border-color: var(--color-primary); color: white; }
+.type-btn.active { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-text-on-primary); }
 .refresh-btn {
-  padding: 8px 10px; border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-2-5); border-radius: var(--radius-sm);
   border: 1px solid var(--color-border); background: var(--color-surface);
-  color: var(--color-text-secondary); cursor: pointer; transition: all 0.2s;
-  display: flex; align-items: center; gap: 5px;
+  color: var(--color-text-secondary); cursor: pointer; transition: var(--transition-interactive);
+  display: flex; align-items: center; gap: var(--space-1);
 }
 .refresh-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .refresh-btn.spinning i { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .import-btn {
-  padding: 8px 10px; border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-2-5); border-radius: var(--radius-sm);
   border: 1px solid var(--color-border); background: var(--color-surface);
-  color: var(--color-text-secondary); cursor: pointer; transition: all 0.2s;
-  display: flex; align-items: center; gap: 5px;
+  color: var(--color-text-secondary); cursor: pointer; transition: var(--transition-interactive);
+  display: flex; align-items: center; gap: var(--space-1);
 }
 .import-btn:hover { border-color: var(--color-accent); color: var(--color-accent); }
-.btn-label { font-size: 0.82rem; }
+.btn-label { font-size: var(--text-sm-2); }
 .distill-btn {
-  padding: 8px 12px; border-radius: var(--radius-sm); display: flex; align-items: center; gap: 6px;
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); display: flex; align-items: center; gap: var(--space-1-5);
   border: 1px solid var(--color-border); background: var(--color-surface);
-  color: var(--color-text-secondary); cursor: pointer; transition: all 0.2s; font-size: 0.85rem;
+  color: var(--color-text-secondary); cursor: pointer; transition: var(--transition-interactive); font-size: var(--text-sm);
 }
-.distill-btn:hover:not(:disabled) { border-color: #7c4dff; color: #7c4dff; }
+.distill-btn:hover:not(:disabled) { border-color: var(--color-violet); color: var(--color-violet); }
 .distill-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .distill-btn.spinning i { animation: spin 0.8s linear infinite; }
 
 /* ── 搜索提示 ────────────────────────────────────────────── */
 .search-hint {
-  font-size: 0.85rem; color: var(--color-primary);
+  font-size: var(--text-sm); color: var(--color-primary);
   display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
 }
-.search-mode-tip { font-size: 0.78rem; color: var(--color-text-muted); }
+.search-mode-tip { font-size: var(--text-xs); color: var(--color-text-muted); }
 .link-btn {
   background: none; border: none;
   color: var(--color-primary); cursor: pointer;
-  font-size: 0.85rem; text-decoration: underline;
+  font-size: var(--text-sm); text-decoration: underline;
 }
 
 /* ── 记忆列表 ────────────────────────────────────────────── */
-.memory-list { display: flex; flex-direction: column; gap: 10px; }
+.memory-list { display: flex; flex-direction: column; gap: var(--space-2-5); }
 .inv-section {
   border-top: 1px dashed var(--color-border);
   padding-top: var(--space-3);
 }
 .inv-header {
-  font-size: 0.85rem; font-weight: 500; color: #7b1fa2;
+  font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-primary);
   display: flex; align-items: center; gap: var(--space-2);
 }
-.inv-header-tip { font-size: 0.75rem; color: var(--color-text-muted); font-weight: 400; }
+.inv-header-tip { font-size: var(--text-xs); color: var(--color-text-muted); font-weight: var(--weight-normal); }
 /* ── 空状态 ───────────────────────────────────────────────── */
-.empty-state {
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: var(--space-2); padding: 60px 20px;
-  background: var(--color-surface); border-radius: var(--radius-md);
-  border: 0.5px solid var(--color-border);
-}
-.empty-icon  { font-size: 2.5rem; color: #ddd; }
-.empty-title { font-size: 1rem; font-weight: 500; color: var(--color-text-secondary); margin: 0; }
-.empty-sub   { font-size: 0.85rem; color: var(--color-text-muted); margin: 0; }
+
+
+
+
 
 /* ── 加载 ─────────────────────────────────────────────────── */
-.loading-state {
-  display: flex; align-items: center;
-  justify-content: center; gap: 10px;
-  padding: 40px; color: var(--color-text-muted); font-size: 0.9rem;
-}
+
 
 /* ── 导出下拉 ─────────────────────────────────────────────── */
 .export-wrap { position: relative; }
 .export-btn {
-  padding: 8px 12px; border-radius: var(--radius-sm); display: flex; align-items: center; gap: 6px;
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); display: flex; align-items: center; gap: var(--space-1-5);
   border: 1px solid var(--color-border); background: var(--color-surface);
-  color: var(--color-text-secondary); cursor: pointer; transition: all 0.2s; font-size: 0.85rem;
+  color: var(--color-text-secondary); cursor: pointer; transition: var(--transition-interactive); font-size: var(--text-sm);
 }
-.export-btn:hover { border-color: #1976d2; color: #1976d2; }
+.export-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .export-dropdown {
   position: absolute; right: 0; top: calc(100% + 6px);
   background: var(--color-surface); border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm); box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-raised);
   min-width: 130px; z-index: 100; overflow: hidden;
 }
 .export-item {
   display: flex; align-items: center; gap: var(--space-2);
-  padding: 10px 14px; font-size: 0.85rem; color: #444;
-  text-decoration: none; transition: background 0.15s;
+  padding: var(--space-2-5) var(--space-3-5); font-size: var(--text-sm); color: var(--color-text);
+  text-decoration: none; transition: background var(--duration-fast);
 }
-.export-item:hover { background: #f5f7ff; color: #1976d2; }
+.export-item:hover { background: var(--color-primary-soft); color: var(--color-primary); }
 .export-divider { height: 1px; background: var(--color-border); margin: var(--space-1) 0; }
-button.export-item { width: 100%; text-align: left; background: none; border: none; cursor: pointer; font-size: 0.85rem; }
+button.export-item { width: 100%; text-align: left; background: none; border: none; cursor: pointer; font-size: var(--text-sm); }
 
 /* ── 摘要时间线 ───────────────────────────────────────────── */
 .summaries-wrap { flex: 1; }
@@ -801,7 +794,7 @@ button.export-item { width: 100%; text-align: left; background: none; border: no
   margin-left: var(--space-2);
 }
 .tl-item {
-  position: relative; padding: 0 0 20px 24px;
+  position: relative; padding: 0 0 var(--space-4-5) var(--space-5);
 }
 .tl-dot {
   position: absolute; left: -7px; top: var(--space-1);
@@ -814,10 +807,10 @@ button.export-item { width: 100%; text-align: left; background: none; border: no
   border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
 }
 .tl-time {
-  font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 6px;
+  font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1-5);
 }
 .tl-content {
-  font-size: 0.88rem; color: var(--color-text); line-height: 1.6;
+  font-size: var(--text-sm); color: var(--color-text); line-height: var(--leading-relaxed);
 }
 
 </style>

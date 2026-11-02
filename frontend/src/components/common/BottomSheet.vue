@@ -55,7 +55,7 @@ watch(() => props.modelValue, async (val) => {
 .bs-mask {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--color-scrim);
   z-index: 200;
   display: flex;
   align-items: flex-end;
@@ -64,41 +64,41 @@ watch(() => props.modelValue, async (val) => {
 .bs-panel {
   width: 100%;
   background: var(--color-surface);
-  border-radius: 20px 20px 0 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   overflow-y: auto;
   outline: none;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: env(safe-area-inset-bottom, var(--space-0));
 }
 
 .bs-handle {
   width: 40px;
   height: 4px;
   background: var(--color-border);
-  border-radius: 2px;
-  margin: 12px auto 8px;
+  border-radius: var(--radius-xs);
+  margin: var(--space-3) auto var(--space-2);
 }
 
 .bs-title {
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
   color: var(--color-text);
-  padding: 0 20px 12px;
+  padding: 0 var(--space-4-5) var(--space-3);
   border-bottom: 1px solid var(--color-border);
   margin: 0;
 }
 
 .bs-body {
-  padding: 8px 0;
+  padding: var(--space-2) 0;
 }
 
 /* 遮罩淡入淡出 + 面板上划 */
 .bs-enter-active,
 .bs-leave-active {
-  transition: opacity 0.28s ease;
+  transition: opacity var(--duration-slow) var(--ease-standard);
 }
 .bs-enter-active .bs-panel,
 .bs-leave-active .bs-panel {
-  transition: transform 0.28s ease;
+  transition: transform var(--duration-slow) var(--ease-standard);
 }
 .bs-enter-from,
 .bs-leave-to {

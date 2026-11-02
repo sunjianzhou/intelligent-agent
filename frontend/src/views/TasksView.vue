@@ -32,7 +32,7 @@
         >{{ f.label }}</button>
       </div>
       <div class="toolbar-right">
-        <button class="refresh-btn" :class="{ spinning: loading }" @click="load">
+        <button class="refresh-btn" :class="{ spinning: loading }" aria-label="刷新任务列表" title="刷新任务列表" @click="load">
           <i class="fas fa-sync-alt" />
         </button>
         <button class="create-btn" @click="showCreate = true; loadActions()">
@@ -57,15 +57,14 @@
     </div>
 
     <!-- 空状态 -->
-    <div v-else-if="!loading" class="empty-state">
-      <i class="fas fa-tasks empty-icon" />
-      <p class="empty-title">暂无任务</p>
-      <p class="empty-sub">点击右上角「新建任务」创建第一个定时任务</p>
-    </div>
+    <EmptyState
+        v-else-if="!loading"
+        icon="fas fa-tasks"
+        title="暂无任务"
+        sub="点击右上角「新建任务」创建第一个定时任务"
+      />
 
-    <div v-if="loading" class="loading-state">
-      <i class="fas fa-circle-notch fa-spin" /><span>加载中...</span>
-    </div>
+    <SkeletonList v-if="loading" :rows="4" variant="cards" />
 
     <!-- 编辑任务弹窗 -->
     <TaskEditModal
@@ -97,6 +96,9 @@ import {
 import TaskCard from '@/components/tasks/TaskCard.vue'
 import TaskCreateModal from '@/components/tasks/TaskCreateModal.vue'
 import TaskEditModal   from '@/components/tasks/TaskEditModal.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
+import SkeletonList from '@/components/common/SkeletonList.vue'
 
 const confirmDialog = useConfirmDialogStore()
 const tasks      = ref([])
@@ -299,36 +301,37 @@ onUnmounted(() => {
 <style scoped>
 .tasks-view {
   height: 100%;
-  padding: 20px;
+  padding: var(--space-4-5);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  background: #f8f9fa;
+  gap: var(--space-3-5);
+  background: var(--color-surface-sunken);
 }
 
 /* ── 统计 ─────────────────────────────────────────────── */
 .stats-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 .stat-card {
-  background: white;
-  border: 0.5px solid #e8eaed;
-  border-radius: 12px;
-  padding: 14px;
+  background: var(--color-surface);
+  border: 0.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3-5);
   text-align: center;
-}
-.stat-card.accent-primary { border-top: 3px solid #667eea; }
-.stat-card.accent-warn    { border-top: 3px solid #f57c00; }
-.stat-card.accent-success { border-top: 3px solid #43a047; }
-.stat-card.accent-danger  { border-top: 3px solid #ef4444; }
-.stat-num      { font-size: 22px; font-weight: 500; color: #333; }
-.stat-label    { font-size: 12px; color: #888; margin-top: 4px; }
-.pending-color { color: #f57c00; }
-.done-color    { color: #2e7d32; }
-.fail-color    { color: #c62828; }
+
+  box-shadow: var(--shadow-card);}
+.stat-card.accent-primary { border-top: 3px solid var(--color-primary); }
+.stat-card.accent-warn    { border-top: 3px solid var(--color-warn); }
+.stat-card.accent-success { border-top: 3px solid var(--color-success); }
+.stat-card.accent-danger  { border-top: 3px solid var(--color-danger); }
+.stat-num      { font-size: var(--text-xl); font-weight: var(--weight-medium); color: var(--color-text); }
+.stat-label    { font-size: var(--text-sm-2); color: var(--color-text-secondary); margin-top: var(--space-1); }
+.pending-color { color: var(--color-warn); }
+.done-color    { color: var(--color-success); }
+.fail-color    { color: var(--color-danger); }
 
 /* ── 工具栏 ─────────────────────────────────────────────── */
 .toolbar {
@@ -336,54 +339,40 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
 }
-.filter-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex-shrink: 1; min-width: 0; }
+.filter-tabs { display: flex; gap: var(--space-1-5); overflow-x: auto; scrollbar-width: none; flex-shrink: 1; min-width: 0; }
 .filter-tabs::-webkit-scrollbar { display: none; }
 .filter-btn {
-  padding: 6px 14px; border-radius: 8px;
-  border: 1px solid #e0e3e8; background: white;
-  font-size: 0.85rem; color: #666; cursor: pointer;
-  transition: all 0.2s; white-space: nowrap; flex-shrink: 0;
+  padding: var(--space-1-5) var(--space-3-5); border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border); background: var(--color-surface);
+  font-size: var(--text-sm); color: var(--color-text-secondary); cursor: pointer;
+  transition: var(--transition-interactive); white-space: nowrap; flex-shrink: 0;
 }
-.filter-btn:hover  { border-color: #667eea; color: #667eea; }
-.filter-btn.active { background: #667eea; border-color: #667eea; color: white; }
-.toolbar-right { display: flex; gap: 8px; }
+.filter-btn:hover  { border-color: var(--color-primary); color: var(--color-primary); }
+.filter-btn.active { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-text-on-primary); }
+.toolbar-right { display: flex; gap: var(--space-2); }
 
 @media (max-width: 768px) {
   .filter-tabs { flex-wrap: wrap; overflow-x: visible; }
 }
 
 .refresh-btn {
-  padding: 8px 10px; border-radius: 8px;
-  border: 1px solid #e0e3e8; background: white;
-  color: #555; cursor: pointer; transition: all 0.2s;
+  padding: var(--space-2) var(--space-2-5); border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border); background: var(--color-surface);
+  color: var(--color-text); cursor: pointer; transition: var(--transition-interactive);
 }
-.refresh-btn:hover { border-color: #667eea; color: #667eea; }
+.refresh-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .refresh-btn.spinning i { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .create-btn {
-  display: flex; align-items: center; gap: 6px;
-  padding: 8px 16px; border-radius: 8px;
-  border: none; background: #667eea; color: white;
-  font-size: 0.88rem; cursor: pointer; transition: background 0.2s;
+  display: flex; align-items: center; gap: var(--space-1-5);
+  padding: var(--space-2) var(--space-4); border-radius: var(--radius-sm);
+  border: none; background: var(--color-primary); color: var(--color-text-on-primary);
+  font-size: var(--text-sm); cursor: pointer; transition: background var(--duration-base);
 }
-.create-btn:hover { background: #5a6fd6; }
+.create-btn:hover { background: var(--color-primary-hover); }
 
 /* ── 任务卡片 ────────────────────────────────────────────── */
-.task-list { display: flex; flex-direction: column; gap: 10px; }
+.task-list { display: flex; flex-direction: column; gap: var(--space-2-5); }
 /* ── 空 / 加载 ───────────────────────────────────────────── */
-.empty-state {
-  display: flex; flex-direction: column;
-  align-items: center; gap: 8px;
-  padding: 60px 20px; background: white;
-  border-radius: 12px; border: 0.5px solid #e8eaed;
-}
-.empty-icon  { font-size: 2.5rem; color: #ddd; }
-.empty-title { font-size: 1rem; font-weight: 500; color: #666; margin: 0; }
-.empty-sub   { font-size: 0.85rem; color: #aaa; margin: 0; }
-.loading-state {
-  display: flex; align-items: center;
-  justify-content: center; gap: 10px;
-  padding: 40px; color: #888; font-size: 0.9rem;
-}
 
 </style>

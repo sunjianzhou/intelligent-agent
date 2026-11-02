@@ -11,22 +11,50 @@
 
     <!-- 示例提示词卡片 -->
     <div class="suggestion-grid">
-      <div class="suggestion-card" @click="emit('suggest', '帮我计算 (23 * 45) + sqrt(169) 的结果')">
+      <div
+        class="suggestion-card"
+        role="button"
+        tabindex="0"
+        @click="emit('suggest', '帮我计算 (23 * 45) + sqrt(169) 的结果')"
+        @keydown.enter.prevent="emit('suggest', '帮我计算 (23 * 45) + sqrt(169) 的结果')"
+        @keydown.space.prevent="emit('suggest', '帮我计算 (23 * 45) + sqrt(169) 的结果')"
+      >
         <i class="fas fa-calculator suggestion-icon" />
         <span class="suggestion-label">数学计算</span>
         <span class="suggestion-text">帮我计算 (23 × 45) + √169</span>
       </div>
-      <div class="suggestion-card" @click="emit('suggest', '现在几点了？今天是星期几？')">
+      <div
+        class="suggestion-card"
+        role="button"
+        tabindex="0"
+        @click="emit('suggest', '现在几点了？今天是星期几？')"
+        @keydown.enter.prevent="emit('suggest', '现在几点了？今天是星期几？')"
+        @keydown.space.prevent="emit('suggest', '现在几点了？今天是星期几？')"
+      >
         <i class="fas fa-clock suggestion-icon" />
         <span class="suggestion-label">时间查询</span>
         <span class="suggestion-text">现在几点？今天星期几？</span>
       </div>
-      <div class="suggestion-card" @click="emit('suggest', '帮我写一首关于秋天的五言绝句')">
+      <div
+        class="suggestion-card"
+        role="button"
+        tabindex="0"
+        @click="emit('suggest', '帮我写一首关于秋天的五言绝句')"
+        @keydown.enter.prevent="emit('suggest', '帮我写一首关于秋天的五言绝句')"
+        @keydown.space.prevent="emit('suggest', '帮我写一首关于秋天的五言绝句')"
+      >
         <i class="fas fa-pen-nib suggestion-icon" />
         <span class="suggestion-label">创意写作</span>
         <span class="suggestion-text">写一首关于秋天的五言绝句</span>
       </div>
-      <div class="suggestion-card" @click="emit('suggest', '每隔30分钟提醒我喝水，帮我创建周期性任务')">
+      <div
+        class="suggestion-card"
+        role="button"
+        tabindex="0"
+        @click="emit('suggest', '每隔30分钟提醒我喝水，帮我创建周期性任务')"
+        @keydown.enter.prevent="emit('suggest', '每隔30分钟提醒我喝水，帮我创建周期性任务')"
+        @keydown.space.prevent="emit('suggest', '每隔30分钟提醒我喝水，帮我创建周期性任务')"
+      >
         <i class="fas fa-bell suggestion-icon" />
         <span class="suggestion-label">定时提醒</span>
         <span class="suggestion-text">每隔30分钟提醒我喝水</span>
@@ -57,8 +85,8 @@ const emit = defineEmits(['suggest'])
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 20px;
-  padding: 40px var(--space-5);
+  gap: var(--space-4-5);
+  padding: var(--space-7) var(--space-5);
   max-width: 700px;
   margin: 0 auto;
   width: 100%;
@@ -69,18 +97,18 @@ const emit = defineEmits(['suggest'])
   align-items: center;
   gap: var(--space-2);
 }
-.empty-icon  { font-size: 2.8rem; color: #c5c8f0; }
-.empty-title { font-size: 1.25rem; font-weight: 600; color: #444; margin: 0; }
-.empty-sub   { font-size: 0.88rem; color: var(--color-text-muted); margin: 0; }
-.uncensored-badge-row { margin-top: 6px; display: flex; justify-content: center; }
+.empty-icon  { font-size: 2.8rem; color: var(--color-primary); opacity: 0.85; }
+.empty-title { font-size: var(--text-2xl); font-weight: var(--weight-semibold); color: var(--color-text); margin: 0; }
+.empty-sub   { font-size: var(--text-sm); color: var(--color-text-muted); margin: 0; }
+.uncensored-badge-row { margin-top: var(--space-1); display: flex; justify-content: center; }
 .uncensored-badge {
-  background: linear-gradient(135deg, #f6d365, #fda085);
-  color: white;
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px var(--space-2);
-  border-radius: 20px;
-  font-size: 0.78rem;
-  font-weight: 600;
+  background: var(--color-warn-soft);
+  color: var(--color-warn);
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
 }
 
 /* 示例提示词卡片 */
@@ -94,61 +122,58 @@ const emit = defineEmits(['suggest'])
   display: grid;
   grid-template-areas: "icon label" "icon text";
   grid-template-columns: 36px 1fr;
-  gap: 2px 10px;
-  padding: 14px var(--space-4);
-  border: 1px solid #e8eaf0;
+  gap: var(--space-0-5) var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   cursor: pointer;
-  transition: all 0.18s;
+  transition: var(--transition-interactive);
   align-items: center;
 }
-/* 4 张卡片各自颜色主题 */
-.suggestion-card:nth-child(1) { background: #eff6ff; border-color: #bfdbfe; }
-.suggestion-card:nth-child(2) { background: #fff7ed; border-color: #fed7aa; }
-.suggestion-card:nth-child(3) { background: #f0fdf4; border-color: #bbf7d0; }
-.suggestion-card:nth-child(4) { background: #faf5ff; border-color: #e9d5ff; }
+/* 每张卡片一个强调色：用令牌表达，明暗主题都会跟着切换
+   （旧实现是 4 组写死的粉彩色，深色主题下会变成黑底上的 4 块亮色） */
+.suggestion-card:nth-child(1) { --card-accent: var(--color-primary); --card-accent-soft: var(--color-primary-soft); }
+.suggestion-card:nth-child(2) { --card-accent: var(--color-warn);    --card-accent-soft: var(--color-warn-soft); }
+.suggestion-card:nth-child(3) { --card-accent: var(--color-success); --card-accent-soft: var(--color-success-soft); }
+.suggestion-card:nth-child(4) { --card-accent: var(--color-violet);  --card-accent-soft: var(--color-violet-soft); }
 
-.suggestion-card:hover {
+.suggestion-card:hover,
+.suggestion-card:focus-visible {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  box-shadow: var(--shadow-raised);
+  border-color: var(--card-accent);
+  background: var(--card-accent-soft);
 }
-.suggestion-card:nth-child(1):hover { border-color: #3b82f6; }
-.suggestion-card:nth-child(2):hover { border-color: #f97316; }
-.suggestion-card:nth-child(3):hover { border-color: #22c55e; }
-.suggestion-card:nth-child(4):hover { border-color: #a855f7; }
 
 .suggestion-icon {
   grid-area: icon;
   font-size: 1.15rem;
   justify-self: center;
+  color: var(--card-accent);
 }
-.suggestion-card:nth-child(1) .suggestion-icon { color: #3b82f6; }
-.suggestion-card:nth-child(2) .suggestion-icon { color: #f97316; }
-.suggestion-card:nth-child(3) .suggestion-icon { color: #22c55e; }
-.suggestion-card:nth-child(4) .suggestion-icon { color: #a855f7; }
 .suggestion-label {
   grid-area: label;
   font-size: var(--text-xs);
   color: var(--color-text-muted);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-wide);
 }
 .suggestion-text {
   grid-area: text;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .empty-notice {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   margin: 0;
 }
 @media (max-width: 600px) {

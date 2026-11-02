@@ -177,65 +177,66 @@ const formatCountdown = (iso) => {
 .task-card {
   position: relative;
   display: flex;
-  background: white;
-  border: 0.5px solid #e8eaed;
-  border-radius: 12px;
+  background: var(--color-surface);
+  border: 0.5px solid var(--color-border);
+  border-radius: var(--radius-md);
   overflow: hidden;
-  transition: all 0.2s;
+  transition: var(--transition-interactive);
   /* ensure hover action buttons don't push layout */
-  padding-bottom: 8px;
-}
-.task-card:hover { border-color: #c5caf5; box-shadow: 0 2px 10px rgba(102,126,234,0.12); }
+  padding-bottom: var(--space-2);
+
+  box-shadow: var(--shadow-card);}
+.task-card:hover { border-color: var(--color-primary-soft); box-shadow: var(--shadow-glow-primary); }
 
 .status-bar { width: 4px; flex-shrink: 0; }
-.status-bar.pending   { background: #f57c00; }
-.status-bar.running   { background: #1976d2; }
-.status-bar.completed { background: #2e7d32; }
-.status-bar.failed    { background: #c62828; }
-.status-bar.cancelled { background: #bbb; }
+.status-bar.pending   { background: var(--color-warn); }
+.status-bar.running   { background: var(--color-primary); }
+.status-bar.completed { background: var(--color-success); }
+.status-bar.failed    { background: var(--color-danger); }
+.status-bar.cancelled { background: var(--color-text-muted); }
 
-.task-body { flex: 1; padding: 14px 16px; min-width: 0; }
-.task-header { margin-bottom: 8px; }
+.task-body { flex: 1; padding: var(--space-3-5) var(--space-4); min-width: 0; }
+.task-header { margin-bottom: var(--space-2); }
 .task-name-row {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 4px;
+  display: flex; align-items: center; gap: var(--space-2-5); margin-bottom: var(--space-1);
 }
-.task-name { font-size: 0.95rem; font-weight: 500; color: #333; }
+.task-name { font-size: var(--text-base); font-weight: var(--weight-medium); color: var(--color-text); }
 .status-badge {
-  font-size: 11px; padding: 2px 8px;
-  border-radius: 10px; font-weight: 500;
+  font-size: var(--text-2xs); padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-sm); font-weight: var(--weight-medium);
 }
-.status-badge.pending   { background: #fff3e0; color: #f57c00; }
-.status-badge.running   { background: #e3f2fd; color: #1976d2; }
-.status-badge.completed { background: #e8f5e9; color: #2e7d32; }
-.status-badge.failed    { background: #fce4e4; color: #c62828; }
-.status-badge.cancelled { background: #f5f5f5; color: #888; }
+.status-badge.pending   { background: var(--color-warn-soft); color: var(--color-warn); }
+.status-badge.running   { background: var(--color-primary-soft); color: var(--color-primary); }
+.status-badge.completed { background: var(--color-success-soft); color: var(--color-success); }
+.status-badge.failed    { background: var(--color-danger-soft); color: var(--color-danger); }
+.status-badge.cancelled { background: var(--color-surface-sunken); color: var(--color-text-secondary); }
 
 .task-desc {
-  font-size: 0.83rem; color: #888;
+  font-size: var(--text-sm-2); color: var(--color-text-secondary);
   overflow: hidden; display: -webkit-box;
   -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
-.task-prompt { color: #666; white-space: pre-wrap; word-break: break-word;
+.task-prompt { color: var(--color-text-secondary); white-space: pre-wrap; word-break: break-word;
   max-height: 3.6em; overflow: hidden; display: -webkit-box;
   -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
 .task-meta-row {
-  display: flex; flex-wrap: wrap; gap: 12px;
-  font-size: 0.8rem; color: #aaa;
+  display: flex; flex-wrap: wrap; gap: var(--space-3);
+  font-size: var(--text-sm-2); color: var(--color-text-muted);
 }
-.meta-item { display: flex; align-items: center; gap: 4px; }
-.meta-item i { font-size: 0.75rem; }
+.meta-item { display: flex; align-items: center; gap: var(--space-1); }
+.meta-item i { font-size: var(--text-xs); }
 
 .task-result {
-  margin-top: 8px;
-  font-size: 0.8rem;
-  padding: 6px 10px;
-  border-radius: 6px;
-  display: flex; align-items: flex-start; gap: 6px;
+  margin-top: var(--space-2);
+  font-size: var(--text-sm-2);
+  padding: var(--space-1-5) var(--space-2-5);
+  border-radius: var(--radius-sm);
+  display: flex; align-items: flex-start; gap: var(--space-1-5);
   word-break: break-all;
 }
-.task-result.error   { background: #fce4e4; color: #c62828; }
-.task-result.success { background: #e8f5e9; color: #2e7d32; }
+.task-result.error   { background: var(--color-danger-soft); color: var(--color-danger); }
+.task-result.success { background: var(--color-success-soft); color: var(--color-success); }
 
 .task-actions {
   position: absolute;
@@ -243,10 +244,10 @@ const formatCountdown = (iso) => {
   bottom: 12px;
   display: flex;
   flex-direction: row;
-  gap: 6px;
+  gap: var(--space-1-5);
   opacity: 0;
   transform: translateY(4px);
-  transition: opacity 0.18s, transform 0.18s;
+  transition: opacity var(--duration-base), transform var(--duration-base);
   pointer-events: none;
 }
 .task-card:hover .task-actions {
@@ -255,18 +256,18 @@ const formatCountdown = (iso) => {
   pointer-events: auto;
 }
 .action-btn {
-  width: 30px; height: 30px; border-radius: 7px;
+  width: 30px; height: 30px; border-radius: var(--radius-sm);
   border: none; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  font-size: 0.8rem; transition: all 0.15s;
+  font-size: var(--text-sm-2); transition: var(--transition-interactive);
 }
-.run-btn    { background: #e8f5e9; color: #2e7d32; }
-.run-btn:hover:not(:disabled)    { background: #c8e6c9; }
-.edit-btn   { background: #e8eaf6; color: #3949ab; }
-.edit-btn:hover { background: #c5cae9; }
-.cancel-btn { background: #fff3e0; color: #f57c00; }
-.cancel-btn:hover { background: #ffe0b2; }
-.del-btn    { background: #fce4e4; color: #c62828; }
-.del-btn:hover { background: #ffcdd2; }
+.run-btn    { background: var(--color-success-soft); color: var(--color-success); }
+.run-btn:hover:not(:disabled)    { background: var(--color-success-soft); }
+.edit-btn   { background: var(--color-primary-soft); color: var(--color-primary); }
+.edit-btn:hover { background: var(--color-primary-soft); }
+.cancel-btn { background: var(--color-warn-soft); color: var(--color-warn); }
+.cancel-btn:hover { background: var(--color-warn-soft); }
+.del-btn    { background: var(--color-danger-soft); color: var(--color-danger); }
+.del-btn:hover { background: var(--color-danger-soft); }
 .action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 </style>
