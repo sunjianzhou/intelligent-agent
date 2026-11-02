@@ -191,8 +191,13 @@ class AgentOrchestratorTest {
 
     @Test
     void stopsAfterFiveToolRounds() {
+        // TD-19：重复的相同调用会被断路器拦截，这里每轮换参数，考察的是"最多 5 轮"上限本身
         FakeProvider loopFake = new FakeProvider(
-                List.of("<tool_call>{\"tool\": \"echo\", \"args\": {\"text\": \"x\"}}</tool_call>"),
+                List.of("<tool_call>{\"tool\": \"echo\", \"args\": {\"text\": \"1\"}}</tool_call>",
+                        "<tool_call>{\"tool\": \"echo\", \"args\": {\"text\": \"2\"}}</tool_call>",
+                        "<tool_call>{\"tool\": \"echo\", \"args\": {\"text\": \"3\"}}</tool_call>",
+                        "<tool_call>{\"tool\": \"echo\", \"args\": {\"text\": \"4\"}}</tool_call>",
+                        "<tool_call>{\"tool\": \"echo\", \"args\": {\"text\": \"5\"}}</tool_call>"),
                 Flux.just(ModelEvent.token("ok"), ModelEvent.done(Map.of())));
         AgentOrchestrator o =
                 new AgentOrchestrator(new LlmProviderRouter(loopFake, null, List.of()), tools);

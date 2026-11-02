@@ -80,7 +80,10 @@ public class WebSearchTool implements AgentTool {
             if (message.toLowerCase().contains("timeout")) {
                 message = "搜索超时，请检查网络连接或稍后重试（query: " + query + "）";
             }
-            return List.of(Map.of("title", "搜索失败", "url", "", "snippet", message));
+            // TD-21：失败必须走 error 通道，不能伪装成一条"标题=搜索失败"的结果行。
+            // 之前那样返回时，7B 模型会把「搜索失败」当成搜索结果标题，下一轮拿它当 query
+            // 再搜一次（2026-11-01 eval web-001 现场），最后给出编造的"网络故障"结论。
+            throw new IllegalStateException("web_search 失败：" + message);
         }
     }
 }

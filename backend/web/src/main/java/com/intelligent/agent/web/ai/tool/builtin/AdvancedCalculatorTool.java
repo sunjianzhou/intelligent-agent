@@ -10,20 +10,27 @@ import java.util.Map;
 
 /**
  * 高级计算器工具（2026-08-15 补齐，对齐 Python AdvancedCalculatorTool）：
- * 普通数学表达式 + 单位换算（长度/温度/重量/面积）。
+ * 普通数学表达式 + 单位换算（长度/温度/重量/面积/时间）。
  */
 public class AdvancedCalculatorTool implements AgentTool {
 
     private final CalculatorTool calculator = new CalculatorTool();
 
+    /** 支持的换算标识（定义与错误提示共用，避免两处漂移）。 */
+    private static final String SUPPORTED_CONVERSIONS =
+            "km_to_miles/miles_to_km/meters_to_feet/feet_to_meters/"
+                    + "celsius_to_fahrenheit/fahrenheit_to_celsius/kg_to_pounds/"
+                    + "pounds_to_kg/sqm_to_sqft/sqft_to_sqm/"
+                    + "hours_to_minutes/minutes_to_hours/minutes_to_seconds/"
+                    + "seconds_to_minutes/hours_to_seconds/seconds_to_hours";
+
     @Override
     public ToolDefinition definition() {
         return new ToolDefinition(
                 "advanced_calculator", "高级计算器：支持数学表达式计算与单位换算。"
-                        + "参数: expression(表达式,必填),"
-                        + " convert_to(单位换算,可选: km_to_miles/miles_to_km/meters_to_feet/"
-                        + "feet_to_meters/celsius_to_fahrenheit/fahrenheit_to_celsius/"
-                        + "kg_to_pounds/pounds_to_kg/sqm_to_sqft/sqft_to_sqm)。",
+                        + "参数: expression(表达式,必填), convert_to(单位换算,可选: "
+                        + SUPPORTED_CONVERSIONS + ")。"
+                        + "询问换算类问题时请先算表达式再指定 convert_to，不要用普通 calculator。",
                 true, null, Duration.ofSeconds(30),
                 Map.of(
                         "type", "object",
@@ -51,10 +58,8 @@ public class AdvancedCalculatorTool implements AgentTool {
         }
         Double converted = convertUnits(value, convertTo);
         if (converted == null) {
-            return "换算失败: 不支持的转换类型 " + convertTo
-                    + "（可用: km_to_miles/miles_to_km/meters_to_feet/feet_to_meters/"
-                    + "celsius_to_fahrenheit/fahrenheit_to_celsius/kg_to_pounds/"
-                    + "pounds_to_kg/sqm_to_sqft/sqft_to_sqm）";
+            return "换算失败: 不支持的转换类型 " + convertTo + "（可用: "
+                    + SUPPORTED_CONVERSIONS + "）";
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("original_value", value);
@@ -76,6 +81,13 @@ public class AdvancedCalculatorTool implements AgentTool {
             case "pounds_to_kg" -> value * 0.453592;
             case "sqm_to_sqft" -> value * 10.7639;
             case "sqft_to_sqm" -> value * 0.092903;
+            // TD-20③：时间单位换算（unit-002/unit-004 期望小时↔分钟，此前工具不支持）
+            case "hours_to_minutes" -> value * 60;
+            case "minutes_to_hours" -> value / 60;
+            case "minutes_to_seconds" -> value * 60;
+            case "seconds_to_minutes" -> value / 60;
+            case "hours_to_seconds" -> value * 3600;
+            case "seconds_to_hours" -> value / 3600;
             default -> null;
         };
     }

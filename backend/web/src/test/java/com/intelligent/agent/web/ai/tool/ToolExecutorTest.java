@@ -114,10 +114,42 @@ class ToolExecutorTest {
         }
     };
 
+    /** 声明了必填参数的工具（TD-19② 参数校验用）。 */
+    private static final AgentTool SEARCH_TOOL = new AgentTool() {
+        @Override
+        public ToolDefinition definition() {
+            return new ToolDefinition("search_thing", "检索", true, null, null,
+                    Map.of("type", "object",
+                            "properties", Map.of("query", Map.of("type", "string")),
+                            "required", List.of("query")));
+        }
+
+        @Override
+        public Object execute(Map<String, Object> arguments) {
+            return "found:" + arguments.get("query");
+        }
+    };
+
     private final ToolExecutor executor =
             new ToolExecutor(List.of(READ_TOOL, WRITE_TOOL, ADMIN_TOOL, SLOW_TOOL));
     private final ToolCall writeCall = ToolCall.of("write_file", Map.of());
     private final TextToolCallParser parser = new TextToolCallParser();
+
+    /** TD-19②：必填参数缺失（含空白）一律报 error，不再"空转成功"。 */
+    @Test
+    void rejectsMissingRequiredArgument() {
+        ToolExecutor toolExecutor = new ToolExecutor(List.of(SEARCH_TOOL));
+        ToolExecutionContext ctx = ToolExecutionContext.of("u1", "user");
+
+        assertThat(toolExecutor.execute(ToolCall.of("search_thing", Map.of()), ctx).status())
+                .isEqualTo("error");
+        assertThat(toolExecutor.execute(
+                ToolCall.of("search_thing", Map.of("query", "  ")), ctx).status())
+                .isEqualTo("error");
+        assertThat(toolExecutor.execute(
+                ToolCall.of("search_thing", Map.of("query", "x")), ctx).status())
+                .isEqualTo("success");
+    }
 
     // ── 执行策略 ──────────────────────────────────────────────
 

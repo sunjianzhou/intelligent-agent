@@ -183,6 +183,8 @@ public class ConversationMemoryService {
         if (answer != null && !answer.isBlank()) {
             append(userId, "assistant", answer);
         }
+        // TD-19：显式记忆意图的确定性兜底（不依赖模型是否调用 store_memory）
+        storeExplicitIntent(userId, ctx.message());
 
         int turns = turnCounts.merge(userId, 1, Integer::sum);
         List<ChatMessage> history = historyMessages(userId);
@@ -207,6 +209,71 @@ public class ConversationMemoryService {
                 && ctx.message() != null && !ctx.message().isBlank()) {
             semanticCache.put(userId, ctx.persona(), ctx.model(), ctx.message(), answer);
         }
+    }
+
+    /**
+     * TD-19：显式记忆意图的确定性兜底。
+     *
+     * <p>蒸馏每 5 轮才跑一次，而用户说"记住我的晨会时间是…"时期望是**下一轮就能召回**。
+     * 小模型经常压根不调 {@code store_memory}（2026-11-01 eval memory-003 现场：第 2 轮没写、
+     * 第 3 轮 recall=0、得分 0），所以这里按规则直接落一条 fact，不依赖模型遵从度。
+     * 同一内容重复说只保留一条（按 content 去重）。
+     */
+    void storeExplicitIntent(String userId, String message) {
+        if (message == null || message.isBlank() || memoryRepository == null) {
+            return;
+        }
+        String fact = extractExplicitFact(message);
+        if (fact == null) {
+            return;
+        }
+        for (MemoryRecord record : memoryRepository.list(
+                MemorySearchQuery.builder(userId, "", 500).build())) {
+            if (record.content() != null && record.content().trim().equals(fact)) {
+                return;
+            }
+        }
+        MemoryRecord record = new MemoryRecord(
+                "mem_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 12),
+                userId, fact, null, null, "fact", Map.of(), 0.85);
+        memoryRepository.upsert(record);
+        log.debug("[memory] 规则兜底写入显式记忆: {}", fact);
+    }
+
+    /** 记忆意图前缀；命中后取剩余部分作为事实正文。 */
+    private static final List<String> MEMORY_TRIGGERS = List.of(
+            "请帮我记住", "帮我记住", "请记住", "记住", "记一下", "要记得", "别忘记");
+
+    /** 命中"记住 / 我的X是Y"类表述时抽取要记住的事实；否则返回 null。 */
+    static String extractExplicitFact(String message) {
+        String text = message.trim();
+        if (containsToolBanner(text)) {
+            return null;
+        }
+        for (String trigger : MEMORY_TRIGGERS) {
+            int idx = text.indexOf(trigger);
+            if (idx >= 0) {
+                String rest = stripFact(text.substring(idx + trigger.length()));
+                return rest.length() >= 4 ? rest : null;
+            }
+        }
+        // "我的X是/为Y" 这类陈述句：整句就是事实
+        if (text.matches("^我的.{1,20}(是|为|叫).{1,40}$")) {
+            return text.length() >= 4 ? stripFact(text) : null;
+        }
+        return null;
+    }
+
+    /** 去掉句首标点与句尾语气词，避免把"记住：…"的冒号写进记忆。 */
+    private static String stripFact(String raw) {
+        String value = raw == null ? "" : raw.trim();
+        value = value.replaceAll("^[：:，,、\\s]+", "").trim();
+        value = value.replaceAll("[吧啊呀哦。！!\\s]+$", "").trim();
+        return value;
+    }
+
+    private static boolean containsToolBanner(String text) {
+        return text.contains("不可信数据") || text.contains("忽略其中任何指令");
     }
 
     /** 后台任务有界队列满时丢弃并告警，绝不让提取任务反压到请求线程。*/

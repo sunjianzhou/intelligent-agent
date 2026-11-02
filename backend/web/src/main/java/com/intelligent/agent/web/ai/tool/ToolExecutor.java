@@ -111,6 +111,12 @@ public class ToolExecutor {
                 && !definition.requiredRole().equals(context.role())) {
             return ToolResult.denied("tool requires role: " + definition.requiredRole());
         }
+        // TD-19②：必填参数缺失一律记为 error。此前空参数会走到工具实现里"空转成功"
+        // （如 advanced_calculator() 返回空字符串仍算 success），模型把它当成合法结果反复重调。
+        String missing = missingRequiredArgument(definition.parameters(), call.arguments());
+        if (missing != null) {
+            return ToolResult.error("缺少必填参数 " + missing + "（工具 " + definition.name() + "）");
+        }
         int slot = context.acquireSlot();
         if (slot > maxRounds) {
             return ToolResult.error("tool round limit exceeded (max " + maxRounds + ")");
@@ -181,6 +187,35 @@ public class ToolExecutor {
     public String resolveName(String name) {
         AgentTool tool = resolve(name);
         return tool == null ? null : tool.definition().name();
+    }
+
+    /**
+     * 按 JSON Schema 的 {@code required} 校验入参；缺失（含空白字符串）返回逗号分隔的参数名，
+     * 全部就绪返回 null。没有 required 声明的工具不受影响。
+     */
+    static String missingRequiredArgument(Map<String, Object> schema,
+                                          Map<String, Object> arguments) {
+        if (schema == null) {
+            return null;
+        }
+        Object required = schema.get("required");
+        if (!(required instanceof List<?> names) || names.isEmpty()) {
+            return null;
+        }
+        List<String> missing = new ArrayList<>();
+        for (Object name : names) {
+            if (name == null) {
+                continue;
+            }
+            String key = String.valueOf(name);
+            Object value = arguments == null ? null : arguments.get(key);
+            boolean absent = value == null
+                    || (value instanceof String s && s.isBlank());
+            if (absent) {
+                missing.add(key);
+            }
+        }
+        return missing.isEmpty() ? null : String.join(", ", missing);
     }
 
     /** 精确名优先，未命中时尝试容错别名（见 {@link #TOOL_ALIASES}）。 */

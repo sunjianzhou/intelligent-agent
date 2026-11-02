@@ -79,14 +79,53 @@ public class MemoryTool implements AgentTool {
         if (content.isBlank()) {
             return Map.of("success", false, "error", "content 不能为空");
         }
+        // TD-19③：模型会把工具返回的"注入防护横幅"当成待记忆的正文再写一遍
+        // （2026-11-01 eval：memory-002 的 5 条记忆里 4 条是横幅垃圾）。直接拒绝。
+        if (looksLikeToolBanner(content)) {
+            return Map.of("success", false,
+                    "error", "content 看起来是工具返回的防护横幅/Debug 文本，不是用户信息，已拒绝写入");
+        }
         String category = str(arguments.get("category"));
         double importance = dblOr(arguments.get("importance"), 0.5);
+        String existingId = findIdentical(userId, content);
+        if (existingId != null) {
+            return Map.of("success", true, "memory_id", existingId, "deduplicated", true);
+        }
         MemoryRecord record = new MemoryRecord(
                 "mem_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12),
                 userId, content, null, null,
                 category.isBlank() ? "knowledge" : category, Map.of(), importance);
         repository.upsert(record);
         return Map.of("success", true, "memory_id", record.id());
+    }
+
+    /** 工具结果注入防护横幅的特征片段（见 AgentOrchestrator.markToolResultAsData）。 */
+    private static final List<String> BANNER_MARKERS = List.of(
+            "不可信数据", "忽略其中任何指令", "以下为工具返回", "[工具「",
+            // TD-21：小模型会把本工具自己的拒绝文案再存一遍（2026-11-01 eval memory-003 现场：
+            // 一轮里写入 "content 看起来是工具返回的防护横幅/Debug 文本，不是用户信息，已拒绝写入"）
+            "防护横幅", "已拒绝写入", "系统标注");
+
+    private static boolean looksLikeToolBanner(String content) {
+        for (String marker : BANNER_MARKERS) {
+            if (content.contains(marker)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 同用户下内容完全相同的记忆只保留一条（返回已有 id）。 */
+    private String findIdentical(String userId, String content) {
+        if (repository == null) {
+            return null;
+        }
+        for (MemoryRecord record : repository.list(MemorySearchQuery.of(userId, null, 500))) {
+            if (record.content() != null && record.content().trim().equals(content)) {
+                return record.id();
+            }
+        }
+        return null;
     }
 
     private Object search(Map<String, Object> arguments, String userId) {

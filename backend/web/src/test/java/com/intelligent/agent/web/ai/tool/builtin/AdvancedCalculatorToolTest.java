@@ -41,6 +41,23 @@ class AdvancedCalculatorToolTest {
                 .isCloseTo(212.0, org.assertj.core.data.Offset.offset(0.0001));
     }
 
+    /** TD-20③：时间单位换算（unit-002/unit-004 的期望能力）。 */
+    @Test
+    void convertsHoursToMinutes() {
+        Object result = tool.execute(Map.of("expression", "2.5", "convert_to", "hours_to_minutes"));
+
+        Map<?, ?> map = (Map<?, ?>) result;
+        assertThat(((Number) map.get("converted_value")).doubleValue()).isEqualTo(150.0);
+    }
+
+    @Test
+    void convertsSecondsToHours() {
+        Object result = tool.execute(Map.of("expression", "7200", "convert_to", "seconds_to_hours"));
+
+        Map<?, ?> map = (Map<?, ?>) result;
+        assertThat(((Number) map.get("converted_value")).doubleValue()).isEqualTo(2.0);
+    }
+
     @Test
     void unsupportedConversionReturnsErrorText() {
         Object result = tool.execute(Map.of("expression", "5", "convert_to", "parsec_to_miles"));
