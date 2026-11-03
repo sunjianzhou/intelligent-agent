@@ -138,16 +138,20 @@ cd D:\workspace\intelligent_agent\backend\web
 .\mvnw.cmd test                                       # 后端全量（提交前）
 ```
 
-### 提交拆分（尚未提交）
+### 提交拆分（2026-11-03 已提交，6 个提交）
 
-1. `fix(agent): 合并 system 消息，修复记忆/上下文被 Ollama 模板丢弃`
-2. `refactor(llm): 模型能力注册表（TD-10）`
-3. `fix(ctx): num_ctx 默认 12288 + 预算计入工具定义（memory-002 根因）`
-4. `fix(tools): 文本兜底解析支持 OpenAI 风格正文工具调用 + 克/千克换算`
-5. `fix(agent): 记忆写入自污染治理（TD-19/TD-21 收尾）`
-6. `test(eval): 裁判 temperature=0、expectedContains 确定性计分与用例口径校正（TD-17/21）`
-7. `docs: 2026-11-03 收口记录`
-注意：`LOCAL_MCP_PLAN.md` 是本地备忘，**不提交**。
+1. `71cf2fa fix(tools): 文本兜底解析支持 OpenAI 风格正文工具调用`
+2. `8b81261 refactor(llm): 模型能力注册表（TD-10）`
+3. `e09e3a6 fix(ctx): num_ctx 默认 12288，预算计入工具定义（memory-002 根因）`
+4. `99f46dc fix(agent): 合并 system 消息，修复记忆/上下文被 Ollama 模板丢弃`
+   （含 AgentConfig 注册表接线与 TD-19/TD-21 记忆写入收尾）
+5. `37e486c test(eval): 确定性计分与用例口径校正（TD-17/20/21）`
+6. `ce6b655 docs: 2026-11-03 eval 收口记录（TD-17 关闭）`
+
+验证：HEAD 上 `.\mvnw.cmd test` = **691 测试全绿**；
+`-Peval -Deval.min-score=7` 全量 36 例平均 **9.44**；前 3 个提交各自
+`test-compile` 通过（可 bisect）。
+注意：`LOCAL_MCP_PLAN.md` 是本地备忘，**未提交**。
 
 ## 活跃队列
 
