@@ -20,7 +20,7 @@ public class AdvancedCalculatorTool implements AgentTool {
     private static final String SUPPORTED_CONVERSIONS =
             "km_to_miles/miles_to_km/meters_to_feet/feet_to_meters/"
                     + "celsius_to_fahrenheit/fahrenheit_to_celsius/kg_to_pounds/"
-                    + "pounds_to_kg/sqm_to_sqft/sqft_to_sqm/"
+                    + "pounds_to_kg/g_to_kg/kg_to_g/sqm_to_sqft/sqft_to_sqm/"
                     + "hours_to_minutes/minutes_to_hours/minutes_to_seconds/"
                     + "seconds_to_minutes/hours_to_seconds/seconds_to_hours";
 
@@ -79,6 +79,10 @@ public class AdvancedCalculatorTool implements AgentTool {
             case "fahrenheit_to_celsius" -> (value - 32) * 5.0 / 9.0;
             case "kg_to_pounds" -> value * 2.20462;
             case "pounds_to_kg" -> value * 0.453592;
+            // 克 ↔ 千克（2026-11-03 eval unit-003：模型只写 convert_to="kg" 会失败，
+            // 错误提示里列出 g_to_kg 后可自行重试）
+            case "g_to_kg" -> value / 1000;
+            case "kg_to_g" -> value * 1000;
             case "sqm_to_sqft" -> value * 10.7639;
             case "sqft_to_sqm" -> value * 0.092903;
             // TD-20③：时间单位换算（unit-002/unit-004 期望小时↔分钟，此前工具不支持）

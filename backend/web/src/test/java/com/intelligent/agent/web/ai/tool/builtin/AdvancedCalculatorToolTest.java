@@ -58,6 +58,16 @@ class AdvancedCalculatorToolTest {
         assertThat(((Number) map.get("converted_value")).doubleValue()).isEqualTo(2.0);
     }
 
+    /** 2026-11-03 eval unit-003：克 ↔ 千克。 */
+    @Test
+    void convertsGramsToKilograms() {
+        Object result = tool.execute(Map.of("expression", "5000", "convert_to", "g_to_kg"));
+
+        Map<?, ?> map = (Map<?, ?>) result;
+        assertThat(((Number) map.get("converted_value")).doubleValue()).isEqualTo(5.0);
+        assertThat(String.valueOf(tool.definition().description())).contains("g_to_kg");
+    }
+
     @Test
     void unsupportedConversionReturnsErrorText() {
         Object result = tool.execute(Map.of("expression", "5", "convert_to", "parsec_to_miles"));

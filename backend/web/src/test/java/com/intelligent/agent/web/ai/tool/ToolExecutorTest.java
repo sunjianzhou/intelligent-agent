@@ -308,4 +308,51 @@ class ToolExecutorTest {
                 + "{\"tool\": \"read_file\", \"args\": {\"path\": \"a.txt\"}}";
         assertThat(parser.parse(text)).hasSize(1);
     }
+
+    // ── OpenAI 风格正文 JSON（2026-11-03 eval unit-002/003）───────────
+
+    private final TextToolCallParser registryParser =
+            new TextToolCallParser(executor::resolveName);
+
+    @Test
+    void parsesOpenAiStyleNameArgumentsWithRegistryCheck() {
+        // 现场：qwen2.5 把调用写成正文 JSON，前面还带了退化词
+        String text = "nostalgianet {\"name\": \"read_file\", \"arguments\": {\"path\": \"a.txt\"}}";
+        assertThat(registryParser.parse(text))
+                .containsExactly(ToolCall.of("read_file", Map.of("path", "a.txt")));
+    }
+
+    @Test
+    void parsesOpenAiStyleInsideFenceAndResolvesAlias() {
+        String text = """
+                使用单位换算工具：
+
+                ```json
+                {"name": "unit_convert", "arguments": {"expression": "5000", "convert_to": "kg"}}
+                ```
+                """;
+        TextToolCallParser aliasParser = new TextToolCallParser(
+                name -> "unit_convert".equals(name) ? "advanced_calculator" : null);
+        assertThat(aliasParser.parse(text)).containsExactly(ToolCall.of("advanced_calculator",
+                Map.of("expression", "5000", "convert_to", "kg")));
+    }
+
+    @Test
+    void parsesNestedFunctionShape() {
+        String text = "{\"function\": {\"name\": \"read_file\", \"arguments\": {\"path\": \"c.txt\"}}}";
+        assertThat(registryParser.parse(text))
+                .containsExactly(ToolCall.of("read_file", Map.of("path", "c.txt")));
+    }
+
+    @Test
+    void ignoresUnregisteredNameJsonInAnswer() {
+        String text = "示例结构：{\"name\": \"foo\", \"arguments\": {\"a\": 1}}";
+        assertThat(registryParser.parse(text)).isEmpty();
+    }
+
+    @Test
+    void ignoresNameJsonWithoutArguments() {
+        String text = "用户叫 {\"name\": \"张三\"}";
+        assertThat(registryParser.parse(text)).isEmpty();
+    }
 }
