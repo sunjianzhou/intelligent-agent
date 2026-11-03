@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.ai.prompt;
 
 import com.intelligent.agent.web.ai.agent.AgentRequestContext;
+import com.intelligent.agent.web.ai.llm.ModelCapabilityRegistry;
 import com.intelligent.agent.web.ai.memory.ContextBudget;
 import com.intelligent.agent.web.ai.tool.ToolDefinition;
 import com.intelligent.agent.web.ai.tool.ToolExecutor;
@@ -33,7 +34,8 @@ public class PromptService {
     private final SystemPromptBuilder builder;
     private final ToolExecutor toolExecutor;
     private final RoleService roleService;
-    private final List<String> textToolPatterns;
+    /** TD-10：模型能力（text-tool / 视觉 / unrestricted / num_ctx）的唯一来源。 */
+    private final ModelCapabilityRegistry capabilities;
     private final String defaultModel;
     private final int maxContextTokens;
     private final ContextBudget contextBudget;
@@ -64,13 +66,26 @@ public class PromptService {
                          String defaultModel,
                          int maxContextTokens,
                          ContextBudget contextBudget) {
+        this(soulLoader, builder, toolExecutor, roleService,
+                ModelCapabilityRegistry.withTextToolPatterns(textToolPatterns),
+                defaultModel, maxContextTokens, contextBudget);
+    }
+
+    /** TD-10：能力判断全部委托注册表，PromptService 不再自带模型名关键词表。 */
+    public PromptService(SoulLoader soulLoader,
+                         SystemPromptBuilder builder,
+                         ToolExecutor toolExecutor,
+                         RoleService roleService,
+                         ModelCapabilityRegistry capabilities,
+                         String defaultModel,
+                         int maxContextTokens,
+                         ContextBudget contextBudget) {
         this.soulLoader = soulLoader;
         this.builder = builder == null ? new SystemPromptBuilder() : builder;
         this.toolExecutor = toolExecutor;
         this.roleService = roleService;
-        this.textToolPatterns = textToolPatterns == null
-                ? List.of("dolphin", "phi2", "orca-mini", "orca2")
-                : textToolPatterns.stream().filter(p -> p != null && !p.isBlank()).toList();
+        this.capabilities = capabilities == null
+                ? ModelCapabilityRegistry.defaults() : capabilities;
         this.defaultModel = defaultModel == null || defaultModel.isBlank() ? "qwen2.5:7b" : defaultModel;
         this.maxContextTokens = maxContextTokens;
         this.contextBudget = contextBudget;
@@ -96,9 +111,9 @@ public class PromptService {
         String prompt = builder.assemble(staticBase, role, toolOverlay, soulLoader.data(), channel);
 
         String model = effectiveModel(ctx);
-        if (isTextToolModel(model)) {
+        if (needsUnrestrictedOverlay(model)) {
             prompt = prompt + DOLPHIN_ANCHOR;
-            log.debug("model override anchor applied for text-tool model: {}", model);
+            log.debug("model override anchor applied for model: {}", model);
         }
         // 群聊场景规则（对齐 Python conversation_flow）：未被 @ 时默认沉默，避免刷屏
         if ("group".equals(ctx.sceneChatType())) {
@@ -132,12 +147,15 @@ public class PromptService {
         return requested == null || requested.isBlank() ? defaultModel : requested.trim();
     }
 
+    /** TD-10：text-tool 前缀判断（无原生 Function Calling 的模型）。 */
     public boolean isTextToolModel(String model) {
-        if (model == null || model.isBlank()) {
-            return false;
-        }
-        String lower = model.toLowerCase();
-        return textToolPatterns.stream().anyMatch(lower::contains);
+        return capabilities.supportsTextTools(model);
+    }
+
+    /** 需要追加无审查锚定的模型：text-tool 模型 ∪ 显式配置的 unrestricted 模型。 */
+    public boolean needsUnrestrictedOverlay(String model) {
+        return capabilities.supportsTextTools(model)
+                || capabilities.needsUnrestrictedOverlay(model);
     }
 
     private Map<String, Object> resolveRole(AgentRequestContext ctx) {
