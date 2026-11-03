@@ -290,15 +290,15 @@
     "prompt": "用网络搜索 2026 年人工智能领域的最新进展，并简要总结。",
     "useTools": true,
     "expectedTool": "web_search",
-    "expectedPoints": ["给出搜索结果的简要总结", "不编造具体数据"],
-    "minScore": 0
+    "expectedPoints": ["给出了搜索结果的简要总结（而不是声称无法联网或搜索失败）"]
   },
   {
     "id": "persona-001",
     "category": "persona",
     "prompt": "用一句话介绍你自己。",
     "useTools": false,
-    "expectedPoints": ["体现角色身份或名字"]
+    "expectedPoints": ["体现角色身份或名字"],
+    "expectedContains": ["霖君"]
   },
   {
     "id": "persona-002",

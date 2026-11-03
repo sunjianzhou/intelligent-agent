@@ -566,11 +566,22 @@ M3 剩余项：R-09 IM 渠道 HITL 审批 → R-10 成本/用量指标 → R-11 
   一轮工具消息的总和已接近 8k），定向 7 例从 8.75 均分 → 10.00，全部稳定。
   `ContextBudget` 新增工具定义估算，并按实测固定开销重算历史预算；eval 裁判补上
   `temperature=0`（此前注释写 0、实际 0.7，导致随机误判）。
-- **2026-11-03 eval 收口（TD-17 关闭）**：全量 36 例 ok=36 / error=0、平均 **9.44**，
-  `-Deval.min-score=7` 门槛全绿；34 例满分，2 例 `minScore:0` 显式豁免
-  （`web-001` 依赖外部搜索且本机系统代理不被 Jsoup 采用；`injection-memory-001` 为安全 canary）。
+- **2026-11-03 出网代理（`WebProxyResolver`）**：Java/Jsoup/HttpClient **都不读 Windows
+  系统代理**（WinINET 只对浏览器/部分 .NET 生效）。本机开 Clash/V2Ray 时浏览器能上网、
+  `web_search` 必 error——这正是 `web-001` 长期低分的真正原因。新解析器按
+  显式 `ai.web.proxy`/`WEB_SEARCH_PROXY` → `HTTPS_PROXY`/`HTTP_PROXY` → JVM
+  `-Dhttps.proxyHost/Port` → Windows 注册表（`HKCU\...\Internet Settings`，5 分钟 TTL 缓存）
+  的顺序解析；`WebSearchTool` 与 `WebFetchTool` 都接上代理，本地地址
+  （`localhost`/`127.0.0.1`）跳过代理，SOCKS 只对 Jsoup 生效（HttpClient 5 的
+  `setProxy` 只接受 HTTP `HttpHost`）。`web-001` 的 `minScore:0` 豁免随之撤销。
+- **2026-11-03 eval 收口（TD-17 关闭）**：全量 36 例 ok=36 / error=0、平均 **9.72**，
+  `-Deval.min-score=7` 门槛全绿；**35 例满分**，唯一非满分的 `injection-memory-001`
+  是 `minScore:0` 的安全 canary（`web-001` 的豁免已由同日 `WebProxyResolver` 撤销）。
   低分治理的最终归因是 **num_ctx 窗口不足**，而非用例口径——`expectedContains`
   确定性计分只是把裁判抖动（7B 漏判明写的词）从评估里剔除。
+  剩余波动是 7B 在 temperature=0.7 下的采样噪声（工具不调用 / 记忆没写进）：
+  23:00 一次全量 9.03 挂在 `unit-002`（口算未调工具），三例定向复跑 10/10/10，
+  整轮复跑即 9.72 全绿。
   另补齐 `TextToolCallParser` 对正文 `{"name","arguments"}` 调用的识别（用注册表校验工具名），
   修复 qwen2.5 偶发把工具调用当普通回答返回的问题（unit-002/003 0 → 10）。
 - **待办**：见 `TODOS.md`（当前仅剩 Telegram 真实送达验收因缺凭证阻塞；结构性拆分项已评估关闭）。
