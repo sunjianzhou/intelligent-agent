@@ -113,6 +113,11 @@ ai:
       enabled: ${OTEL_EXPORTER_ENABLED:false}
       endpoint: ${OTEL_EXPORTER_ENDPOINT:http://localhost:4318}
       timeout-ms: ${OTEL_EXPORTER_TIMEOUT_MS:5000}
+  # 出网代理（web_search / web_fetch）。留空时按 HTTPS_PROXY/HTTP_PROXY 环境变量、
+  # JVM -Dhttps.proxyHost 参数、Windows 系统代理（注册表）的顺序自动探测。
+  # 本机开着 Clash/V2Ray 一类系统代理时，Java 默认不走系统代理，需显式配置或依赖自动探测。
+  web:
+    proxy: ${WEB_SEARCH_PROXY:}
   # R-03：网页正文抓取工具（WebFetchTool）白名单域名，如 ["example.com"]；空 = 全部拒绝
   web-fetch:
     allowed-domains: ${WEB_FETCH_ALLOWED_DOMAINS:[]}

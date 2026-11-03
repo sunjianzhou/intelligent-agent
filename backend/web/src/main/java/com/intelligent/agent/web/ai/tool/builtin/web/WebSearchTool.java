@@ -22,14 +22,21 @@ public class WebSearchTool implements AgentTool {
 
     private final String searchUrlPrefix;
     private final int timeoutSeconds;
+    /** 出网代理（可空 = 直连）；由 {@link WebProxyResolver} 解析，见 AgentConfig。 */
+    private final java.net.Proxy proxy;
 
     public WebSearchTool() {
-        this("https://html.duckduckgo.com/html/?q=", 15);
+        this("https://html.duckduckgo.com/html/?q=", 15, null);
     }
 
     public WebSearchTool(String searchUrlPrefix, int timeoutSeconds) {
+        this(searchUrlPrefix, timeoutSeconds, null);
+    }
+
+    public WebSearchTool(String searchUrlPrefix, int timeoutSeconds, java.net.Proxy proxy) {
         this.searchUrlPrefix = searchUrlPrefix;
         this.timeoutSeconds = timeoutSeconds;
+        this.proxy = proxy;
     }
 
     @Override
@@ -57,10 +64,13 @@ public class WebSearchTool implements AgentTool {
         }
         try {
             String encoded = URLEncoder.encode(query, StandardCharsets.UTF_8);
-            Document doc = Jsoup.connect(searchUrlPrefix + encoded)
+            org.jsoup.Connection connection = Jsoup.connect(searchUrlPrefix + encoded)
                     .timeout(timeoutSeconds * 1000)
-                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                    .get();
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+            if (proxy != null && !isLocalHost(searchUrlPrefix)) {
+                connection.proxy(proxy);
+            }
+            Document doc = connection.get();
             Elements titles = doc.select(".result__a");
             Elements snippets = doc.select(".result__snippet");
             List<Map<String, Object>> results = new ArrayList<>();
@@ -84,6 +94,21 @@ public class WebSearchTool implements AgentTool {
             // 之前那样返回时，7B 模型会把「搜索失败」当成搜索结果标题，下一轮拿它当 query
             // 再搜一次（2026-11-01 eval web-001 现场），最后给出编造的"网络故障"结论。
             throw new IllegalStateException("web_search 失败：" + message);
+        }
+    }
+
+    /** 本地地址（单测的 mock 服务）不走代理，避免被系统代理劫持。 */
+    static boolean isLocalHost(String urlPrefix) {
+        try {
+            String host = java.net.URI.create(urlPrefix).getHost();
+            if (host == null) {
+                return false;
+            }
+            String normalized = host.toLowerCase(java.util.Locale.ROOT);
+            return normalized.equals("localhost") || normalized.equals("127.0.0.1")
+                    || normalized.equals("::1") || normalized.equals("[::1]");
+        } catch (Exception e) {
+            return false;
         }
     }
 }

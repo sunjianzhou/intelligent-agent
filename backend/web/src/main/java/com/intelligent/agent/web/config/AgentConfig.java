@@ -34,6 +34,7 @@ import com.intelligent.agent.web.ai.tool.builtin.TimeTool;
 import com.intelligent.agent.web.ai.tool.builtin.file.FileTool;
 import com.intelligent.agent.web.ai.tool.builtin.file.FileEditTool;
 import com.intelligent.agent.web.ai.tool.builtin.shell.ShellTool;
+import com.intelligent.agent.web.ai.tool.builtin.web.WebProxyResolver;
 import com.intelligent.agent.web.ai.tool.builtin.web.WebSearchTool;
 import com.intelligent.agent.web.ai.tool.builtin.web.WebFetchTool;
 import com.intelligent.agent.web.ai.tool.builtin.database.DatabaseTool;
@@ -132,8 +133,9 @@ public class AgentConfig {
     }
 
     @Bean
-    public WebSearchTool webSearchTool() {
-        return new WebSearchTool();
+    public WebSearchTool webSearchTool(@Value("${ai.web.proxy:${WEB_SEARCH_PROXY:}}") String proxySpec) {
+        return new WebSearchTool("https://html.duckduckgo.com/html/?q=", 15,
+                WebProxyResolver.resolve(proxySpec));
     }
 
     /** R-03：网页正文抓取工具（白名单域名 + SSRF 每跳校验；空白名单 = 全部拒绝）。 */
@@ -141,9 +143,10 @@ public class AgentConfig {
     public WebFetchTool webFetchTool(
             @Value("${ai.web-fetch.allowed-domains:}") List<String> allowedDomains,
             @Value("${ai.web-fetch.timeout-seconds:10}") int timeoutSeconds,
-            @Value("${ai.web-fetch.max-body-chars:8000}") int maxBodyChars) {
+            @Value("${ai.web-fetch.max-body-chars:8000}") int maxBodyChars,
+            @Value("${ai.web.proxy:${WEB_SEARCH_PROXY:}}") String proxySpec) {
         return new WebFetchTool(allowedDomains == null ? List.of() : allowedDomains,
-                timeoutSeconds, maxBodyChars);
+                timeoutSeconds, maxBodyChars, WebProxyResolver.resolve(proxySpec));
     }
 
     /** TODO-110 Task 1：数据库工具（DB_* 未配置时不可用，但工具始终注册）。 */

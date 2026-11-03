@@ -329,6 +329,7 @@ cd frontend && npm install && npm run dev       # http://localhost:5173
 | `EMBEDDING_ENABLED` | `true` | 真实 embedding 开关（Ollama `/api/embed`，失败回退 n-gram） |
 | `EMBEDDING_MODEL` | `nomic-embed-text` | 嵌入模型名（768 维） |
 | `PROJECT_EXTRACTION_INTERVAL` | `8` | 项目上下文 LLM 提取轮次间隔 |
+| `WEB_SEARCH_PROXY` | 空（自动探测） | `web_search` / `web_fetch` 出网代理，`host:port` 或 `http://host:port`。留空时依次探测 `HTTPS_PROXY`/`HTTP_PROXY` 环境变量、JVM `-Dhttps.proxyHost` 参数、Windows 系统代理（注册表） |
 | `MAX_CONCURRENT_STREAMS` | `32` | WS/SSE 流式对话并发上限（runtime `stream_concurrency` 可调） |
 | `LLM_INFERENCE_QUEUE_TIMEOUT` | `120s` | 推理闸门排队超时，超过返回"推理队列繁忙" |
 | `AI_SKILLS_RUNTIME_ENABLED` | `true` | 技能运行时匹配/注入开关（关键词 + LLM 裁决） |

@@ -55,15 +55,28 @@ public class WebFetchTool implements AgentTool {
     }
 
     public WebFetchTool(List<String> allowedDomains, int timeoutSeconds, int maxBodyChars) {
+        this(allowedDomains, timeoutSeconds, maxBodyChars, null);
+    }
+
+    /** 出网代理（可空 = 直连）；由 {@link WebProxyResolver} 解析，见 AgentConfig。 */
+    public WebFetchTool(List<String> allowedDomains, int timeoutSeconds, int maxBodyChars,
+                        java.net.Proxy proxy) {
         this(allowedDomains, timeoutSeconds, maxBodyChars,
                 DEFAULT_MAX_REDIRECTS, DEFAULT_MAX_RESPONSE_BYTES, true,
-                InetAddress::getAllByName);
+                InetAddress::getAllByName, proxy);
     }
 
     /** 测试构造：可关闭 SSRF / 注入自定义 DNS 解析器（安全测试用）。 */
     WebFetchTool(List<String> allowedDomains, int timeoutSeconds, int maxBodyChars,
                  int maxRedirects, long maxResponseBytes, boolean enforceSsr,
                  HostResolver resolver) {
+        this(allowedDomains, timeoutSeconds, maxBodyChars, maxRedirects, maxResponseBytes,
+                enforceSsr, resolver, null);
+    }
+
+    WebFetchTool(List<String> allowedDomains, int timeoutSeconds, int maxBodyChars,
+                 int maxRedirects, long maxResponseBytes, boolean enforceSsr,
+                 HostResolver resolver, java.net.Proxy proxy) {
         this.allowedDomains = allowedDomains == null
                 ? List.of() : allowedDomains.stream()
                 .filter(d -> d != null && !d.isBlank())
@@ -81,10 +94,16 @@ public class WebFetchTool implements AgentTool {
                 .setResponseTimeout(Timeout.ofSeconds(this.timeoutSeconds))
                 .setConnectionRequestTimeout(Timeout.ofSeconds(10))
                 .build();
-        this.httpClient = HttpClients.custom()
+        var builder = HttpClients.custom()
                 .setDefaultRequestConfig(config)
-                .disableRedirectHandling()
-                .build();
+                .disableRedirectHandling();
+        // HttpClient 5 只接受 HttpHost；SOCKS 代理仅 web_search 支持（此处按直连处理）
+        if (proxy != null && proxy.type() == java.net.Proxy.Type.HTTP
+                && proxy.address() instanceof java.net.InetSocketAddress address) {
+            builder.setProxy(new org.apache.hc.core5.http.HttpHost(
+                    "http", address.getHostString(), address.getPort()));
+        }
+        this.httpClient = builder.build();
     }
 
     @Override
