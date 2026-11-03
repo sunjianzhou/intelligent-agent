@@ -209,7 +209,7 @@ public class ConfigRuntimeService {
         defaults.put("tool_result_max_chars", 5000);
         defaults.put("ollama_max_tokens", 2048);
         defaults.put("ollama_temperature", 0.7);
-        defaults.put("ollama_num_ctx", 4096);
+        defaults.put("ollama_num_ctx", 12288);
         return defaults;
     }
 

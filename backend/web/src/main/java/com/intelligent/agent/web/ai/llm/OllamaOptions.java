@@ -23,6 +23,6 @@ public record OllamaOptions(
         String keepAlive) {
 
     public static OllamaOptions defaults() {
-        return new OllamaOptions(0.7, 2048, 0.9, 40, 1.1, 4096, -1, "-1");
+        return new OllamaOptions(0.7, 2048, 0.9, 40, 1.1, 12288, -1, "-1");
     }
 }

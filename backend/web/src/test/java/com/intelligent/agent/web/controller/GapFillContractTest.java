@@ -190,7 +190,7 @@ class GapFillContractTest {
     void configRuntimeGetAndPatch() throws Exception {
         mockMvc.perform(get("/api/config/runtime"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.config.ollama_num_ctx").value(4096))
+                .andExpect(jsonPath("$.config.ollama_num_ctx").value(12288))
                 .andExpect(jsonPath("$.usage.long_term_entries").value(0));
 
         mockMvc.perform(patch("/api/config/runtime")

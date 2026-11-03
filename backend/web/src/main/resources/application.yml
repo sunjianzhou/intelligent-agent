@@ -17,7 +17,10 @@ ai:
       top-p: ${OLLAMA_TOP_P:0.9}
       top-k: ${OLLAMA_TOP_K:40}
       repeat-penalty: ${OLLAMA_REPEAT_PENALTY:1.1}
-      num-ctx: ${OLLAMA_NUM_CTX:4096}
+      # 实测「system 约 4k + 22 个原生工具定义约 3.5k + 一轮工具消息」到 8192 仍会触发 Ollama
+      # 的上下文滑动：prompt 被截断（记忆整段丢失）、输出出现断词残句（"leton {...}"）。
+      # 12288 下工具轮/记忆用例全部稳定；显存紧张可下调，但工具全开不要低于 8192。
+      num-ctx: ${OLLAMA_NUM_CTX:12288}
       num-gpu: ${OLLAMA_NUM_GPU:-1}
       # 前缀缓存：同一 system prompt 前缀复用 KV cache（默认开）
       cache-prompt: ${OLLAMA_CACHE_PROMPT:true}
@@ -58,7 +61,12 @@ ai:
       daily-limit: ${LLM_FALLBACK_DAILY_LIMIT:50}
     # R-14：图片理解——附图片时校验模型是否支持视觉（关键词 + 显式列表），不支持则给出清晰错误
     vision-check-enabled: ${AI_LLM_VISION_CHECK_ENABLED:true}
+    # 显式登记的视觉模型（完整模型名，逗号分隔）
     vision-models: ${AI_LLM_VISION_MODELS:[]}
+    # TD-10：视觉模型名关键词（留空用代码内置默认表；新增视觉模型优先在这里追加）
+    vision-keywords: ${AI_LLM_VISION_KEYWORDS:}
+    # TD-10：需要追加"无审查"锚定的模型名片段（默认仅 dolphin）
+    unrestricted-patterns: ${AI_LLM_UNRESTRICTED_PATTERNS:dolphin}
   # 真实 embedding（Ollama /api/embed，TODO-110 Task 5）
   embedding:
     enabled: ${EMBEDDING_ENABLED:true}

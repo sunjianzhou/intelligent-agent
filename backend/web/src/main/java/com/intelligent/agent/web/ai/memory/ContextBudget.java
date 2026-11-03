@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.ai.memory;
 
 import com.intelligent.agent.web.ai.llm.ChatMessage;
+import com.intelligent.agent.web.ai.tool.ToolDefinition;
 
 import java.util.List;
 import java.util.Map;
@@ -36,7 +37,10 @@ public class ContextBudget {
     private final Map<String, Integer> numCtxByModel;
 
     public ContextBudget(int defaultNumCtx, Map<String, Integer> numCtxByModel) {
-        this.defaultNumCtx = defaultNumCtx > 0 ? defaultNumCtx : 4096;
+        // 与 application.yml / ModelCapabilityRegistry.DEFAULT_NUM_CTX 保持一致。
+        // 4096 装不下「system 约 4k + 22 个原生工具约 3.5k」；8192 再叠加一轮工具消息
+        // 仍会触发 Ollama 的上下文滑动（记忆块丢失、输出断词），默认取 12288。
+        this.defaultNumCtx = defaultNumCtx > 0 ? defaultNumCtx : 12288;
         this.numCtxByModel = numCtxByModel == null ? Map.of() : Map.copyOf(numCtxByModel);
     }
 
@@ -106,6 +110,30 @@ public class ContextBudget {
         }
         return MESSAGE_OVERHEAD_TOKENS
                 + estimateTokens(message.role() + "\n" + message.content());
+    }
+
+    /**
+     * 原生工具定义（JSON Schema）的 token 估算。
+     *
+     * <p>工具定义不经过 {@link ChatMessage}，此前完全没有计入预算。实测 22 个内置工具的
+     * JSON 约 3559 token，与 system prompt（约 4k）合计就吃掉了 4096 窗口——历史消息再多也不会被
+     * 裁剪，最终由 Ollama 静默截断。按字段拼接估算与真实 JSON 的偏差在 ±10% 内（已含括号/引号）。</p>
+     */
+    public static int estimateToolDefinitions(List<ToolDefinition> definitions) {
+        if (definitions == null || definitions.isEmpty()) {
+            return 0;
+        }
+        int total = 0;
+        for (ToolDefinition definition : definitions) {
+            if (definition == null) {
+                continue;
+            }
+            total += MESSAGE_OVERHEAD_TOKENS
+                    + estimateTokens(definition.name())
+                    + estimateTokens(definition.description())
+                    + estimateTokens(String.valueOf(definition.parameters()));
+        }
+        return total;
     }
 
     /** 消息列表估算（用于历史 / 系统块）。 */
@@ -207,6 +235,23 @@ public class ContextBudget {
             projectTokens = Math.max(1, projectTokens);
             historyTokens = Math.max(1, historyTokens);
             currentTokens = Math.max(1, currentTokens);
+        }
+
+        /**
+         * 用"实际测量到的固定开销"重算历史预算。
+         *
+         * <p>固定比例（SYSTEM_RATIO / TOOLS_RATIO / HISTORY_RATIO）在真实请求里并不成立：
+         * system 与 22 个工具定义合计可达 7.5k，而比例只给它们 35% 的窗口。结果是历史预算被高估、
+         * 不触发压缩，整个 prompt 超出 num_ctx 后被 Ollama 从中间截断。
+         * 调用方在拼好 system / 记忆 / 项目上下文 / 当前问题后，用实测值调用本方法，
+         * 历史只拿剩余额度。</p>
+         *
+         * @param usedByFixedBlocks 已构造的消息 + 工具定义 + 当前问题的估算 token
+         */
+        public Plan withActualUsage(int usedByFixedBlocks) {
+            int remaining = usableTokens - Math.max(0, usedByFixedBlocks);
+            return new Plan(numCtx, usableTokens, systemTokens, toolTokens, memoryTokens,
+                    projectTokens, Math.max(0, remaining), currentTokens);
         }
     }
 }

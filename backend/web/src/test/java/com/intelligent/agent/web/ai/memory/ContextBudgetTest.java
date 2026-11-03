@@ -1,6 +1,7 @@
 package com.intelligent.agent.web.ai.memory;
 
 import com.intelligent.agent.web.ai.llm.ChatMessage;
+import com.intelligent.agent.web.ai.tool.ToolDefinition;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -74,6 +75,32 @@ class ContextBudgetTest {
 
         assertThat(ContextBudget.estimateTokens(fit)).isLessThanOrEqualTo(40);
         assertThat(fit).contains("截断");
+    }
+
+    /** 2026-11-03：工具定义此前完全不计入预算，22 个原生工具约 3.5k token 直接挤爆窗口。 */
+    @Test
+    void estimateToolDefinitionsCountsNativeSchemas() {
+        List<ToolDefinition> tools = List.of(
+                new ToolDefinition("calculator", "数学表达式计算与单位换算", true, null, null,
+                        Map.of("type", "object",
+                                "properties", Map.of("expression", Map.of("type", "string")))),
+                new ToolDefinition("time_tool", "当前日期时间", true, null, null));
+
+        assertThat(ContextBudget.estimateToolDefinitions(tools)).isGreaterThan(20);
+        assertThat(ContextBudget.estimateToolDefinitions(null)).isZero();
+        assertThat(ContextBudget.estimateToolDefinitions(List.of())).isZero();
+    }
+
+    @Test
+    void actualUsageLeavesHistoryOnlyTheRemainder() {
+        ContextBudget.Plan plan = budget.plan("qwen2.5:7b", Map.of());
+        int fixed = plan.usableTokens() - 100;
+
+        ContextBudget.Plan fitted = plan.withActualUsage(fixed);
+
+        assertThat(fitted.historyTokens()).isEqualTo(100);
+        // 固定开销超过窗口时历史预算归零（由压缩/铁律决定后续行为）
+        assertThat(plan.withActualUsage(plan.usableTokens() + 500).historyTokens()).isEqualTo(1);
     }
 
     @Test

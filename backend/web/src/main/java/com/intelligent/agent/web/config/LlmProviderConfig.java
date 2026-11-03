@@ -37,7 +37,7 @@ public class LlmProviderConfig {
             @Value("${ai.llm.ollama.top-p:0.9}") double topP,
             @Value("${ai.llm.ollama.top-k:40}") int topK,
             @Value("${ai.llm.ollama.repeat-penalty:1.1}") double repeatPenalty,
-            @Value("${ai.llm.ollama.num-ctx:4096}") int numCtx,
+            @Value("${ai.llm.ollama.num-ctx:12288}") int numCtx,
             @Value("${ai.llm.ollama.num-gpu:-1}") int numGpu,
             @Value("${ai.llm.ollama.keep-alive:-1}") String keepAlive,
             @Value("${ai.llm.ollama.cache-prompt:true}") boolean cachePrompt,

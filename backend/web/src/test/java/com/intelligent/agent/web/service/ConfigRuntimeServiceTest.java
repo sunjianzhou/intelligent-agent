@@ -39,13 +39,13 @@ class ConfigRuntimeServiceTest {
         service.patch(Map.of(
                 "ollama_temperature", 0.3,
                 "ollama_max_tokens", 1024,
-                "ollama_num_ctx", 8192,
+                "ollama_num_ctx", 12288,
                 "chat_timeout", 120));
 
         assertThat(service.llmRequestOptions())
                 .containsEntry("temperature", 0.3)
                 .containsEntry("max_tokens", 1024.0)
-                .containsEntry("num_ctx", 8192.0)
+                .containsEntry("num_ctx", 12288.0)
                 .containsEntry("chat_timeout", 120.0)
                 .doesNotContainKey("inference_concurrency");
     }
