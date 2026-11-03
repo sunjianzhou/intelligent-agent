@@ -165,9 +165,29 @@ class AgentOrchestratorTaskAndBranchTest {
 
         @Override
         public Object execute(Map<String, Object> arguments) {
+            // 真实 ID 形态（mem_ + 十六进制），便于验证"回声"里的标识符检测
             return Map.of("success", true,
-                    "memory_id", "m" + executions.incrementAndGet());
+                    "memory_id", String.format("mem_%08x", executions.incrementAndGet()));
         }
+    }
+
+    @Test
+    void blocksToolOutputEchoedBackAsArgument() {
+        // TD-21②：模型把上一条工具收据改写成一句话再当参数传回来
+        // （eval 现场：store_memory("成功存储的记忆ID为mem_xxx")）
+        CountingStoreTool store = new CountingStoreTool();
+        CapturingProvider provider = new CapturingProvider(List.of(
+                "<tool_call>{\"tool\": \"store_memory\", \"args\": {\"content\": \"我住在上海\"}}</tool_call>",
+                "<tool_call>{\"tool\": \"store_memory\", \"args\": {\"content\": \"成功存储的记忆ID为mem_00000001\"}}</tool_call>",
+                "已记住"));
+        AgentOrchestrator orchestrator = new AgentOrchestrator(
+                new LlmProviderRouter(provider, null, List.of()),
+                new ToolExecutor(List.of(store)));
+
+        String answer = orchestrator.complete(AgentRequestContext.of("u1", "记住我住在上海")).block();
+
+        assertThat(answer).isEqualTo("已记住");
+        assertThat(store.executions.get()).isEqualTo(1);
     }
 
     @Test

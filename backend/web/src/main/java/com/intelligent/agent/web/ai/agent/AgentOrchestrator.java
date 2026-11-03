@@ -14,8 +14,8 @@ import com.intelligent.agent.web.ai.llm.LlmProvider;
 import com.intelligent.agent.web.ai.llm.LlmProviderException;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
 import com.intelligent.agent.web.ai.llm.LlmResponse;
-import com.intelligent.agent.web.ai.llm.LlmVisionSupport;
 import com.intelligent.agent.web.ai.llm.LlmUsage;
+import com.intelligent.agent.web.ai.llm.ModelCapabilityRegistry;
 import com.intelligent.agent.web.ai.llm.ModelEvent;
 import com.intelligent.agent.web.ai.memory.AgentContext;
 import com.intelligent.agent.web.ai.memory.ContextBudget;
@@ -84,7 +84,8 @@ public class AgentOrchestrator {
     private final ApprovalNotifier approvalNotifier;
     /** R-14：附图片时是否校验模型视觉能力（Spring 装配默认开；单元测试默认关）。 */
     private final boolean visionCheckEnabled;
-    private final List<String> visionModels;
+    /** TD-10：模型能力（视觉 / text-tool / unrestricted / num_ctx）唯一来源。 */
+    private final ModelCapabilityRegistry capabilities;
     /** R-16：工具轮结果断点缓存（中断后同 requestId 重发跳过已执行工具）。 */
     private final ToolCheckpointStore checkpointStore;
 
@@ -253,9 +254,29 @@ public class AgentOrchestrator {
                              ApprovalNotifier approvalNotifier,
                              boolean visionCheckEnabled, List<String> visionModels,
                              ToolCheckpointStore checkpointStore) {
+        this(router, toolExecutor, memoryService, promptService, branchFailureDetector,
+                maxToolRounds, traceService, configRuntimeService, planner, reflector,
+                approvalGate, skillMatcher, contextBudget, subAgentExecutor, approvalNotifier,
+                visionCheckEnabled, ModelCapabilityRegistry.withVisionModels(visionModels),
+                checkpointStore);
+    }
+
+    /** TD-10：能力判断统一走注册表（Spring 装配使用此构造器）。 */
+    public AgentOrchestrator(LlmProviderRouter router, ToolExecutor toolExecutor,
+                             ConversationMemoryService memoryService,
+                             PromptService promptService,
+                             BranchFailureDetector branchFailureDetector, int maxToolRounds,
+                             TraceService traceService, ConfigRuntimeService configRuntimeService,
+                             TaskPlanner planner, AnswerReflector reflector,
+                             ApprovalGate approvalGate, SkillMatcher skillMatcher,
+                             ContextBudget contextBudget, SubAgentExecutor subAgentExecutor,
+                             ApprovalNotifier approvalNotifier,
+                             boolean visionCheckEnabled, ModelCapabilityRegistry capabilities,
+                             ToolCheckpointStore checkpointStore) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.toolExecutor = Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
-        this.toolCallParser = new TextToolCallParser();
+        // 文本兜底解析要能识别 OpenAI 风格 {"name","arguments"}，并用注册表校验工具名
+        this.toolCallParser = new TextToolCallParser(toolExecutor::resolveName);
         this.memoryService = memoryService;
         this.promptService = promptService;
         this.branchFailureDetector = branchFailureDetector == null
@@ -271,7 +292,8 @@ public class AgentOrchestrator {
         this.subAgentExecutor = subAgentExecutor;
         this.approvalNotifier = approvalNotifier;
         this.visionCheckEnabled = visionCheckEnabled;
-        this.visionModels = visionModels == null ? List.of() : List.copyOf(visionModels);
+        this.capabilities = capabilities == null
+                ? ModelCapabilityRegistry.defaults() : capabilities;
         this.checkpointStore = checkpointStore;
     }
 
@@ -323,8 +345,8 @@ public class AgentOrchestrator {
                 .flatMapMany(tuple -> {
                     SkillMatch skillMatch = tuple.getT1();
                     Optional<ExecutionPlan> plan = tuple.getT2();
-                    List<ChatMessage> baseMessages =
-                            initialMessages(context, memory, skillMatch.prompt(), traceId);
+                    List<ChatMessage> baseMessages = initialMessages(context, memory,
+                            skillMatch.prompt(), traceId, skillMatch.toolDefs());
                     // HITL：审批请求等中途事件经 midEvents 与主事件流合并（审批前先推送）
                     Sinks.Many<ModelEvent> midEvents =
                             Sinks.many().unicast().onBackpressureBuffer();
@@ -400,8 +422,8 @@ public class AgentOrchestrator {
                 .flatMap(tuple -> {
                     SkillMatch skillMatch = tuple.getT1();
                     Optional<ExecutionPlan> plan = tuple.getT2();
-                    List<ChatMessage> baseMessages =
-                            initialMessages(context, memory, skillMatch.prompt(), traceId);
+                    List<ChatMessage> baseMessages = initialMessages(context, memory,
+                            skillMatch.prompt(), traceId, skillMatch.toolDefs());
                     return executePlan(context, baseMessages, plan, skillMatch.toolDefs(),
                                     traceId, tracker, null)
                             .flatMap(state -> completeFinal(context, state, traceId, tracker));
@@ -549,12 +571,13 @@ public class AgentOrchestrator {
     }
 
     private List<ChatMessage> initialMessages(AgentRequestContext ctx, AgentContext memory) {
-        return initialMessages(ctx, memory, "", null);
+        return initialMessages(ctx, memory, "", null, List.of());
     }
 
     /** R-01：按模型 num_ctx 预算分块构建初始消息；历史超限时滚动窗口 + 摘要注入（无摘要不裁剪）。 */
     private List<ChatMessage> initialMessages(AgentRequestContext ctx, AgentContext memory,
-                                              String skillPrompt, String traceId) {
+                                              String skillPrompt, String traceId,
+                                              List<ToolDefinition> toolDefs) {
         ContextBudget.Plan plan = contextBudget == null
                 ? null : contextBudget.plan(effectiveModel(ctx), ctx.options());
         int memoryBudget = plan == null ? Integer.MAX_VALUE : plan.memoryTokens();
@@ -617,6 +640,20 @@ public class AgentOrchestrator {
             }
             // R-01 历史压缩：超限时滚动窗口 + 最近摘要注入；无摘要则铁律不裁剪（trace 告警）
             List<ChatMessage> history = memory.history();
+            if (plan != null) {
+                // 2026-11-03：比例预算在真实请求里不成立——system（约 4k）+ 22 个原生工具定义
+                // （约 3.5k）已把 8k 窗口占满，而比例仍给历史 45%，导致历史不裁剪、整个 prompt
+                // 被 Ollama 从中间截断（memory-002/004 的记忆块正是在截断中丢失）。
+                // 改为按实测固定开销扣减，历史只拿剩余额度。
+                int fixedTokens = ContextBudget.estimateMessages(messages)
+                        + ContextBudget.estimateToolDefinitions(toolDefs)
+                        + ContextBudget.estimateMessage(ChatMessage.user(ctx.message()));
+                if (skillPrompt != null && !skillPrompt.isBlank()) {
+                    fixedTokens += ContextBudget.estimateMessage(
+                            ChatMessage.system(skillPrompt));
+                }
+                plan = plan.withActualUsage(fixedTokens);
+            }
             if (plan != null && memoryService != null && !history.isEmpty()) {
                 long start = System.currentTimeMillis();
                 ConversationMemoryService.CompactionResult compaction =
@@ -654,7 +691,7 @@ public class AgentOrchestrator {
             return java.util.Optional.empty();
         }
         String model = effectiveModel(ctx);
-        if (model != null && LlmVisionSupport.isVisionModel(model, visionModels)) {
+        if (model != null && capabilities.supportsVision(model)) {
             return java.util.Optional.empty();
         }
         String modelText = model == null || model.isBlank() ? "当前模型" : "当前模型 " + model;
@@ -688,7 +725,13 @@ public class AgentOrchestrator {
     }
 
     private static String recallSection(String header, List<MemoryRecord> records) {
-        StringBuilder sb = new StringBuilder(header).append('\n');
+        StringBuilder sb = new StringBuilder(header).append('\n')
+                // 2026-11-02：小模型拿到记忆仍会反问用户 / 声称"没有记录"（memory-003 现场），
+                // 显式给出使用指令，比只列事实更能约束 7B 的回答行为。
+                // memory-002 现场：工具开启时 7B 会转向 web_search/list_tasks 绕开记忆，
+                // 因此指令需同时禁止为已能回答的问题调用工具。
+                .append("以下是从长期记忆中检索到的相关事实；若其中已包含用户所问的信息，"
+                        + "请直接据此回答，不要为此调用任何工具，不要说\"没有记录\"，也不要反问用户。\n");
         boolean hasSource = false;
         for (MemoryRecord record : records) {
             String source = sourceLabel(record);
@@ -1097,29 +1140,37 @@ public class AgentOrchestrator {
             // 现场：calc-001 成功后反复 advanced_calculator()，web-001 超时后反复用错误文本当参数，
             // memory-002 把防护横幅反复写进长期记忆；这些调用既无副作用价值，又会打满 5 轮上限。
             Set<String> alreadyCalled = new HashSet<>();
+            Map<String, Integer> sideEffectUses = new HashMap<>();
             for (Map<String, Object> entry : executedCalls) {
                 alreadyCalled.add(callFingerprint(entry.get("name"), entry.get("arguments")));
-            }
-            Map<Integer, ToolResult> blockedByIndex = new HashMap<>();
-            // TD-21：单次请求最多写 3 条长期记忆。评测现场出现的自污染写入每次内容都不同
-            // （横幅的变体），同参数去重拦不住，只能在次数上兜底。
-            int memoryWrites = 0;
-            for (Map<String, Object> entry : executedCalls) {
-                if (MEMORY_WRITE_TOOL.equals(entry.get("name"))) {
-                    memoryWrites++;
+                String name = String.valueOf(entry.get("name"));
+                if (SIDE_EFFECT_TOOL_CAPS.containsKey(name)) {
+                    sideEffectUses.merge(name, 1, Integer::sum);
                 }
             }
+            // TD-21②：本服务自己生成的工具输出被模型当成下一轮的工具入参（自污染回声）。
+            List<String> priorOutputs = priorToolOutputs(next);
+            Map<Integer, ToolResult> blockedByIndex = new HashMap<>();
             for (int i = 0; i < calls.size(); i++) {
                 ToolCall call = calls.get(i);
+                Integer cap = SIDE_EFFECT_TOOL_CAPS.get(call.name());
+                int used = cap == null ? 0 : sideEffectUses.getOrDefault(call.name(), 0);
+                String echo = looksLikeToolOutputEcho(call, priorOutputs);
                 if (!alreadyCalled.add(callFingerprint(call.name(), call.arguments()))) {
                     blockedByIndex.put(i, ToolResult.error("重复调用已拦截：工具 " + call.name()
                             + " 用相同参数已经执行过，结果就在上文，请直接使用结果或换一种做法"));
-                } else if (MEMORY_WRITE_TOOL.equals(call.name()) && memoryWrites >= MAX_MEMORY_WRITES) {
-                    blockedByIndex.put(i, ToolResult.error("本次请求已写入 " + MAX_MEMORY_WRITES
-                            + " 条记忆，不再重复写入：请直接用已有的记忆回复用户"
-                            + "（若确有新事实要记，请在下一轮对话中说明）"));
-                } else if (MEMORY_WRITE_TOOL.equals(call.name())) {
-                    memoryWrites++;
+                } else if (echo != null) {
+                    // 现场：store_memory("成功存储的记忆ID为mem_xxx")、
+                    // create_periodic_reminder("⏰ 晨会有事")——参数就是上一条工具收据本身。
+                    blockedByIndex.put(i, ToolResult.error("工具输出不能作为工具输入：参数「" + echo
+                            + "」来自上一条工具结果，不是需要处理的新内容。"
+                            + "请直接使用该结果回答用户，不要把它再交给工具"));
+                } else if (cap != null && used >= cap) {
+                    blockedByIndex.put(i, ToolResult.error("本次请求已调用 " + call.name() + " "
+                            + cap + " 次，不再重复执行：请直接用已有结果回复用户"
+                            + "（若确有新内容要处理，请在下一轮对话中说明）"));
+                } else if (cap != null) {
+                    sideEffectUses.put(call.name(), used + 1);
                 }
             }
             List<ToolCall> executable = new ArrayList<>();
@@ -1221,6 +1272,19 @@ public class AgentOrchestrator {
     /** TD-21：单次请求允许的长期记忆写入条数上限（防小模型自污染式重复写入）。 */
     static final String MEMORY_WRITE_TOOL = "store_memory";
     static final int MAX_MEMORY_WRITES = 3;
+
+    /**
+     * TD-21②：有副作用的工具在单次请求内的调用次数上限。
+     * <p>小模型会把自己的工具收据当成新输入反复回灌：memory-003 现场一轮里创建了 5 条
+     * {@code create_periodic_reminder}（"⏰ 晨会有事" → "⏰ ⏰ 晨会有事" → …），
+     * 内容每次都在变化，同参数去重拦不住，只能按次数兜底。
+     */
+    static final Map<String, Integer> SIDE_EFFECT_TOOL_CAPS = Map.of(
+            MEMORY_WRITE_TOOL, MAX_MEMORY_WRITES,
+            "create_reminder", 1,
+            "create_periodic_reminder", 1,
+            "create_onetime_ai_task", 1,
+            "create_periodic_ai_task", 1);
 
     /** G2 注入防护：把外部工具输出显式标记为不可信数据（仅数据，非指令），
      *  与 system prompt 中的同类声明配合，降低提示词注入风险。 */
@@ -1365,14 +1429,17 @@ public class AgentOrchestrator {
         List<ChatMessage> out = new ArrayList<>(messages);
         if (toolsRan) {
             out.add(ChatMessage.system(
-                    "工具已执行完毕，结果已在上方。请直接用中文回答用户的问题，"
+                    "工具已执行完毕，执行结果见本轮对话中的工具消息。请直接用中文回答用户的问题，"
                             + "不要再输出任何工具调用格式，直接给出自然语言回答。"));
         }
         return out;
     }
 
     private ChatTurn buildTurn(AgentRequestContext ctx, List<ChatMessage> messages) {
-        return new ChatTurn(ctx.userId(), ctx.model(), messages, ctx.options(),
+        // 2026-11-02：多 system 消息在 Ollama 模板里会被静默丢弃（见 ChatMessage 注释），
+        // 记忆 / 项目上下文 / 计划 / 收尾指令必须在发送前合并成唯一一条 system。
+        return new ChatTurn(ctx.userId(), ctx.model(),
+                ChatMessage.mergeSystemMessages(messages), ctx.options(),
                 ctx.imageBase64() == null || ctx.imageBase64().isBlank()
                         ? List.of() : List.of(ctx.imageBase64()));
     }
@@ -1415,6 +1482,97 @@ public class AgentOrchestrator {
      * TD-19①：工具调用指纹（工具名 + 归一化参数）。参数按 key 排序后拼串，
      * 使 Map 顺序不同但内容相同的调用也能被判为重复。
      */
+    /** 上下文中已有的工具结果文本（role=tool），用于识别"把工具输出当输入"的回声。 */
+    private static List<String> priorToolOutputs(List<ChatMessage> messages) {
+        List<String> outputs = new ArrayList<>();
+        if (messages == null) {
+            return outputs;
+        }
+        for (ChatMessage message : messages) {
+            if ("tool".equals(message.role()) && message.content() != null
+                    && !message.content().isBlank()) {
+                outputs.add(message.content());
+            }
+        }
+        return outputs;
+    }
+
+    /**
+     * TD-21②：有副作用的工具，其字符串参数是否只是上一条工具输出的复述。
+     *
+     * <p>现场：{@code store_memory("成功存储的记忆ID为mem_xxx")}、
+     * {@code create_periodic_reminder("⏰ 晨会有事")}。判定用去标点/表情后的子串包含关系；
+     * 长输出（搜索结果等）不参与，避免 4 字参数撞上整篇正文。
+     *
+     * @return 命中的参数原文（写进错误文案便于排查），未命中返回 null
+     */
+    static String looksLikeToolOutputEcho(ToolCall call, List<String> priorOutputs) {
+        if (call == null || call.arguments() == null || priorOutputs == null
+                || priorOutputs.isEmpty()
+                || !SIDE_EFFECT_TOOL_CAPS.containsKey(call.name())) {
+            return null;
+        }
+        List<String> normalizedOutputs = new ArrayList<>();
+        for (String output : priorOutputs) {
+            String out = normalizeEchoText(output);
+            // 长输出（搜索结果、文件内容）不参与：4 字参数撞上整篇正文的误报率太高
+            if (out.length() >= 4 && out.length() <= 800) {
+                normalizedOutputs.add(out);
+            }
+        }
+        for (Object value : call.arguments().values()) {
+            if (!(value instanceof String text) || text.isBlank()) {
+                continue;
+            }
+            String arg = normalizeEchoText(text);
+            if (arg.length() < 4) {
+                continue;
+            }
+            for (String out : normalizedOutputs) {
+                if (out.contains(arg) || arg.contains(out)) {
+                    return text;
+                }
+            }
+            // 中文收据常被改写成一句话（"成功存储的记忆ID为mem_4a28…"），整串包含对不上，
+            // 但其中的 ID/令牌一定来自上一条输出。
+            for (String token : identifierTokens(text)) {
+                for (String out : normalizedOutputs) {
+                    if (out.contains(token)) {
+                        return text;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 参数里的 ASCII 标识符（记忆 ID、任务 ID 等），长度 ≥6 才有区分度。 */
+    static List<String> identifierTokens(String text) {
+        List<String> tokens = new ArrayList<>();
+        for (String raw : text.split("[^A-Za-z0-9_]+")) {
+            if (raw.length() >= 6) {
+                tokens.add(normalizeEchoText(raw));
+            }
+        }
+        return tokens;
+    }
+
+    /** 回声比对用的归一化：只保留字母/数字/汉字并转小写，去掉标点、空白与表情。 */
+    static String normalizeEchoText(String text) {
+        if (text == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); ) {
+            int cp = text.codePointAt(i);
+            i += Character.charCount(cp);
+            if (Character.isLetterOrDigit(cp)) {
+                sb.appendCodePoint(Character.toLowerCase(cp));
+            }
+        }
+        return sb.toString();
+    }
+
     static String callFingerprint(Object name, Object arguments) {
         StringBuilder sb = new StringBuilder(String.valueOf(name)).append('|');
         if (arguments instanceof Map<?, ?> map) {

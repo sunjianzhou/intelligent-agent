@@ -227,9 +227,12 @@ public class ConversationMemoryService {
         if (fact == null) {
             return;
         }
+        String target = fact.replaceAll("[\\s。！!，,、；;：:]+$", "").trim();
         for (MemoryRecord record : memoryRepository.list(
                 MemorySearchQuery.builder(userId, "", 500).build())) {
-            if (record.content() != null && record.content().trim().equals(fact)) {
+            String existing = record.content() == null ? ""
+                    : record.content().replaceAll("[\\s。！!，,、；;：:]+$", "").trim();
+            if (existing.equals(target)) {
                 return;
             }
         }
@@ -244,6 +247,10 @@ public class ConversationMemoryService {
     private static final List<String> MEMORY_TRIGGERS = List.of(
             "请帮我记住", "帮我记住", "请记住", "记住", "记一下", "要记得", "别忘记");
 
+    /** 疑问句特征：抽到的是"我的晨会是什么时候"这类问题而不是事实（memory-003 现场）。 */
+    private static final List<String> QUESTION_MARKERS = List.of(
+            "什么时候", "什么时间", "什么", "多少", "几点", "哪天", "哪一天", "吗", "呢", "?", "？");
+
     /** 命中"记住 / 我的X是Y"类表述时抽取要记住的事实；否则返回 null。 */
     static String extractExplicitFact(String message) {
         String text = message.trim();
@@ -254,14 +261,28 @@ public class ConversationMemoryService {
             int idx = text.indexOf(trigger);
             if (idx >= 0) {
                 String rest = stripFact(text.substring(idx + trigger.length()));
-                return rest.length() >= 4 ? rest : null;
+                return isFactLike(rest) ? rest : null;
             }
         }
         // "我的X是/为Y" 这类陈述句：整句就是事实
         if (text.matches("^我的.{1,20}(是|为|叫).{1,40}$")) {
-            return text.length() >= 4 ? stripFact(text) : null;
+            String fact = stripFact(text);
+            return isFactLike(fact) ? fact : null;
         }
         return null;
+    }
+
+    /** 事实至少要 4 个字，且不能是疑问/询问——否则会把用户的提问当事实写进长期记忆。 */
+    private static boolean isFactLike(String fact) {
+        if (fact == null || fact.length() < 4) {
+            return false;
+        }
+        for (String marker : QUESTION_MARKERS) {
+            if (fact.contains(marker)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** 去掉句首标点与句尾语气词，避免把"记住：…"的冒号写进记忆。 */

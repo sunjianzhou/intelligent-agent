@@ -104,28 +104,42 @@ public class MemoryTool implements AgentTool {
             "不可信数据", "忽略其中任何指令", "以下为工具返回", "[工具「",
             // TD-21：小模型会把本工具自己的拒绝文案再存一遍（2026-11-01 eval memory-003 现场：
             // 一轮里写入 "content 看起来是工具返回的防护横幅/Debug 文本，不是用户信息，已拒绝写入"）
-            "防护横幅", "已拒绝写入", "系统标注");
+            "防护横幅", "已拒绝写入", "系统标注",
+            // TD-21②：模型把工具 schema/收据当成"要记的内容"（memory-002 现场：
+            // "memory_content"、"成功存储的记忆内容"；correction-001 现场：
+            // "The function call was successful with memory_id mem_xxx"、
+            // "This is an example content to be stored in long-term memory."）
+            "memory_content", "存储的记忆", "记忆id", "memory_id",
+            "example content", "示例内容", "function call was successful",
+            "待存储的内容", "要存储的内容");
 
     private static boolean looksLikeToolBanner(String content) {
+        String lower = content.toLowerCase();
         for (String marker : BANNER_MARKERS) {
-            if (content.contains(marker)) {
+            if (lower.contains(marker.toLowerCase())) {
                 return true;
             }
         }
         return false;
     }
 
-    /** 同用户下内容完全相同的记忆只保留一条（返回已有 id）。 */
+    /** 同用户下内容相同的记忆只保留一条（返回已有 id）。 */
     private String findIdentical(String userId, String content) {
         if (repository == null) {
             return null;
         }
+        String target = comparable(content);
         for (MemoryRecord record : repository.list(MemorySearchQuery.of(userId, null, 500))) {
-            if (record.content() != null && record.content().trim().equals(content)) {
+            if (comparable(record.content()).equals(target)) {
                 return record.id();
             }
         }
         return null;
+    }
+
+    /** 去重比对口径：忽略首尾空白与句末标点（"我住在上海" 与 "我住在上海。" 视为同一条）。 */
+    private static String comparable(String text) {
+        return text == null ? "" : text.replaceAll("[\\s。！!，,、；;：:]+$", "").trim();
     }
 
     private Object search(Map<String, Object> arguments, String userId) {

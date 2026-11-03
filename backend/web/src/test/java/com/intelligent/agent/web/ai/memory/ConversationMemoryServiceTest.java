@@ -75,6 +75,10 @@ class ConversationMemoryServiceTest {
         assertThat(ConversationMemoryService.extractExplicitFact("我的项目代号是北极星"))
                 .isEqualTo("我的项目代号是北极星");
         assertThat(ConversationMemoryService.extractExplicitFact("今天天气怎么样")).isNull();
+        // TD-21②：疑问句不能被当成事实落库（memory-003 现场把"我的晨会是什么时候？"
+        // 当成了记忆，真正的"周五下午三点"反而被挤掉）
+        assertThat(ConversationMemoryService.extractExplicitFact("我的晨会是什么时候？")).isNull();
+        assertThat(ConversationMemoryService.extractExplicitFact("请记住我的晨会是什么时候？")).isNull();
     }
 
     @Test

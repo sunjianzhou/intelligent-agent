@@ -12,6 +12,7 @@ import com.intelligent.agent.web.ai.agent.approval.ApprovalGate;
 import com.intelligent.agent.web.ai.agent.reflection.AnswerReflector;
 import com.intelligent.agent.web.ai.agent.reflection.LlmAnswerReflector;
 import com.intelligent.agent.web.ai.llm.LlmProviderRouter;
+import com.intelligent.agent.web.ai.llm.ModelCapabilityRegistry;
 import com.intelligent.agent.web.ai.memory.ConversationMemoryService;
 import com.intelligent.agent.web.ai.memory.ContextBudget;
 import com.intelligent.agent.web.ai.memory.LlmExtractionService;
@@ -253,14 +254,13 @@ public class AgentConfig {
                                                SubAgentExecutor subAgentExecutor,
                                                com.intelligent.agent.web.ai.agent.approval.ApprovalNotifier approvalNotifier,
                                                @Value("${ai.llm.vision-check-enabled:true}") boolean visionCheckEnabled,
-                                               @Value("${ai.llm.vision-models:}") List<String> visionModels,
+                                               ModelCapabilityRegistry modelCapabilityRegistry,
                                                ToolCheckpointStore checkpointStore) {
         return new AgentOrchestrator(llmProviderRouter, toolExecutor, conversationMemoryService,
                 promptService, branchFailureDetector, AgentOrchestrator.DEFAULT_MAX_TOOL_ROUNDS,
                 traceService, configRuntimeService, taskPlanner, answerReflector, approvalGate,
                 skillMatcher, contextBudget, subAgentExecutor, approvalNotifier,
-                visionCheckEnabled, visionModels == null ? List.of() : visionModels,
-                checkpointStore);
+                visionCheckEnabled, modelCapabilityRegistry, checkpointStore);
     }
 
     /** R-16：工具轮结果断点缓存（中断后同 requestId 重发跳过已执行工具）。 */
@@ -293,12 +293,11 @@ public class AgentConfig {
                 maxResultChars, allowedTools == null ? List.of() : allowedTools);
     }
 
-    /** R-01：上下文 token 预算（num_ctx 唯一来源）。与 OllamaLlmProvider 共用同一配置表与优先级。 */
+    /** R-01：上下文 token 预算（num_ctx 唯一来源）。TD-10 起配置值取自模型能力注册表。 */
     @Bean
-    public ContextBudget contextBudget(
-            @Value("${ai.llm.ollama.num-ctx:4096}") int defaultNumCtx,
-            @Value("#{${ai.llm.ollama.num-ctx-by-model:{}}}") Map<String, Integer> numCtxByModel) {
-        return new ContextBudget(defaultNumCtx, numCtxByModel);
+    public ContextBudget contextBudget(ModelCapabilityRegistry modelCapabilityRegistry) {
+        return new ContextBudget(modelCapabilityRegistry.defaultNumCtx(),
+                modelCapabilityRegistry.numCtxByModel());
     }
 
     /** 技能运行时匹配/注入（迁移自 Python skills/manager.py + applicator.py）。 */
@@ -354,18 +353,34 @@ public class AgentConfig {
         return new SystemPromptBuilder();
     }
 
+    /**
+     * TD-10：模型能力注册表——模型名关键词、视觉能力、unrestricted 覆盖层、num_ctx
+     * 的唯一装配点。新增模型优先改配置（application.yml / 环境变量），不改代码。
+     */
+    @Bean
+    public ModelCapabilityRegistry modelCapabilityRegistry(
+            @Value("${ai.llm.text-tool-patterns:dolphin,phi2,orca-mini,orca2}") List<String> textToolPatterns,
+            @Value("${ai.llm.vision-keywords:}") List<String> visionKeywords,
+            @Value("${ai.llm.vision-models:}") List<String> visionModels,
+            @Value("${ai.llm.unrestricted-patterns:dolphin}") List<String> unrestrictedPatterns,
+            @Value("${ai.llm.ollama.num-ctx:12288}") int defaultNumCtx,
+            @Value("#{${ai.llm.ollama.num-ctx-by-model:{}}}") Map<String, Integer> numCtxByModel) {
+        return new ModelCapabilityRegistry(textToolPatterns, visionKeywords, visionModels,
+                unrestrictedPatterns, defaultNumCtx, numCtxByModel);
+    }
+
     /** TODO-110 Task 3：提示词编排（soul + persona + 工具指令 + 模型覆盖层）。 */
     @Bean
     public PromptService promptService(SoulLoader soulLoader,
                                        SystemPromptBuilder systemPromptBuilder,
                                        ToolExecutor toolExecutor,
                                        RoleService roleService,
-                                       @Value("${ai.llm.text-tool-patterns:dolphin,phi2,orca-mini,orca2}") List<String> textToolPatterns,
+                                       ModelCapabilityRegistry modelCapabilityRegistry,
                                        @Value("${ai.llm.ollama.model:qwen2.5:7b}") String defaultModel,
                                        @Value("${ai.llm.max-context-tokens:8000}") int maxContextTokens,
                                        ContextBudget contextBudget) {
         return new PromptService(soulLoader, systemPromptBuilder, toolExecutor, roleService,
-                textToolPatterns, defaultModel, maxContextTokens, contextBudget);
+                modelCapabilityRegistry, defaultModel, maxContextTokens, contextBudget);
     }
 
     /** TODO-110 Task 3.4：heart_record 工具（心证铁卷 + 主人铁律管理）。 */

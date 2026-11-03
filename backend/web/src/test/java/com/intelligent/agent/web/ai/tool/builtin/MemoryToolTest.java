@@ -76,6 +76,27 @@ class MemoryToolTest {
         assertThat(String.valueOf(((Map<?, ?>) result).get("error"))).contains("拒绝写入");
     }
 
+    /** TD-21②：模型把工具 schema/收据的占位文本当成内容写入时必须拒绝。 */
+    @Test
+    void placeholderContentRejected() {
+        VectorMemoryRepository repository = new VectorMemoryRepository();
+        MemoryTool tool = new MemoryTool(MemoryTool.STORE_MEMORY, repository);
+
+        for (String placeholder : List.of(
+                "memory_content",
+                "成功存储的记忆内容",
+                "The function call was successful with memory_id mem_abc123",
+                "This is an example content to be stored in long-term memory.")) {
+            Object result = tool.execute(Map.of("content", placeholder),
+                    ToolExecutionContext.of("alice", "user"));
+            assertThat(((Map<?, ?>) result).get("success"))
+                    .as("应拒绝占位内容: %s", placeholder)
+                    .isEqualTo(false);
+        }
+        assertThat(repository.count(MemorySearchQuery.builder("alice", "", 10).build()))
+                .isZero();
+    }
+
     /** TD-19③：同一内容重复写入不产生第二条记录。 */
     @Test
     void identicalContentIsDeduplicated() {

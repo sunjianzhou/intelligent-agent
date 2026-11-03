@@ -63,7 +63,8 @@ public class SubAgentExecutor {
     private final int maxRounds;
     private final int maxResultChars;
     private final Set<String> allowedTools;
-    private final TextToolCallParser toolCallParser = new TextToolCallParser();
+    /** 文本兜底解析：用注册表校验工具名（在构造器中装配）。 */
+    private final TextToolCallParser toolCallParser;
     private final ExecutorService pool;
 
     public SubAgentExecutor(LlmProviderRouter router, ToolExecutor toolExecutor,
@@ -73,6 +74,7 @@ public class SubAgentExecutor {
                             List<String> allowedTools) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.toolExecutor = Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
+        this.toolCallParser = new TextToolCallParser(toolExecutor::resolveName);
         this.memoryService = memoryService;
         this.promptService = promptService;
         this.traceService = traceService;
@@ -184,7 +186,7 @@ public class SubAgentExecutor {
         long start = System.currentTimeMillis();
         SubAgentResult result;
         try {
-            String answer = runSubAgent(parent, step);
+            String answer = runSubAgent(parent, step, traceId);
             result = SubAgentResult.ok(index, step.title(), step.detail(),
                     truncate(answer), System.currentTimeMillis() - start);
         } catch (Exception e) {
@@ -203,7 +205,7 @@ public class SubAgentExecutor {
     }
 
     /** 轻量子代理 ReAct：独立上下文 + 只读工具白名单；最多 maxRounds 轮工具，之后无工具收尾。 */
-    private String runSubAgent(AgentRequestContext parent, PlanStep step) {
+    private String runSubAgent(AgentRequestContext parent, PlanStep step, String traceId) {
         String task = step.detail().isBlank()
                 ? step.title()
                 : step.title() + "\n要点：" + step.detail();
@@ -241,7 +243,7 @@ public class SubAgentExecutor {
             if (calls.isEmpty()) {
                 return content.isBlank() ? "（子代理无输出）" : content;
             }
-            messages = executeToolRound(messages, content, calls, subCtx, round);
+            messages = executeToolRound(messages, content, calls, subCtx, round, traceId);
         }
         // 工具轮次耗尽：无工具调用要求给出结论
         LlmResponse finalResponse = callModel(subCtx, messages, null);
@@ -251,7 +253,9 @@ public class SubAgentExecutor {
 
     private LlmResponse callModel(AgentRequestContext subCtx, List<ChatMessage> messages,
                                   List<ToolDefinition> defs) {
-        ChatTurn turn = new ChatTurn(subCtx.userId(), subCtx.model(), messages, subCtx.options());
+        // 与主 agent 同口径：多条 system 在 Ollama 模板里会被丢弃，发送前合并。
+        ChatTurn turn = new ChatTurn(subCtx.userId(), subCtx.model(),
+                ChatMessage.mergeSystemMessages(messages), subCtx.options());
         return router.completeWithFallback(subCtx.userId(), subCtx.model(), turn, defs, null)
                 .map(LlmProviderRouter.FallbackResult::response)
                 .block(timeout);
@@ -259,9 +263,10 @@ public class SubAgentExecutor {
 
     private List<ChatMessage> executeToolRound(List<ChatMessage> messages, String content,
                                                List<ToolCall> calls, AgentRequestContext subCtx,
-                                               int round) {
+                                               int round, String traceId) {
         // 只读强制：白名单外（含副作用）工具一律拒绝执行，denied 结果回传模型
         ToolExecutionContext execCtx = ToolExecutionContext.of(subCtx.userId(), "subagent");
+        long toolStart = System.currentTimeMillis();
         List<ToolCall> executable = new ArrayList<>();
         for (ToolCall call : calls) {
             String resolved = toolExecutor.resolveName(call.name());
@@ -297,6 +302,14 @@ public class SubAgentExecutor {
                     : (result.error() != null ? result.error() : result.status());
             next.add(ChatMessage.tool(markToolResultAsData(call.name(), truncate(raw)),
                     "call_" + (round * 10 + i)));
+            // TD-18③ 补漏：子代理的工具调用此前不落 span，父 trace 里只剩 sub_agent 一条，
+            // 评测侧（以及任何按 trace 复盘工具调用的路径）会误判成"本轮没有调用工具"。
+            addSpan(traceId, "tool_call", toolStart, Map.of(
+                    "tool", call.name(),
+                    "args", String.valueOf(call.arguments()),
+                    "status", result.status(),
+                    "duration_ms", result.executionTimeMs(),
+                    "agent", "subagent"));
         }
         return next;
     }
@@ -312,7 +325,9 @@ public class SubAgentExecutor {
     }
 
     private static String recallSection(String header, List<MemoryRecord> records) {
-        StringBuilder sb = new StringBuilder(header).append('\n');
+        StringBuilder sb = new StringBuilder(header).append('\n')
+                .append("以下是从长期记忆中检索到的相关事实；若其中已包含任务所需信息，"
+                        + "请直接据此作答，不要声称没有记录。\n");
         for (MemoryRecord record : records) {
             sb.append("- ").append(record.content()).append('\n');
         }

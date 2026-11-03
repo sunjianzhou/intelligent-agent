@@ -88,7 +88,7 @@ class AgentOrchestratorLayeredMemoryTest {
     }
 
     @Test
-    void initialMessagesSeparateEpisodicAndSemanticSections() {
+    void episodicAndSemanticSectionsReachModelInSingleSystemMessage() {
         VectorMemoryRepository repository = new VectorMemoryRepository();
         repository.upsert(new MemoryRecord(
                 "s1", "u1", "会话摘要: 昨天讨论了迁移", null, null, "summary",
@@ -104,12 +104,14 @@ class AgentOrchestratorLayeredMemoryTest {
                 .blockLast(Duration.ofSeconds(5));
 
         List<ChatMessage> messages = provider.turns.get(0).messages();
-        assertThat(messages).anyMatch(m -> m.role().equals("system")
-                && m.content().startsWith("[EPISODIC MEMORY]"));
-        assertThat(messages).anyMatch(m -> m.role().equals("system")
-                && m.content().startsWith("[SEMANTIC MEMORY]"));
-        assertThat(messages).noneMatch(m -> m.role().equals("system")
-                && m.content().startsWith("[LONG-TERM MEMORY]"));
+        // Ollama 模板只渲染第一条 system 消息，其余 system 会被丢弃：
+        // 各记忆分段必须在发送前合并进唯一一条 system。
+        assertThat(messages).filteredOn(m -> m.role().equals("system")).hasSize(1);
+        String system = messages.stream()
+                .filter(m -> m.role().equals("system"))
+                .findFirst().orElseThrow().content();
+        assertThat(system).contains("[EPISODIC MEMORY]").contains("[SEMANTIC MEMORY]");
+        assertThat(system).doesNotContain("[LONG-TERM MEMORY]");
     }
 
     @Test
@@ -125,6 +127,6 @@ class AgentOrchestratorLayeredMemoryTest {
 
         List<ChatMessage> messages = provider.turns.get(0).messages();
         assertThat(messages).anyMatch(m -> m.role().equals("system")
-                && m.content().startsWith("[LONG-TERM MEMORY]"));
+                && m.content().contains("[LONG-TERM MEMORY]"));
     }
 }
