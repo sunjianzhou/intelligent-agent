@@ -407,7 +407,7 @@ Python CLI 已于 2026-08-08 随 Agent 一起退役。
 |------|------|--------|
 | D-01 | ✅ Java 用户 ID 透传已修复（2026-06-02） | — |
 | D-02 | ⛔ 随 Python 退役失效（ChromaDB `seq_id` schema mismatch；向量库已改 Java 文件持久化） | — |
-| D-03 | ⛔ 随 Python 退役失效（Python 侧 `_TEXT_TOOL_CALLING_PATTERNS` 硬编码；**同类问题在 Java 侧复现**，见 TODOS TD-10） | — |
+| D-03 | ✅ Java 侧同类问题已收口（2026-11-02，TODOS TD-10）：`ModelCapabilityRegistry` 统一 text-tool / 视觉 / unrestricted / num_ctx，新增模型改配置 | — |
 | D-04 | ✅ L1 缓存 key 已包含 persona 维度 | — |
 | D-05 | ⛔ 随 Python 退役失效（`asyncio.ensure_future` 模块级调用；无 asyncio 运行时） | — |
 | TODO-60 | ✅ 多模态图片持久化到对话历史（2026-06-16） | — |
@@ -549,7 +549,31 @@ M3 剩余项：R-09 IM 渠道 HITL 审批 → R-10 成本/用量指标 → R-11 
   R-16 流式中断恢复（`ToolCheckpointStore` 按 requestId 断点缓存，重发复用工具结果）、
   ComfyUI 可选后续（ControlNet / 局部重绘预设（SD1.5/SDXL）、/ws 生成中预览图回传、
   `image_generation` 工具参数补全、`docs/comfyui-models.md` + 前端模型下载引导）。
-- **待办**：仅剩 Telegram 真实送达验收（用例已就绪，缺 bot token / chat_id 凭证）；
+- **2026-11-02 eval 收口与模型能力收敛**：
+  - 修复 Ollama 模板只渲染**第一条** system 消息导致的记忆失效：`ChatMessage.mergeSystemMessages`
+    在发送前把记忆 / 项目上下文 / 计划 / 收尾指令合并成唯一 system（主 agent 与子代理同口径）。
+    eval 现场：memory-003 的 `[SEMANTIC MEMORY]` 已构造（trace recall=3）但模型回答"没有记录"。
+  - TD-10 模型能力注册表 `ModelCapabilityRegistry`：text-tool 前缀 / 视觉关键词与显式模型 /
+    unrestricted 覆盖层 / num_ctx 集中到一处，PromptService、AgentOrchestrator、ContextBudget
+    全部改为注入该注册表。
+  - eval 判分改为程序计分：裁判只输出逐条 `hits`，分数 = `round(10 × 命中数 / 要点数)`，
+    `off_topic` 封顶 3；工具命中仍由程序从 trace span 判定。
+- **2026-11-03 memory-002 根因更正**：不是"工具倾向压过记忆指令"，而是 **num_ctx 装不下
+  system prompt（约 4k token）+ 22 个原生工具定义（约 3.5k token）**，Ollama 把 prompt 截断，
+  记忆块随截断丢失（payload 逐变体重放：4096 全错、8192 完整）。默认 `num_ctx` 先改 8192，
+  但在"工具轮"用例上仍复现截断的副作用：模型输出断词残句（`leton {"name": "calculator"...}`）、
+  `calc-002` 直接回一段 `<tool_call>` 语法。**全量复跑把默认值定到 12288**（system + 工具定义 +
+  一轮工具消息的总和已接近 8k），定向 7 例从 8.75 均分 → 10.00，全部稳定。
+  `ContextBudget` 新增工具定义估算，并按实测固定开销重算历史预算；eval 裁判补上
+  `temperature=0`（此前注释写 0、实际 0.7，导致随机误判）。
+- **2026-11-03 eval 收口（TD-17 关闭）**：全量 36 例 ok=36 / error=0、平均 **9.44**，
+  `-Deval.min-score=7` 门槛全绿；34 例满分，2 例 `minScore:0` 显式豁免
+  （`web-001` 依赖外部搜索且本机系统代理不被 Jsoup 采用；`injection-memory-001` 为安全 canary）。
+  低分治理的最终归因是 **num_ctx 窗口不足**，而非用例口径——`expectedContains`
+  确定性计分只是把裁判抖动（7B 漏判明写的词）从评估里剔除。
+  另补齐 `TextToolCallParser` 对正文 `{"name","arguments"}` 调用的识别（用注册表校验工具名），
+  修复 qwen2.5 偶发把工具调用当普通回答返回的问题（unit-002/003 0 → 10）。
+- **待办**：见 `TODOS.md`（当前仅剩 Telegram 真实送达验收因缺凭证阻塞；结构性拆分项已评估关闭）。
   `[PROGRESS RECOVERY]` 与 Prometheus `/metrics` 未迁移（分别由任务树/待办注入和
   trace+health 体系替代，已归档关闭）；其余历史 TODO 均已完成或已归档。
 

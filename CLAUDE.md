@@ -89,6 +89,20 @@ implemented under `backend/web/src/main/java/com/intelligent/agent/web/`.
 - `AgentRequestContext` — per-request isolation (userId, message, model, persona, projectId,
   sessionId, tools/memory flags, channel, image base64, group-scene markers).
 - `BranchFailureDetector` — 6 failure signals + iron-rule violation scan terminate the loop.
+- `ModelCapabilityRegistry` (`ai/llm/`) — single source for model capability config: text-tool
+  patterns, vision keywords/explicit models, unrestricted-overlay patterns, and `num_ctx`.
+  Add a model via `ai.llm.*` config, not by editing keyword lists in code.
+- **System messages must be merged before sending** (`ChatMessage.mergeSystemMessages`, applied
+  in `AgentOrchestrator.buildTurn` / `SubAgentExecutor.callModel`). Ollama chat templates render
+  only the first system message (`.System`); extra system messages fall into `.Messages`, where
+  qwen2.5/llama3 templates have no `system` branch and silently drop them. Memory, project
+  context, plans and finalize instructions all rely on this merge.
+- **`num_ctx` must fit the system prompt + native tool schemas.** With the soul/persona prompt
+  (~4k tokens) plus 22 built-in tool definitions (~3.5k) plus one tool round, 8192 already
+  triggers Ollama's context sliding: the prompt is truncated (memory blocks dropped) and output
+  degenerates into word fragments (`leton {...}`). Default is **12288**; `ContextBudget` deducts
+  the measured system/tool usage before budgeting history, so history is compacted instead of
+  the whole prompt being truncated. Total tools-off machines can lower it, never below 8192.
 
 ### Memory system (`ai/memory/`)
 
@@ -110,7 +124,8 @@ each with thin controllers over local domain services (no Python proxying).
 Soul layer loaded from `soul/` (`SOUL_DIR`), rules/heart via `heart_record` tool;
 `SystemPromptBuilder` composes SOUL → tool_overlay → rules (privacy-tiered per channel) →
 persona sections; `PromptService` assembles the full system prompt with model-specific
-overrides (e.g. unrestricted overlay for dolphin).
+overrides (e.g. unrestricted overlay for dolphin) and delegates capability checks to
+`ModelCapabilityRegistry`.
 
 ### Tools (`ai/tool/`)
 
