@@ -14,6 +14,12 @@
 >
 > 2026-09-17 更新：第七章技术债表与现状对齐（J-03 / F-04 / F-05 标已解决，Python 时代条目
 > 标失效）；现行待办队列见 `TODOS.md` 的「2026-09-17 技术债梳理」一节。
+>
+> 2026-11-04 更新：**CI 首次真正全绿**。此前 backend job 一直失败（`mvnw` 缺 exec 位 →
+> 又因它是本地发行版 shim 而 `exit 127`），`needs: backend` 的 e2e job 自 2026-08-26 起
+> 始终 skipped。修复后 backend 699 用例通过、**JUnit E2E 首次在 CI 中执行并通过**
+> （run `41831015360`）；同时修掉迁移对账 fixture 的 CRLF/LF 导致的 SHA-256 跨平台不一致。
+> CI 现在用 setup-java 的 `mvn -B`，不再依赖仓库内 `mvnw`。
 
 ---
 
@@ -491,10 +497,11 @@ M3 剩余项：R-09 IM 渠道 HITL 审批 → R-10 成本/用量指标 → R-11 
 
 ---
 
-## 九、当前运行状态（2026-08-26）
+## 九、当前运行状态（2026-11-04 复核）
 
 - **已提交到 GitHub**：所有修改均已推送 master 分支
-- **测试覆盖**：Java 后端全量 650 用例绿（0 失败）；E2E 为 JUnit 黑盒（tests/e2e-java，70 用例）；
+- **测试覆盖**（2026-11-04 复核）：Java 后端全量 **699** 用例绿（0 失败，本地与 CI 一致）；
+  E2E 为 JUnit 黑盒（tests/e2e-java，70 用例，2026-11-04 起在 CI push 上真实执行）；
   前端 Vitest 47 用例（含 18 视图挂载冒烟）+ 构建通过；压测/基线工具 `tests/perf-java`
   （@Tag("perf")，CI 手动 job，默认排除）
 - **R-07 子代理编排**：复杂计划（≥2 步）并行派发只读子代理（`ai.subagent.*` 可配），结果按序合并；
@@ -599,7 +606,7 @@ start_java_mode.bat                                 # 或 cd backend/web && mvnw
 cd frontend && npm run dev                          # 前端 dev server
 
 # 测试
-cd backend/web && mvnw test                         # Java 后端全量单元/契约测试（650 个）
+cd backend/web && mvnw test                         # Java 后端全量单元/契约测试（699 个）
 cd backend/web && ./mvnw.cmd -f ../../tests/e2e-java/pom.xml test   # Java E2E（需 backend + Ollama 运行）
 cd backend/web && ./mvnw.cmd -f ../../tests/perf-java/pom.xml test -Dgroups=perf -DexcludedGroups= -Dperf.saveBaseline=target/perf-report/baseline.json   # 压测/基线（需 backend + Ollama）
 

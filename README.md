@@ -485,7 +485,7 @@ Web 界面 → **MCP 配置页**（`/admin/mcp`）可在线调节温度、最大
 
 | 层 | 测试框架 | 覆盖范围 |
 |------|------|------|
-| Java 后端测试 | `mvnw test`（650 个） | ReAct/分支检测、LLM provider 契约、记忆/蒸馏/缓存、角色/会话/项目/任务领域、工具、调度、IM 通道、技能匹配、迁移校验、E2E 契约（MockMvc）等 |
+| Java 后端测试 | `mvnw test`（699 个） | ReAct/分支检测、LLM provider 契约、记忆/蒸馏/缓存、角色/会话/项目/任务领域、工具、调度、IM 通道、技能匹配、迁移校验、E2E 契约（MockMvc）等 |
 | Backend 单元测试 | JUnit 5 | WebSocket 消息序列化、JWT 工具类、JSON 工具类 |
 | Frontend 单元测试 | Vitest（47 个） | 关键工具函数（JWT / token 估算 / 消息同步等）+ 18 个视图挂载冒烟（`viewsSmoke.test.js`，jsdom） |
 | E2E 端到端测试 | JUnit + JDK HttpClient（tests/e2e-java，70 个） | 从客户端发起 HTTP 请求打通 Java:8080 全链路，覆盖认证/聊天/记忆/任务/项目/角色/Skill/云端/通知/消息撤回/追踪 |

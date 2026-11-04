@@ -47,9 +47,13 @@ the agent application itself.
 ```bash
 cd backend/web
 ./mvnw.cmd spring-boot:run     # Windows; JWT_SECRET / ADMIN_PASSWORD env required
-./mvnw.cmd test                # full suite (~650 tests)
+./mvnw.cmd test                # full suite (~700 tests)
 ./mvnw.cmd package
 ```
+
+`backend/web/mvnw` / `mvnw.cmd` 是**本地 Maven 发行版 shim，不是标准 Maven Wrapper**
+（无 `.mvn/wrapper`）：有固定发行版就用它，没有则回退 PATH 上的 `mvn`。
+CI 不用它，`.github/workflows/ci.yml` 直接用 `setup-java` 提供的 `mvn -B`。
 
 `start_java_mode.bat` reads `JWT_SECRET`/`ADMIN_PASSWORD` from the root `.env` and starts the
 Java backend (Java-only; the Python service and its rollback paths have been removed).

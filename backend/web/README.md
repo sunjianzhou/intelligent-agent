@@ -14,7 +14,7 @@
 |------|------|
 | **语言** | Java **21**（JDK 21，`pom.xml` 中 `<java.version>21</java.version>`）|
 | Web 框架 | Spring Boot **3.5.16** |
-| 构建工具 | Maven 3.6+（项目内置 `mvnw` wrapper）|
+| 构建工具 | Maven 3.6+（`mvnw`/`mvnw.cmd` 是本地发行版 shim，非标准 Wrapper：优先用固定发行版，缺失时回退 PATH 上的 `mvn`）|
 | WebSocket | Spring WebSocket（`TextWebSocketHandler`）|
 | HTTP 客户端 | Apache HttpClient 5 / java.net.http |
 | JSON | Jackson 2.18 |
