@@ -161,7 +161,15 @@ cd D:\workspace\intelligent_agent\backend\web
 
 ### P0 — 零风险文档与仓库卫生（无代码行为变化）
 
-（当前无活跃项；TD-04 / TD-16 已于 2026-11-01 完成，见文末归档。）
+- [x] ✅ **2026-11-04 CI 后端 job 全红：`mvnw` 缺执行权限位**
+      `ci.yml` 的 backend job 跑 `cd backend/web && ./mvnw test`，而 `backend/web/mvnw`
+      在 git 索引里是 `100644`（Windows 提交时丢失 exec 位），Ubuntu runner 上直接
+      `Permission denied` → exit 126。自 2026-08-26 起每次 push 的 backend job 都失败，
+      连带 `needs: backend` 的 `e2e` job 始终 skipped——TD-05 的「CI 首次运行确认」因此
+      一直等不到。修复：`git update-index --chmod=+x backend/web/mvnw`（100644 → 100755）。
+      验收：下一次 push 的 CI backend / e2e job 均不再是 126 / skipped。
+
+（TD-04 / TD-16 已于 2026-11-01 完成，见文末归档。）
 
 ### P1 — 质量门禁（把"靠人记得跑"变成"机器会拦"）
 
@@ -213,7 +221,7 @@ cd D:\workspace\intelligent_agent\backend\web
       剩余波动来自 7B 在 temperature=0.7 下的采样（工具不调用 / 记忆没写进），
       单次全量偶发 1~3 例掉分，复跑即恢复——见"当前评测状态"。
 
-- [ ] **TD-21 横幅 / 错误文本被模型当成新输入（TD-19 修复引入的回归）**
+- [x] ✅ **TD-21 横幅 / 错误文本被模型当成新输入（TD-19 修复引入的回归）— 2026-11-02 关闭**
       2026-11-01 21:50 全量复跑：36 例平均 **8.03 → 7.61**、构建卡在 `min-score` 门槛
       （memory-002/003、compression-001、injection-memory-001、web-001 均为 0）。逐条追 trace 后
       发现是**同一族缺陷**：本服务自己生成的文本，被模型当成"要处理的内容"再喂回工具。
@@ -276,26 +284,27 @@ cd D:\workspace\intelligent_agent\backend\web
 
 ### P2 — 结构优化（拆分 / 收敛，行为不变）
 
-- [ ] **TD-09 `AgentOrchestrator` 拆分（1261 行）— 2026-11-02 评估后关闭**
+- [x] ⛔ **TD-09 `AgentOrchestrator` 拆分（1261 行）— 2026-11-02 评估后关闭（不实施）**
       关闭理由：当前没有具体功能/性能驱动，拆分会把 ReAct 主循环的事务边界打散，
       回归风险高于收益；若后续出现确切的复用或测试性需求再重启。
       现状：单类承担 ReAct 主循环、工具轮执行、HITL 审批等待、反思、子代理编排、
       断点重放、任务标记扫描、事件发射；前端 ChatView 已两轮拆分，后端编排器未拆。
       方案：按协作者抽出（工具轮执行 / 审批等待 / 事件发射 / 子代理调度），主类只留编排骨架。
       验收：单类 ≤ 500 行；既有 `AgentOrchestrator*Test` 7 个测试类不改断言全绿。
-- [ ] **TD-10 模型能力注册表（消除 4 处硬编码）**
+- [x] ✅ **TD-10 模型能力注册表（消除 4 处硬编码）— 2026-11-02 完成**
+      （实现见 `ai/llm/ModelCapabilityRegistry` 与上方「2026-11-02 / 11-03 进度交接」第 2 条）
       现状：模型名关键词表散在 `AgentOrchestrator` / `AgentConfig` / `PromptService` /
       `LlmVisionSupport`（dolphin / phi2 / orca / llava / gemini / claude-3 等），
       接新模型要改 4 处（Python 时代 D-03 原样带过来的债）。
       方案：集中为一份模型能力配置（YAML 或 `ModelCapabilityRegistry`），覆盖
       text-tool 前缀 / 视觉能力 / num_ctx / unrestricted overlay 等维度。
       验收：新增模型只改配置不改代码，且有覆盖 4 类能力的测试。
-- [ ] **TD-11 后端大文件瘦身 — 2026-11-02 评估后关闭**
+- [x] ⛔ **TD-11 后端大文件瘦身 — 2026-11-02 评估后关闭（不实施）**
       关闭理由：行数本身不构成缺陷，这些类职责明确且测试覆盖充分；为行数而拆会引入
       无收益的迁移风险。出现具体修改痛点时按类单独重构，不再作为批量任务跟踪。
       现状：`ComfyUiClient` 769 / `HeartRecordTool` 595 / `ImageService` 574 /
       `AnalyticsService` 460 / `ConversationMemoryService` 448。
-- [ ] **TD-12 前端大视图瘦身 — 2026-11-02 评估后关闭**
+- [x] ⛔ **TD-12 前端大视图瘦身 — 2026-11-02 评估后关闭（不实施）**
       关闭理由：ChatView 已拆两轮，其余视图当前无维护阻塞；按需拆分，不做批量重构。
       现状：`ChatView` 1180（已拆两轮）/ `ImageView` 1020 / `SkillView` 824 /
       `MemoryView` 767 / `SystemView` 752。
@@ -382,6 +391,9 @@ vitest 5 / pinia 4 / vue-router 5）需单独立项。
       QA 脚本（`layout-audit.js` / `click-admin.ps1`）归档到 `tests/qa/` 供复用。
       验收：`git status` 干净；TODOS 中截图引用标注"仅本地"。
 - [x] ⏳ 2026-09-17 实现落地（commit `7ae2173`），**待 push 后 CI 首次运行确认**
+      **2026-11-04 更新**：迟迟等不到绿的原因已查明——不是 E2E 本身失败，而是 backend job
+      因 `mvnw` 缺 exec 位（exit 126）先挂，`needs: backend` 的 e2e job 从未被调度。
+      已修（见 P0「CI 后端 job 全红」），下次 push 观察首次真实运行。
       **TD-05 E2E 进入 CI 自动门**
       落地：`.github/workflows/ci.yml` 的 `e2e` job 从「仅手动 dispatch」改为 push/PR 自动
       （`needs: backend` + `timeout-minutes: 40`）；Ollama 容器模型目录挂到 `.ci-ollama`
