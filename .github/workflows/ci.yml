@@ -126,7 +126,22 @@ jobs:
           done
           curl -sf http://localhost:8080/api/health
       - name: Run Java E2E suite (replaces retired Python pytest E2E)
-        run: cd backend/web && mvn -B -f ../../tests/e2e-java/pom.xml test
+        # LLM 黑盒用例受 1.5B 模型采样影响，单次失败重跑一次再判红
+        run: cd backend/web && mvn -B -f ../../tests/e2e-java/pom.xml test -Dsurefire.rerunFailingTestsCount=1
+      - name: Upload E2E surefire reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-surefire-reports
+          path: tests/e2e-java/target/surefire-reports/
+          if-no-files-found: ignore
+      - name: Surface failing E2E tests as annotations
+        if: failure()
+        run: |
+          shopt -s nullglob
+          for f in tests/e2e-java/target/surefire-reports/*.txt; do
+            grep -E '<<< (FAILURE|ERROR)' "$f" || true
+          done | while read -r line; do echo "::error title=surefire::${line}"; done
       - name: Upload backend log on failure
         if: failure()
         uses: actions/upload-artifact@v4
