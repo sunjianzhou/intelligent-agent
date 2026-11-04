@@ -42,6 +42,21 @@ jobs:
         # 注意：仓库里的 mvnw 是本地 Maven 发行版 shim（无 .mvn/wrapper），
         # 依赖开发机上的固定路径；CI 直接用 setup-java 提供的 mvn。
         run: cd backend/web && mvn -B test
+      - name: Upload surefire reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: backend/web/target/surefire-reports/
+          if-no-files-found: ignore
+      - name: Surface failing tests as annotations
+        if: failure()
+        # 让失败用例名出现在 check-run annotations 里（无需登录即可用 API 读取）
+        run: |
+          shopt -s nullglob
+          for f in backend/web/target/surefire-reports/*.txt; do
+            grep -E '<<< (FAILURE|ERROR)' "$f" || true
+          done | while read -r line; do echo "::error title=surefire::${line}"; done
 
   frontend:
     name: Frontend (Node 22 · vitest + build)
