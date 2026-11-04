@@ -194,6 +194,15 @@ cd D:\workspace\intelligent_agent\backend\web
 
 ### P1 — 质量门禁（把"靠人记得跑"变成"机器会拦"）
 
+- [ ] **E2E 门在 push 上天然抖动（2026-11-04 观察，待定处置）**
+      TD-05 落地后 e2e 首次真实执行成功（run `41831015360`），但紧接着的 docs-only
+      提交（run `41831668945`）同一套用例挂在测试步骤：环境步骤全部 success，仅
+      `tests/e2e-java` 失败——1.5B 模型采样的固有不稳定，不是回归。
+      已缓解：`-Dsurefire.rerunFailingTestsCount=1`（单次重跑）+ e2e surefire 报告上传
+      + 失败用例 check-run annotation；run `41832502269` 已绿。
+      待决策（若重跑后仍频繁红）：① e2e 改 `continue-on-error` 不硬阻塞；② 只在 PR /
+      定时跑；③ 把抖动用例单独打 `@Tag` 隔离。
+
 - [x] ✅ **TD-17 低分 golden 用例治理（2026-11-03 完成）**
       **2026-11-02 更新**：找到并修复了「多 system 消息被 Ollama 模板丢弃」，判分改为程序计分；
       全量 36 例平均 **8.00**、仍有 12 例 <7（详见上方「2026-11-02 进度交接」）。
