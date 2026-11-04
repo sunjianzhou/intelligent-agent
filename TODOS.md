@@ -177,6 +177,15 @@ cd D:\workspace\intelligent_agent\backend\web
       路径与 `mvnw.cmd` 对齐为相对路径，并去掉 `mvnw.cmd` 里的中文注释
       （cmd.exe 按 OEM 代码页解析 .cmd，UTF-8 中文会变成乱码命令）。
       本地实测：`./mvnw -v`（Git Bash）与 `mvnw.cmd -v` 均输出 Maven 3.9.6。
+      ③ 修完前两层后 backend job 终于跑起测试，暴露第三层：Linux 上唯一失败的是
+      `LegacyMigrationReconciliationTest`（ERROR）。根因是**行尾差异**——迁移对账
+      fixture 的 `manifest.json` 记录的是**字节级 SHA-256**，而 `core.autocrlf=true`
+      让 Windows 检出为 CRLF（与 manifest 一致）、Linux 检出为 LF（哈希全变）。
+      修复：`.gitattributes` 加 `backend/web/src/test/resources/migration/export/** text eol=lf`，
+      fixture 统一 LF 并按 LF 字节重算 manifest 的 12 条 sha256（7 条变化）。
+      本地 `-Dtest=LegacyMigrationReconciliationTest` 通过，全量 699 用例全绿。
+      另加 CI 失败取证：上传 `surefire-reports` + 把 `<<< FAILURE/ERROR` 行输出成
+      check-run annotation（Actions 日志匿名不可读，这是唯一可视化通道）。
       验收：下一次 push 的 CI backend job 真正跑完测试、e2e job 被调度。
 
 （TD-04 / TD-16 已于 2026-11-01 完成，见文末归档。）

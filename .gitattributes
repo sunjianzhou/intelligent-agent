@@ -2,3 +2,7 @@
 mvnw text eol=lf
 *.bat text eol=crlf
 *.cmd text eol=crlf
+
+# 迁移对账 fixture：manifest 记录的是文件字节级 SHA-256，
+# 统一为 LF，否则 Windows(CRLF) / Linux(LF) 校验结果不一致。
+backend/web/src/test/resources/migration/export/** text eol=lf
