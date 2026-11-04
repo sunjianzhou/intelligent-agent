@@ -186,7 +186,9 @@ cd D:\workspace\intelligent_agent\backend\web
       本地 `-Dtest=LegacyMigrationReconciliationTest` 通过，全量 699 用例全绿。
       另加 CI 失败取证：上传 `surefire-reports` + 把 `<<< FAILURE/ERROR` 行输出成
       check-run annotation（Actions 日志匿名不可读，这是唯一可视化通道）。
-      验收：下一次 push 的 CI backend job 真正跑完测试、e2e job 被调度。
+      验收：**2026-11-04 CI run `41831015360` 全绿**（commit `9001c94`）——backend
+      699 用例通过、frontend 通过、e2e 首次被调度并 success（约 130s）。CI 自
+      2026-08-26 以来第一次真正绿。
 
 （TD-04 / TD-16 已于 2026-11-01 完成，见文末归档。）
 
@@ -409,10 +411,12 @@ vitest 5 / pinia 4 / vue-router 5）需单独立项。
       决策（2026-09-17）：截图按既有约定不入库，`.qa/` 进 `.gitignore`；
       QA 脚本（`layout-audit.js` / `click-admin.ps1`）归档到 `tests/qa/` 供复用。
       验收：`git status` 干净；TODOS 中截图引用标注"仅本地"。
-- [x] ⏳ 2026-09-17 实现落地（commit `7ae2173`），**待 push 后 CI 首次运行确认**
-      **2026-11-04 更新**：迟迟等不到绿的原因已查明——不是 E2E 本身失败，而是 backend job
-      因 `mvnw` 缺 exec 位（exit 126）先挂，`needs: backend` 的 e2e job 从未被调度。
-      已修（见 P0「CI 后端 job 全红」），下次 push 观察首次真实运行。
+- [x] ✅ 2026-09-17 实现落地（commit `7ae2173`），**2026-11-04 CI 首次运行通过**
+      **2026-11-04 更新**：此前迟迟等不到绿，不是 E2E 本身失败——backend job 因 `mvnw`
+      不可用（exit 126 → 127）先挂，`needs: backend` 的 e2e job 从未被调度。三层根因修完后，
+      CI run [`41831015360`](https://github.com/sunjianzhou/intelligent-agent/actions/runs/41831015360)
+      全绿：backend / frontend success，**E2E 首次真实执行成功**（Ollama qwen2.5:1.5b
+      拉起 → 后端启动 → `tests/e2e-java` 全过，耗时约 130s）。
       **TD-05 E2E 进入 CI 自动门**
       落地：`.github/workflows/ci.yml` 的 `e2e` job 从「仅手动 dispatch」改为 push/PR 自动
       （`needs: backend` + `timeout-minutes: 40`）；Ollama 容器模型目录挂到 `.ci-ollama`
