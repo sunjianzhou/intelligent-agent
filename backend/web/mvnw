@@ -1,4 +1,10 @@
 #!/bin/bash
+# 本机 Maven 发行版 shim（不是标准 Maven Wrapper，无 .mvn/wrapper）。
+# 有固定发行版时优先用它；没有（CI / Linux / 换机）时回退到 PATH 上的 mvn。
+# 路径与 mvnw.cmd 保持一致：仓库位于 <根>\workspace\intelligent_agent 时命中。
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MVN_DIST="E:/workspace/llm/mock_webflux/maven-dist/apache-maven-3.9.6/bin/mvn"
-exec "$MVN_DIST" "$@"
+MVN_DIST="$SCRIPT_DIR/../../../../workspace/llm/mock_webflux/maven-dist/apache-maven-3.9.6/bin/mvn"
+if [ -x "$MVN_DIST" ]; then
+  exec "$MVN_DIST" "$@"
+fi
+exec mvn "$@"

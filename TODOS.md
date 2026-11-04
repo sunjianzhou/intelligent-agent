@@ -161,13 +161,23 @@ cd D:\workspace\intelligent_agent\backend\web
 
 ### P0 — 零风险文档与仓库卫生（无代码行为变化）
 
-- [x] ✅ **2026-11-04 CI 后端 job 全红：`mvnw` 缺执行权限位**
-      `ci.yml` 的 backend job 跑 `cd backend/web && ./mvnw test`，而 `backend/web/mvnw`
-      在 git 索引里是 `100644`（Windows 提交时丢失 exec 位），Ubuntu runner 上直接
-      `Permission denied` → exit 126。自 2026-08-26 起每次 push 的 backend job 都失败，
-      连带 `needs: backend` 的 `e2e` job 始终 skipped——TD-05 的「CI 首次运行确认」因此
-      一直等不到。修复：`git update-index --chmod=+x backend/web/mvnw`（100644 → 100755）。
-      验收：下一次 push 的 CI backend / e2e job 均不再是 126 / skipped。
+- [x] ✅ **2026-11-04 CI 后端 job 全红：`mvnw` 不是可用的 Maven Wrapper**
+      根因有两层，均出在 `backend/web/mvnw`：
+      ① git 索引里是 `100644`（Windows 提交丢失 exec 位）→ Ubuntu runner
+      `Permission denied`，exit **126**；
+      ② 补上 exec 位后暴露第二层——该文件不是标准 Wrapper，而是指向开发机固定发行版的
+      shim（`MVN_DIST="E:/workspace/llm/.../apache-maven-3.9.6/bin/mvn"`），runner 上
+      该路径不存在 → exit **127**（6 秒即失败）。
+      连带影响：`needs: backend` 的 `e2e` job 自 2026-08-26 起始终 skipped，TD-05 的
+      「CI 首次运行确认」一直等不到。
+      修复：
+      a) `git update-index --chmod=+x backend/web/mvnw`（100644 → 100755）；
+      b) `ci.yml` 全部改用 setup-java 提供的 `mvn -B`（不再依赖仓库内 shim）；
+      c) `mvnw` / `mvnw.cmd` 改为「固定发行版存在则用之，否则回退 PATH 上的 `mvn`」，
+      路径与 `mvnw.cmd` 对齐为相对路径，并去掉 `mvnw.cmd` 里的中文注释
+      （cmd.exe 按 OEM 代码页解析 .cmd，UTF-8 中文会变成乱码命令）。
+      本地实测：`./mvnw -v`（Git Bash）与 `mvnw.cmd -v` 均输出 Maven 3.9.6。
+      验收：下一次 push 的 CI backend job 真正跑完测试、e2e job 被调度。
 
 （TD-04 / TD-16 已于 2026-11-01 完成，见文末归档。）
 

@@ -39,7 +39,9 @@ jobs:
           java-version: "21"
           cache: maven
       - name: Backend full test suite
-        run: cd backend/web && ./mvnw test
+        # 注意：仓库里的 mvnw 是本地 Maven 发行版 shim（无 .mvn/wrapper），
+        # 依赖开发机上的固定路径；CI 直接用 setup-java 提供的 mvn。
+        run: cd backend/web && mvn -B test
 
   frontend:
     name: Frontend (Node 22 · vitest + build)
@@ -102,14 +104,14 @@ jobs:
       - name: Start Java backend
         run: |
           cd backend/web
-          nohup ./mvnw spring-boot:run > /tmp/backend.log 2>&1 &
+          nohup mvn spring-boot:run > /tmp/backend.log 2>&1 &
           for i in $(seq 1 120); do
             if curl -sf http://localhost:8080/api/health >/dev/null; then break; fi
             sleep 2
           done
           curl -sf http://localhost:8080/api/health
       - name: Run Java E2E suite (replaces retired Python pytest E2E)
-        run: cd backend/web && ./mvnw -f ../../tests/e2e-java/pom.xml test
+        run: cd backend/web && mvn -B -f ../../tests/e2e-java/pom.xml test
       - name: Upload backend log on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -147,7 +149,7 @@ jobs:
       - name: Start Java backend
         run: |
           cd backend/web
-          nohup ./mvnw spring-boot:run > /tmp/backend.log 2>&1 &
+          nohup mvn spring-boot:run > /tmp/backend.log 2>&1 &
           for i in $(seq 1 120); do
             if curl -sf http://localhost:8080/api/health >/dev/null; then break; fi
             sleep 2
@@ -156,7 +158,7 @@ jobs:
       - name: Run perf suite (health/chat/stream, save CI baseline)
         run: |
           cd backend/web
-          ./mvnw -f ../../tests/perf-java/pom.xml test \
+          mvn -B -f ../../tests/perf-java/pom.xml test \
             -Dgroups=perf -DexcludedGroups= \
             -Dperf.concurrency=2 -Dperf.healthIterations=200 \
             -Dperf.chatIterations=2 -Dperf.streamIterations=2 \
@@ -193,7 +195,7 @@ jobs:
       - name: Start Java backend
         run: |
           cd backend/web
-          nohup ./mvnw spring-boot:run > /tmp/backend.log 2>&1 &
+          nohup mvn spring-boot:run > /tmp/backend.log 2>&1 &
           for i in $(seq 1 120); do
             if curl -sf http://localhost:8080/api/health >/dev/null; then break; fi
             sleep 2
@@ -202,7 +204,7 @@ jobs:
       - name: Run eval suite (min-score configurable)
         run: |
           cd backend/web
-          ./mvnw -Peval test -Deval.min-score=${{ inputs.eval_min_score }}
+          mvn -B -Peval test -Deval.min-score=${{ inputs.eval_min_score }}
       - name: Upload eval report
         uses: actions/upload-artifact@v4
         with:
